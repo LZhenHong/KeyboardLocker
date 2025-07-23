@@ -5,7 +5,14 @@
 
 set -e
 
+# Get project directory (parent of scripts directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "🚀 Building KeyboardLocker Release..."
+
+# Change to project directory
+cd "$PROJECT_DIR"
 
 # Build and export in one step using xcodebuild
 xcodebuild -project KeyboardLocker.xcodeproj \

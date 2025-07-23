@@ -139,6 +139,23 @@
         }
       }
     },
+    "about.github" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View on GitHub"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上查看"
+          }
+        }
+      }
+    },
     "about.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {

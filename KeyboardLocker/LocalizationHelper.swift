@@ -101,6 +101,7 @@ enum LocalizationKey {
   static let aboutFeatureAutoLock = "about.feature.auto.lock"
   static let aboutFeedback = "about.feedback"
   static let aboutHelp = "about.help"
+  static let aboutGitHub = "about.github"
 
   // Notifications
   static let notificationKeyboardLocked = "notification.keyboard.locked"

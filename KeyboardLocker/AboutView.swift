@@ -33,6 +33,25 @@ struct AboutView: View {
         }
       }
 
+      Divider()
+
+      // GitHub link
+      Button(action: {
+        openGitHubRepository()
+      }) {
+        HStack {
+          Image(systemName: "link.circle.fill")
+            .foregroundColor(.blue)
+          Text(LocalizationKey.aboutGitHub.localized)
+            .foregroundColor(.blue)
+        }
+        .font(.body)
+      }
+      .buttonStyle(PlainButtonStyle())
+      .onHover { _ in
+        NSCursor.pointingHand.set()
+      }
+
       // Copyright information from Info.plist
       Text(Bundle.main.copyright)
         .font(.caption)
@@ -41,6 +60,14 @@ struct AboutView: View {
     .padding()
     .navigationTitle(LocalizationKey.aboutTitle.localized)
     .frame(width: 300)
+  }
+
+  // MARK: - Private Methods
+
+  private func openGitHubRepository() {
+    if let url = URL(string: "https://github.com/LZhenHong/KeyboardLocker") {
+      NSWorkspace.shared.open(url)
+    }
   }
 }
 

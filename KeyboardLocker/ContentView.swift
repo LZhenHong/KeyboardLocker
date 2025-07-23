@@ -171,21 +171,16 @@ struct ContentView: View {
         .buttonStyle(PlainButtonStyle())
         .padding(.top, 8)
 
-        // Refresh button
-        Button(action: {
-          permissionManager.checkAllPermissions()
-        }) {
-          HStack {
-            Image(systemName: "arrow.clockwise")
-            Text(LocalizationKey.refreshPermission.localized)
-          }
-          .frame(maxWidth: .infinity)
-          .padding(.vertical, 12)
-          .background(Color.gray.opacity(0.2))
-          .foregroundColor(.primary)
-          .cornerRadius(8)
+        // Auto-detection status info
+        HStack {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundColor(.green)
+            .font(.caption)
+          Text(LocalizationKey.autoDetectionEnabled.localized)
+            .font(.caption)
+            .foregroundColor(.secondary)
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.top, 8)
       }
       .padding(.horizontal, 16)
 

@@ -115,4 +115,5 @@ enum LocalizationKey {
   static let permissionDescription = "permission.description"
   static let openSystemPreferences = "open.system.preferences"
   static let refreshPermission = "refresh.permission"
+  static let autoDetectionEnabled = "auto.detection.enabled"
 }

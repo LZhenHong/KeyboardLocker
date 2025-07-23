@@ -329,6 +329,91 @@
         }
       }
     },
+    "open.system.preferences" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open System Settings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统设置"
+          }
+        }
+      }
+    },
+    "permission.accessibility.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please grant Keyboard Locker accessibility permission in System Settings > Privacy & Security > Accessibility to enable keyboard locking functionality."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在系统设置 > 隐私与安全性 > 辅助功能中，允许 Keyboard Locker 控制您的电脑以启用键盘锁定功能。"
+          }
+        }
+      }
+    },
+    "permission.accessibility.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accessibility Permission Required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要辅助功能权限"
+          }
+        }
+      }
+    },
+    "permission.description" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard Locker needs accessibility permission to control your keyboard. This allows the app to temporarily block keyboard input when activated."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard Locker 需要辅助功能权限来控制您的键盘。这允许应用程序在激活时暂时阻止键盘输入。"
+          }
+        }
+      }
+    },
+    "permission.required" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permission Required"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要权限"
+          }
+        }
+      }
+    },
     "quick.actions" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -342,6 +427,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "快速操作"
+          }
+        }
+      }
+    },
+    "auto.detection.enabled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-detection enabled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已启用自动检测"
+          }
+        }
+      }
+    },
+    "refresh.permission" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check Permission Status"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查权限状态"
           }
         }
       }
@@ -648,108 +767,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从不"
-          }
-        }
-      }
-    },
-    "permission.accessibility.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Accessibility Permission Required"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要辅助功能权限"
-          }
-        }
-      }
-    },
-    "permission.accessibility.message" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Please grant Keyboard Locker accessibility permission in System Settings > Privacy & Security > Accessibility to enable keyboard locking functionality."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在系统设置 > 隐私与安全性 > 辅助功能中，允许 Keyboard Locker 控制您的电脑以启用键盘锁定功能。"
-          }
-        }
-      }
-    },
-    "permission.required" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Permission Required"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要权限"
-          }
-        }
-      }
-    },
-    "permission.description" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keyboard Locker needs accessibility permission to control your keyboard. This allows the app to temporarily block keyboard input when activated."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keyboard Locker 需要辅助功能权限来控制您的键盘。这允许应用程序在激活时暂时阻止键盘输入。"
-          }
-        }
-      }
-    },
-    "open.system.preferences" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open System Settings"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开系统设置"
-          }
-        }
-      }
-    },
-    "refresh.permission" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Check Permission Status"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查权限状态"
           }
         }
       }

@@ -86,39 +86,31 @@ class KeyboardLockManager: ObservableObject {
   func unlockKeyboard() {
     guard isLocked else { return }
 
-    do {
-      // Disable and clean up event tap
-      if let eventTap = eventTap {
-        CGEvent.tapEnable(tap: eventTap, enable: false)
-        CFMachPortInvalidate(eventTap)
-        self.eventTap = nil
-      }
-
-      // Remove run loop source
-      if let runLoopSource = runLoopSource {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        self.runLoopSource = nil
-      }
-
-      isLocked = false
-      print("Keyboard unlocked successfully")
-
-      showNotification(
-        title: LocalizationKey.notificationKeyboardUnlocked.localized,
-        body: LocalizationKey.notificationUnlockedMessage.localized
-      )
-    } catch {
-      print("Error during unlock: \(error)")
-      // Force unlock even if there's an error
-      isLocked = false
-      eventTap = nil
-      runLoopSource = nil
+    // Disable and clean up event tap
+    if let eventTap = eventTap {
+      CGEvent.tapEnable(tap: eventTap, enable: false)
+      CFMachPortInvalidate(eventTap)
+      self.eventTap = nil
     }
+
+    // Remove run loop source
+    if let runLoopSource = runLoopSource {
+      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+      self.runLoopSource = nil
+    }
+
+    isLocked = false
+    print("Keyboard unlocked successfully")
+
+    showNotification(
+      title: LocalizationKey.notificationKeyboardUnlocked.localized,
+      body: LocalizationKey.notificationUnlockedMessage.localized
+    )
   }
 
   /// Check if the event matches unlock combination (⌘+⌥+L)
   private func isUnlockCombination(_ event: NSEvent) -> Bool {
-    return event.modifierFlags.contains([.command, .option]) && event.keyCode == 37  // L key code
+    return event.modifierFlags.contains([.command, .option]) && event.keyCode == 37 // L key code
   }
 
   /// Send notification to user about lock/unlock status
@@ -165,15 +157,11 @@ class KeyboardLockManager: ObservableObject {
 
   /// Setup global hotkey monitoring for ⌘+⌥+L and ⌘+⌥+⇧+L
   private func setupGlobalHotkey() {
-    do {
-      globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
-        [weak self] event in
-        self?.handleGlobalHotkey(event: event)
-      }
-      print("Global hotkey monitor setup successfully")
-    } catch {
-      print("Failed to setup global hotkey monitor: \(error)")
+    globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
+      [weak self] event in
+      self?.handleGlobalHotkey(event: event)
     }
+    print("Global hotkey monitor setup successfully")
   }
 
   /// Remove global hotkey monitoring
@@ -193,16 +181,10 @@ class KeyboardLockManager: ObservableObject {
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
 
-      do {
-        if self.isLocked {
-          self.unlockKeyboard()
-        } else {
-          self.lockKeyboard()
-        }
-      } catch {
-        print("Error handling global hotkey: \(error)")
-        // Attempt to recover by ensuring unlocked state
-        self.recoverFromError()
+      if self.isLocked {
+        self.unlockKeyboard()
+      } else {
+        self.lockKeyboard()
       }
     }
   }

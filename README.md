@@ -2,6 +2,26 @@
 
 An elegant macOS menu bar application built with modern SwiftUI MenuBarExtra API for quickly locking and unlocking the keyboard to prevent accidental input.
 
+## 📚 Table of Contents
+
+- [🤖 AI Implementation Overview](#-ai-implementation-overview)
+- [✨ Features](#features)
+- [🛠 Technology Stack](#technology-stack)
+- [📁 Project Structure](#project-structure)
+- [💻 System Requirements](#system-requirements)
+- [🚀 Installation and Usage](#installation-and-usage)
+- [🔑 Permissions](#permissions)
+- [⚙️ Main Features](#main-features)
+- [🔧 Development Notes](#development-notes)
+- [📖 Related Documentation](#related-documentation)
+  - [BUILD.md](BUILD.md) - Build instructions and deployment guide
+  - [DEVELOPMENT.md](DEVELOPMENT.md) - Developer guide and technical documentation
+  - [CHANGELOG.md](CHANGELOG.md) - Version history and update records
+  - [XCSTRINGS_GUIDE.md](XCSTRINGS_GUIDE.md) - Localization configuration guide
+- [📜 Copyright & License](#copyright)
+
+---
+
 ## 🤖 AI Implementation Overview
 
 This project is a modern macOS application developed with **GitHub Copilot** assistance in VS Code environment.
@@ -206,10 +226,25 @@ UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound
 
 ## Related Documentation
 
+- **[BUILD.md](BUILD.md)** - Complete build instructions and deployment guide
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide and technical documentation
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and update records
 - **[XCSTRINGS_GUIDE.md](XCSTRINGS_GUIDE.md)** - Localization configuration guide
 - **[DOCS.md](DOCS.md)** - Documentation overview and project architecture
+
+### Quick Build Guide
+
+To build a release version of the app:
+
+```bash
+# Using Make (recommended)
+make build
+
+# Or using script directly
+./scripts/build_release.sh
+```
+
+See [BUILD.md](BUILD.md) for complete build instructions, installation options, and troubleshooting.
 
 ## Copyright
 

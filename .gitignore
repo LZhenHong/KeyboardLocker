@@ -10,7 +10,7 @@ xcuserdata/
 *.xccheckout
 
 ## compatibility with Xcode 3 and earlier (ignoring not required starting Xcode 4)
-build/
+[Bb]uild/
 DerivedData/
 *.moved-aside
 *.pbxuser
@@ -47,6 +47,10 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+
+# Release build artifacts
+*.app.dSYM.zip
+ExportOptions.plist
 
 # CocoaPods
 #

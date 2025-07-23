@@ -22,18 +22,16 @@ struct AboutView: View {
       Divider()
 
       // Core features only
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: 15) {
         Text(LocalizationKey.aboutFeatures.localized)
           .font(.headline)
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
           FeatureRow(icon: "lock", text: LocalizationKey.aboutFeatureLock.localized)
           FeatureRow(icon: "keyboard", text: LocalizationKey.aboutFeatureShortcut.localized)
           FeatureRow(icon: "timer", text: LocalizationKey.aboutFeatureAutoLock.localized)
         }
       }
-
-      Spacer()
 
       // Copyright information from Info.plist
       Text(Bundle.main.copyright)
@@ -42,7 +40,7 @@ struct AboutView: View {
     }
     .padding()
     .navigationTitle(LocalizationKey.aboutTitle.localized)
-    .frame(minWidth: 320, maxWidth: 400, minHeight: 300)
+    .frame(width: 300)
   }
 }
 

@@ -13,7 +13,7 @@ struct ContentView: View {
         unauthorizedView
       }
     }
-    .frame(minWidth: 320, maxWidth: 400, minHeight: 350)
+    .frame(width: 300)
     .background(Color(NSColor.windowBackgroundColor))
     .onAppear {
       permissionManager.checkAllPermissions()
@@ -250,4 +250,5 @@ struct SettingRow: View {
 #Preview {
   ContentView()
     .environmentObject(KeyboardLockManager())
+    .environmentObject(PermissionManager())
 }

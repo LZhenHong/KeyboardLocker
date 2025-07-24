@@ -1,131 +1,60 @@
-# KeyboardLocker Build Guide
+# Build Guide
 
-This project provides multiple ways to build the release version of KeyboardLocker.
-
-## 🚀 Quick Start
-
-The simplest way is to use Make commands:
+## Quick Build
 
 ```bash
-make build
-```
-
-This will generate `KeyboardLocker.app` in the `Build/` folder.
-
-## 📋 Available Build Commands
-
-### Make Commands (Recommended)
-
-```bash
-# Full release build (recommended)
+# Recommended: Full release build
 make build
 
-# Quick build (for testing)
-make quick  
-
-# Clean build artifacts
-make clean
-
-# Build and install to /Applications
-make install
-
-# Open Build folder in Finder
-make open
-
-# Show built app information
-make info
-
-# Show help
-make help
+# Quick development build
+make quick
 ```
 
-### Direct Script Usage
+## Build Commands
+
+| Command        | Purpose           | Speed | Optimization |
+| -------------- | ----------------- | ----- | ------------ |
+| `make build`   | Release build     | Slow  | Highest      |
+| `make quick`   | Development build | Fast  | Basic        |
+| `make clean`   | Clean build files | -     | -            |
+| `make install` | Build and install | Slow  | Highest      |
+
+## Manual Build
 
 ```bash
-# Full archive build (generates optimized app)
-./scripts/build_release.sh
-
-# Quick build (skips archive step)
-./scripts/quick_build.sh
-```
-
-### Using Xcode Command Line
-
-```bash
-# Manual build
+# Using Xcode command line
 xcodebuild -project KeyboardLocker.xcodeproj \
            -scheme KeyboardLocker \
-           -configuration Release \
-           build
+           -configuration Release
+
+# Using scripts directly  
+./scripts/build_release.sh    # Full build
+./scripts/quick_build.sh      # Quick build
 ```
 
-## 📂 Output Files
+## Output
 
-After building, you'll find in the `Build/` folder:
+Built app will be in `Build/KeyboardLocker.app`
 
-- `KeyboardLocker.app` - The executable application
-- `ReleaseInfo.txt` - Build information (full build only)
+## Installation
 
-## 🔧 Build Options Comparison
-
-| Method                       | Speed | Optimization | Archive | Recommended Use     |
-| ---------------------------- | ----- | ------------ | ------- | ------------------- |
-| `make build`                 | Slow  | Highest      | ✅       | Official Release    |
-| `make quick`                 | Fast  | High         | ❌       | Quick Testing       |
-| `./scripts/build_release.sh` | Slow  | Highest      | ✅       | Official Release    |
-| `./scripts/quick_build.sh`   | Fast  | High         | ❌       | Development Testing |
-
-## 🚛 Installation Instructions
-
-After building, there are several ways to install the app:
-
-### Automatic Installation
 ```bash
+# Automatic
 make install
+
+# Manual
+open Build/
+# Drag KeyboardLocker.app to /Applications
 ```
 
-### Manual Installation
-1. Open `Build/` folder: `make open`
-2. Drag `KeyboardLocker.app` to `/Applications` folder
-3. Grant accessibility permissions when first launched
+## Troubleshooting
 
-## 🛠 Troubleshooting
+- **Build fails**: Try `make clean && make build`
+- **Permission errors**: Run `chmod +x scripts/*.sh`
+- **Missing Xcode**: Install Xcode and command line tools
 
-### Build Failures
-- Ensure Xcode is installed and up to date
-- Check for project compilation errors
-- Try cleaning and rebuilding: `make clean && make build`
+## Requirements
 
-### Permission Errors
-- Ensure scripts have execute permissions: `chmod +x scripts/*.sh`
-- Check if there's sufficient disk space
-
-### Version Information Shows as Unknown
-- Check if `Info.plist` file is properly configured
-- Try rebuilding: `make clean && make build`
-
-## 📊 Build Information
-
-Use `make info` to view:
-- Application version
-- Build number
-- File size
-- Last modified time
-
-## 🔄 Continuous Integration
-
-These scripts are also suitable for CI/CD environments:
-
-```bash
-# CI script example
-make clean
-make build
-make info
-```
-
-## 📝 Notes
-
-- Building requires macOS 13.0+ development environment
-- Ensure Xcode Command Line Tools are installed
-- First build may take longer to download dependencies
-- Generated app is code-signed and optimized, ready for distribution
+- macOS 13.0+
+- Xcode 14.0+
+- Command Line Tools

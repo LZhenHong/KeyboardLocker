@@ -1,33 +1,47 @@
 # Build Scripts
 
-This directory contains build automation scripts for KeyboardLocker.
+Build automation scripts for KeyboardLocker.
 
-## Scripts Overview
+## Scripts
 
 ### `build_release.sh`
-**Full Release Build Script**
-- Creates an optimized archive build
-- Exports the app with proper signing
-- Generates `ReleaseInfo.txt` with build details
-- Recommended for official releases
-
-**Usage:**
+Full release build with archive and optimization.
 ```bash
 ./scripts/build_release.sh
 ```
 
 **Features:**
-- ✅ Full Xcode archive build
-- ✅ Optimized for distribution
-- ✅ Code signing and symbol stripping
-- ✅ Detailed build information
-- ✅ Automatic cleanup
+- Xcode archive build
+- Code signing and optimization
+- Generates `ReleaseInfo.txt`
+- Ready for distribution
 
-### `quick_build.sh`
-**Quick Development Build Script**
-- Fast build without archive process
-- Suitable for testing and development
-- Skips some optimization steps for speed
+### `quick_build.sh`  
+Fast development build without archive.
+```bash
+./scripts/quick_build.sh
+```
+
+**Features:**
+- Quick compilation
+- Skips optimization steps
+- Good for testing
+
+## Usage
+
+```bash
+# Recommended: Use Makefile
+make build     # Full release build
+make quick     # Quick development build
+
+# Direct script usage
+./scripts/build_release.sh
+./scripts/quick_build.sh
+```
+
+## Output
+
+Built applications are placed in `Build/KeyboardLocker.app`
 
 **Usage:**
 ```bash

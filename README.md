@@ -39,9 +39,10 @@ make build
 
 ## Documentation
 
-- [BUILD.md](BUILD.md) - Build instructions
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Developer guide  
-- [CHANGELOG.md](CHANGELOG.md) - Version history
+- [docs/BUILD.md](docs/BUILD.md) - Build instructions and setup
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Developer guide and contribution  
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) - Version history and updates
+- [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md) - Build automation scripts documentation
 
 ## License
 

@@ -76,4 +76,4 @@ make build  # Uses build_release.sh
 make quick  # Uses quick_build.sh
 ```
 
-For detailed build instructions, see [../BUILD.md](../BUILD.md).
+For detailed build instructions, see [BUILD.md](BUILD.md).

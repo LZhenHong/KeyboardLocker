@@ -5,6 +5,7 @@ import SwiftUI
 struct KeyboardLockerApp: App {
   @StateObject private var keyboardLockManager = KeyboardLockManager()
   @StateObject private var permissionManager = PermissionManager()
+  @StateObject private var urlHandler = URLCommandHandler()
 
   init() {
     // Setup global exception handling for stability
@@ -17,11 +18,35 @@ struct KeyboardLockerApp: App {
       ContentView()
         .environmentObject(keyboardLockManager)
         .environmentObject(permissionManager)
+        .environmentObject(urlHandler)
         .onAppear {
+          // Set up URL handler with keyboard lock manager reference
+          urlHandler.setKeyboardLockManager(keyboardLockManager)
           setupApplicationLifecycleHandlers()
+        }
+        .onOpenURL { url in
+          handleIncomingURL(url)
         }
     }
     .menuBarExtraStyle(.window)
+  }
+
+  // MARK: - URL Handling
+
+  /// Handle incoming URL requests
+  /// - Parameter url: The URL to process
+  private func handleIncomingURL(_ url: URL) {
+    print("📱 Received URL: \(url)")
+
+    let response = urlHandler.handleURL(url)
+    urlHandler.showUserFeedback(for: response)
+
+    // Log the result
+    if response.isSuccess {
+      print("✅ URL command executed successfully: \(response.message)")
+    } else {
+      print("❌ URL command failed: \(response.message)")
+    }
   }
 
   // MARK: - Exception Handling

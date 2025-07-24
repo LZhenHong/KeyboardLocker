@@ -121,4 +121,13 @@ enum LocalizationKey {
   // Error Recovery
   static let errorRecoveryTitle = "error.recovery.title"
   static let errorRecoveryMessage = "error.recovery.message"
+
+  // URL Schemes - User facing messages only
+  static let urlErrorInvalidScheme = "url.error.invalid.scheme"
+  static let urlErrorMissingCommand = "url.error.missing.command"
+  static let urlErrorUnknownCommand = "url.error.unknown.command"
+  static let urlErrorManagerUnavailable = "url.error.manager.unavailable"
+
+  static let urlResponseLockFailed = "url.response.lock.failed"
+  static let urlResponseUnlockFailed = "url.response.unlock.failed"
 }

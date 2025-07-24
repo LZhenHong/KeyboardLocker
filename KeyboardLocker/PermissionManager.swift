@@ -1,14 +1,21 @@
 import AppKit
 import Carbon
 import Foundation
-import UserNotifications
 
 /// Permission management for accessibility and notification permissions
 class PermissionManager: ObservableObject {
   // MARK: - Published Properties
 
   @Published var hasAccessibilityPermission = false
-  @Published var hasNotificationPermission = false
+
+  // Computed property that delegates to NotificationManager
+  var hasNotificationPermission: Bool {
+    return notificationManager.isAuthorized
+  }
+
+  // MARK: - Private Properties
+
+  private let notificationManager = NotificationManager.shared
 
   // MARK: - Initialization
 
@@ -48,16 +55,16 @@ class PermissionManager: ObservableObject {
     }
   }
 
-  /// Request notification permission
+  /// Request notification permission using NotificationManager
   func requestNotificationPermission() {
-    UNUserNotificationCenter.current().requestAuthorization(
-      options: [.alert, .sound]
-    ) { [weak self] granted, error in
+    notificationManager.requestAuthorization { [weak self] _, error in
+      // The NotificationManager handles state updates
+      if let error = error {
+        print("Failed to request notification permission: \(error)")
+      }
+      // Trigger objectWillChange to update any UI that depends on hasNotificationPermission
       DispatchQueue.main.async {
-        self?.hasNotificationPermission = granted
-        if let error = error {
-          print("Failed to request notification permission: \(error)")
-        }
+        self?.objectWillChange.send()
       }
     }
   }
@@ -104,16 +111,12 @@ class PermissionManager: ObservableObject {
   }
 
   private func checkNotificationPermission() {
-    UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-      let hasPermission = settings.authorizationStatus == .authorized
+    // Delegate to NotificationManager to check permission status
+    notificationManager.checkAuthorizationStatus()
 
-      DispatchQueue.main.async {
-        // Only update if the permission status has changed
-        if hasPermission != self?.hasNotificationPermission {
-          self?.hasNotificationPermission = hasPermission
-          print("Notification permission changed to: \(hasPermission)")
-        }
-      }
+    // Trigger objectWillChange to update any UI that depends on hasNotificationPermission
+    DispatchQueue.main.async {
+      self.objectWillChange.send()
     }
   }
 

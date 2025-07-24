@@ -1,17 +1,21 @@
 import Carbon
 import Cocoa
 import Foundation
-import UserNotifications
+import SwiftUI
 
 /// Core keyboard locking functionality with comprehensive input blocking
 class KeyboardLockManager: ObservableObject {
   @Published var isLocked = false
+  @AppStorage("showNotifications") private var showNotifications = true
 
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var globalHotkeyMonitor: Any?
   private var functionKeyMonitor: Any?
   private var comprehensiveMonitor: Any? // Additional comprehensive monitoring
+
+  // Reference to NotificationManager
+  private let notificationManager = NotificationManager.shared
 
   init() {
     setupGlobalHotkey()
@@ -106,9 +110,10 @@ class KeyboardLockManager: ObservableObject {
       // Setup comprehensive backup monitoring
       setupComprehensiveMonitor()
 
-      showNotification(
-        title: LocalizationKey.notificationKeyboardLocked.localized,
-        body: LocalizationKey.notificationLockedMessage.localized
+      // Send notification using NotificationManager with settings check
+      notificationManager.sendNotificationIfEnabled(
+        .keyboardLocked,
+        showNotifications: showNotifications
       )
     } catch {
       print("Failed to lock keyboard: \(error)")
@@ -141,35 +146,16 @@ class KeyboardLockManager: ObservableObject {
     isLocked = false
     print("Keyboard unlocked successfully")
 
-    showNotification(
-      title: LocalizationKey.notificationKeyboardUnlocked.localized,
-      body: LocalizationKey.notificationUnlockedMessage.localized
+    // Send notification using NotificationManager with settings check
+    notificationManager.sendNotificationIfEnabled(
+      .keyboardUnlocked,
+      showNotifications: showNotifications
     )
   }
 
   /// Check if the event matches unlock combination (⌘+⌥+L)
   private func isUnlockCombination(_ event: NSEvent) -> Bool {
     return event.modifierFlags.contains([.command, .option]) && event.keyCode == 37 // L key code
-  }
-
-  /// Send notification to user about lock/unlock status
-  private func showNotification(title: String, body: String) {
-    let content = UNMutableNotificationContent()
-    content.title = title
-    content.body = body
-    content.sound = .default
-
-    let request = UNNotificationRequest(
-      identifier: UUID().uuidString,
-      content: content,
-      trigger: nil
-    )
-
-    UNUserNotificationCenter.current().add(request) { error in
-      if let error = error {
-        print("Failed to send notification: \(error)")
-      }
-    }
   }
 
   /// Handle intercepted events - comprehensive input blocking logic
@@ -456,10 +442,10 @@ class KeyboardLockManager: ObservableObject {
     isLocked = false
     print("Error recovery completed - keyboard unlocked")
 
-    // Show recovery notification
-    showNotification(
+    // Show recovery notification using NotificationManager with settings check
+    notificationManager.sendNotificationIfEnabled(.general(
       title: LocalizationKey.errorRecoveryTitle.localized,
       body: LocalizationKey.errorRecoveryMessage.localized
-    )
+    ), showNotifications: showNotifications)
   }
 }

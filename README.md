@@ -4,11 +4,12 @@ A modern macOS menu bar application for quickly locking and unlocking your keybo
 
 ## Features
 
-- � **Quick Lock/Unlock** - One-click keyboard control
+- 🔒 **Quick Lock/Unlock** - One-click keyboard control
 - ⌨️ **Global Hotkey** - `⌘ + ⌥ + L` shortcut (works when locked)
 - 📱 **Menu Bar App** - Lightweight, no Dock space
 - 🔔 **Notifications** - Optional lock status alerts
 - 🌐 **Multi-language** - English and Simplified Chinese
+- 🔗 **URL Schemes** - External control via `keyboardlocker://` URLs
 - 🛡️ **Privacy First** - Local operation, no data collection
 
 ## Installation
@@ -43,6 +44,7 @@ make build
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Developer guide and contribution  
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) - Version history and updates
 - [docs/BUILD_SCRIPTS.md](docs/BUILD_SCRIPTS.md) - Build automation scripts documentation
+- [docs/URL_SCHEMES_GUIDE.md](docs/URL_SCHEMES_GUIDE.md) - URL schemes for automation and integration
 
 ## License
 

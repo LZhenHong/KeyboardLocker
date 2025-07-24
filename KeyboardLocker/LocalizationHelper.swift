@@ -117,4 +117,8 @@ enum LocalizationKey {
   static let openSystemPreferences = "open.system.preferences"
   static let refreshPermission = "refresh.permission"
   static let autoDetectionEnabled = "auto.detection.enabled"
+
+  // Error Recovery
+  static let errorRecoveryTitle = "error.recovery.title"
+  static let errorRecoveryMessage = "error.recovery.message"
 }

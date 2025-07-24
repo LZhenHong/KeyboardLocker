@@ -787,6 +787,40 @@
           }
         }
       }
+    },
+    "error.recovery.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard Locker Recovery"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘锁定器恢复"
+          }
+        }
+      }
+    },
+    "error.recovery.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application recovered from an error. Keyboard has been unlocked."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用程序已从错误中恢复。键盘已解锁。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

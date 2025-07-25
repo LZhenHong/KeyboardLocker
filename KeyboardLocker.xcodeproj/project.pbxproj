@@ -6,8 +6,49 @@
 	objectVersion = 70;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F203704C2E336AE400BDBAEE /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = F203704B2E336AE400BDBAEE /* Core */; };
+		F203705C2E336D2F00BDBAEE /* KeyboardLockerTool in Embed CLI Tools */ = {isa = PBXBuildFile; fileRef = F20370512E336B8E00BDBAEE /* KeyboardLockerTool */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		F203705F2E336D6D00BDBAEE /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = F203705E2E336D6D00BDBAEE /* Core */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F20370592E336CFC00BDBAEE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 026 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F20370502E336B8E00BDBAEE;
+			remoteInfo = KeyboardLockerTool;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F203704F2E336B8E00BDBAEE /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		F203705B2E336D0E00BDBAEE /* Embed CLI Tools */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				F203705C2E336D2F00BDBAEE /* KeyboardLockerTool in Embed CLI Tools */,
+			);
+			name = "Embed CLI Tools";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		015 /* KeyboardLocker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyboardLocker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20370492E336A9E00BDBAEE /* Core */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Core; sourceTree = "<group>"; };
+		F20370512E336B8E00BDBAEE /* KeyboardLockerTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = KeyboardLockerTool; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -21,6 +62,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		F20370522E336B8E00BDBAEE /* KeyboardLockerTool */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = KeyboardLockerTool; sourceTree = "<group>"; };
 		F24401E02E30C35400234AC1 /* KeyboardLocker */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (F24401E92E30C35400234AC1 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = KeyboardLocker; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -29,6 +71,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F203704C2E336AE400BDBAEE /* Core in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F203704E2E336B8E00BDBAEE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F203705F2E336D6D00BDBAEE /* Core in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -38,7 +89,9 @@
 		019 = {
 			isa = PBXGroup;
 			children = (
+				F20370492E336A9E00BDBAEE /* Core */,
 				F24401E02E30C35400234AC1 /* KeyboardLocker */,
+				F20370522E336B8E00BDBAEE /* KeyboardLockerTool */,
 				021 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -47,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				015 /* KeyboardLocker.app */,
+				F20370512E336B8E00BDBAEE /* KeyboardLockerTool */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,10 +115,12 @@
 				024 /* Sources */,
 				018 /* Frameworks */,
 				025 /* Resources */,
+				F203705B2E336D0E00BDBAEE /* Embed CLI Tools */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F203705A2E336CFC00BDBAEE /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				F24401E02E30C35400234AC1 /* KeyboardLocker */,
@@ -74,6 +130,29 @@
 			productReference = 015 /* KeyboardLocker.app */;
 			productType = "com.apple.product-type.application";
 		};
+		F20370502E336B8E00BDBAEE /* KeyboardLockerTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F20370552E336B8E00BDBAEE /* Build configuration list for PBXNativeTarget "KeyboardLockerTool" */;
+			buildPhases = (
+				F203704D2E336B8E00BDBAEE /* Sources */,
+				F203704E2E336B8E00BDBAEE /* Frameworks */,
+				F203704F2E336B8E00BDBAEE /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F20370522E336B8E00BDBAEE /* KeyboardLockerTool */,
+			);
+			name = KeyboardLockerTool;
+			packageProductDependencies = (
+				F203705E2E336D6D00BDBAEE /* Core */,
+			);
+			productName = KeyboardLockerTool;
+			productReference = F20370512E336B8E00BDBAEE /* KeyboardLockerTool */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -81,11 +160,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
+				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					022 = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					F20370502E336B8E00BDBAEE = {
+						CreatedOnToolsVersion = 16.4;
 					};
 				};
 			};
@@ -104,6 +186,7 @@
 			projectRoot = "";
 			targets = (
 				022 /* KeyboardLocker */,
+				F20370502E336B8E00BDBAEE /* KeyboardLockerTool */,
 			);
 		};
 /* End PBXProject section */
@@ -126,7 +209,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F203704D2E336B8E00BDBAEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F203705A2E336CFC00BDBAEE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F20370502E336B8E00BDBAEE /* KeyboardLockerTool */;
+			targetProxy = F20370592E336CFC00BDBAEE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		028 /* Debug */ = {
@@ -257,11 +355,12 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				ASSETCATALOG_COMPILER_OPTIMIZATION = time;
 				CODE_SIGN_ENTITLEMENTS = KeyboardLocker/Resources/KeyboardLocker.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -290,11 +389,12 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				ASSETCATALOG_COMPILER_OPTIMIZATION = space;
 				CODE_SIGN_ENTITLEMENTS = KeyboardLocker/Resources/KeyboardLocker.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -311,6 +411,40 @@
 				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F20370562E336B8E00BDBAEE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeyboardLockerTool/KeyboardLockerTool.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.Tool;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F20370572E336B8E00BDBAEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeyboardLockerTool/KeyboardLockerTool.entitlements;
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "$(inherited) -i $(PRODUCT_BUNDLE_IDENTIFIER)";
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.Tool;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -336,7 +470,27 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		F20370552E336B8E00BDBAEE /* Build configuration list for PBXNativeTarget "KeyboardLockerTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F20370562E336B8E00BDBAEE /* Debug */,
+				F20370572E336B8E00BDBAEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F203704B2E336AE400BDBAEE /* Core */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Core;
+		};
+		F203705E2E336D6D00BDBAEE /* Core */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Core;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 026 /* Project object */;
 }

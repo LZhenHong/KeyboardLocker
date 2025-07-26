@@ -30,6 +30,7 @@ struct AboutView: View {
           FeatureRow(icon: "lock", text: LocalizationKey.aboutFeatureLock.localized)
           FeatureRow(icon: "keyboard", text: LocalizationKey.aboutFeatureShortcut.localized)
           FeatureRow(icon: "timer", text: LocalizationKey.aboutFeatureAutoLock.localized)
+          FeatureRow(icon: "bell", text: LocalizationKey.aboutFeatureNotifications.localized)
         }
       }
 

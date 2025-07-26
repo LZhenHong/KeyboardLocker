@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Handles URL scheme requests for keyboard control operations
-class URLCommandHandler: ObservableObject {
+class URLCommandHandler {
   /// Supported URL commands
   enum URLCommand: String, CaseIterable {
     case lock
@@ -48,18 +48,18 @@ class URLCommandHandler: ObservableObject {
     }
   }
 
-  private weak var keyboardLockManager: KeyboardLockManager?
-  private let notificationManager = NotificationManager.shared
+  static let shared = URLCommandHandler()
 
-  /// Initialize URL handler with optional keyboard lock manager reference
-  /// - Parameter keyboardLockManager: The keyboard lock manager instance (can be set later)
-  init(keyboardLockManager: KeyboardLockManager? = nil) {
-    self.keyboardLockManager = keyboardLockManager
+  private weak var keyboardLockManager: KeyboardLockManaging?
+  private let notificationManager: NotificationManaging
+
+  private init(notificationManager: NotificationManaging = NotificationManager.shared) {
+    self.notificationManager = notificationManager
   }
 
   /// Set the keyboard lock manager reference
   /// - Parameter manager: The keyboard lock manager instance
-  func setKeyboardLockManager(_ manager: KeyboardLockManager) {
+  func setKeyboardLockManager(_ manager: KeyboardLockManaging) {
     keyboardLockManager = manager
   }
 
@@ -120,7 +120,7 @@ class URLCommandHandler: ObservableObject {
   }
 
   /// Execute lock command
-  private func executeLockCommand(_ manager: KeyboardLockManager) -> CommandResponse {
+  private func executeLockCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
     if manager.isLocked {
       let message = LocalizationKey.statusLocked.localized
       print("ℹ️ Keyboard already locked")
@@ -142,7 +142,7 @@ class URLCommandHandler: ObservableObject {
   }
 
   /// Execute unlock command
-  private func executeUnlockCommand(_ manager: KeyboardLockManager) -> CommandResponse {
+  private func executeUnlockCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
     if !manager.isLocked {
       let message = LocalizationKey.statusUnlocked.localized
       print("ℹ️ Keyboard already unlocked")
@@ -164,7 +164,7 @@ class URLCommandHandler: ObservableObject {
   }
 
   /// Execute toggle command
-  private func executeToggleCommand(_ manager: KeyboardLockManager) -> CommandResponse {
+  private func executeToggleCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
     let wasLocked = manager.isLocked
 
     if wasLocked {
@@ -175,10 +175,11 @@ class URLCommandHandler: ObservableObject {
   }
 
   /// Execute status command
-  private func executeStatusCommand(_ manager: KeyboardLockManager) -> CommandResponse {
+  private func executeStatusCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
     let statusText =
       manager.isLocked
-        ? LocalizationKey.statusLocked.localized : LocalizationKey.statusUnlocked.localized
+        ? LocalizationKey.statusLocked.localized
+        : LocalizationKey.statusUnlocked.localized
 
     print("📊 Current status: \(manager.isLocked ? "locked" : "unlocked")")
     return .success(statusText)
@@ -192,7 +193,7 @@ class URLCommandHandler: ObservableObject {
 
       // Send notification to user about the URL command result
       self.sendNotification(
-        title: "KeyboardLocker",
+        title: LocalizationKey.appTitle.localized,
         body: response.message,
         isError: !response.isSuccess
       )
@@ -204,12 +205,8 @@ class URLCommandHandler: ObservableObject {
   ///   - title: Notification title
   ///   - body: Notification body message
   ///   - isError: Whether this is an error notification
-  private func sendNotification(title _: String, body: String, isError: Bool = false) {
-    if isError {
-      notificationManager.notifyURLCommandError(body)
-    } else {
-      notificationManager.notifyURLCommandSuccess(body)
-    }
+  private func sendNotification(title: String, body: String, isError: Bool = false) {
+    notificationManager.sendNotification(title: title, body: body, isError: isError)
   }
 }
 

@@ -5,6 +5,7 @@
       "shouldTranslate" : false
     },
     "⌘ + ⌥ + L" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -122,23 +123,6 @@
         }
       }
     },
-    "about.help" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Help"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用帮助"
-          }
-        }
-      }
-    },
     "about.github" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -152,6 +136,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 GitHub 上查看"
+          }
+        }
+      }
+    },
+    "about.help" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用帮助"
           }
         }
       }
@@ -275,8 +276,93 @@
         }
       }
     },
+    "auto.detection.enabled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-detection enabled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已启用自动检测"
+          }
+        }
+      }
+    },
+    "error.recovery.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application recovered from an error. Keyboard has been unlocked."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用程序已从错误中恢复。键盘已解锁。"
+          }
+        }
+      }
+    },
+    "error.recovery.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard Locker Recovery"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘锁定器恢复"
+          }
+        }
+      }
+    },
     "Keyboard Locker" : {
       "shouldTranslate" : false
+    },
+    "lock.duration.format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locked for %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已锁定 %@"
+          }
+        }
+      }
+    },
+    "notification.error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "错误"
+          }
+        }
+      }
     },
     "notification.keyboard.locked" : {
       "extractionState" : "manual",
@@ -342,6 +428,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "键盘输入已恢复正常"
+          }
+        }
+      }
+    },
+    "notification.url.command" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL Command"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL 命令"
           }
         }
       }
@@ -444,40 +547,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "快速操作"
-          }
-        }
-      }
-    },
-    "auto.detection.enabled" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-detection enabled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已启用自动检测"
-          }
-        }
-      }
-    },
-    "refresh.permission" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Check Permission Status"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查权限状态"
           }
         }
       }
@@ -784,40 +853,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从不"
-          }
-        }
-      }
-    },
-    "error.recovery.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keyboard Locker Recovery"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "键盘锁定器恢复"
-          }
-        }
-      }
-    },
-    "error.recovery.message" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Application recovered from an error. Keyboard has been unlocked."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "应用程序已从错误中恢复。键盘已解锁。"
           }
         }
       }

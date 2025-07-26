@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
   @State private var isKeyboardLocked = false
+  @State private var lockDurationTimer: Timer?
   @EnvironmentObject var permissionManager: PermissionManager
   @EnvironmentObject var keyboardManager: KeyboardLockManager
 
@@ -18,9 +19,14 @@ struct ContentView: View {
     .onAppear {
       permissionManager.checkAllPermissions()
       isKeyboardLocked = keyboardManager.isLocked
+      setupLockDurationTimer()
     }
     .onReceive(keyboardManager.$isLocked) { locked in
       isKeyboardLocked = locked
+      setupLockDurationTimer()
+    }
+    .onDisappear {
+      lockDurationTimer?.invalidate()
     }
   }
 
@@ -51,17 +57,34 @@ struct ContentView: View {
       // Main functionality area
       VStack(spacing: 16) {
         // Lock status indicator
-        HStack {
-          Circle()
-            .fill(isKeyboardLocked ? Color.red : Color.green)
-            .frame(width: 12, height: 12)
-          Text(
-            isKeyboardLocked
-              ? LocalizationKey.statusLocked.localized : LocalizationKey.statusUnlocked.localized
-          )
-          .font(.body)
-          .foregroundColor(.primary)
-          Spacer()
+        VStack(alignment: .leading, spacing: 4) {
+          HStack {
+            Circle()
+              .fill(isKeyboardLocked ? Color.red : Color.green)
+              .frame(width: 12, height: 12)
+            Text(
+              isKeyboardLocked
+                ? LocalizationKey.statusLocked.localized
+                : LocalizationKey.statusUnlocked.localized
+            )
+            .font(.body)
+            .foregroundColor(.primary)
+            Spacer()
+          }
+
+          // Show lock duration when locked
+          if isKeyboardLocked, let durationString = keyboardManager.getLockDurationString() {
+            HStack {
+              Image(systemName: "clock")
+                .foregroundColor(.secondary)
+                .font(.caption)
+              Text(LocalizationKey.lockDurationFormat.localized(durationString))
+                .font(.caption)
+                .foregroundColor(.secondary)
+              Spacer()
+            }
+            .padding(.leading, 16) // Align with status text
+          }
         }
 
         // Lock/unlock button
@@ -70,7 +93,8 @@ struct ContentView: View {
             Image(systemName: isKeyboardLocked ? "lock.open" : "lock")
             Text(
               isKeyboardLocked
-                ? LocalizationKey.actionUnlock.localized : LocalizationKey.actionLock.localized)
+                ? LocalizationKey.actionUnlock.localized
+                : LocalizationKey.actionLock.localized)
           }
           .frame(maxWidth: .infinity)
           .padding(.vertical, 10)
@@ -207,6 +231,21 @@ struct ContentView: View {
       keyboardManager.unlockKeyboard()
     } else {
       keyboardManager.lockKeyboard()
+    }
+  }
+
+  private func setupLockDurationTimer() {
+    // Invalidate existing timer
+    lockDurationTimer?.invalidate()
+
+    // Only start timer when locked
+    if isKeyboardLocked {
+      lockDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Force UI update by triggering objectWillChange
+        DispatchQueue.main.async {
+          self.keyboardManager.objectWillChange.send()
+        }
+      }
     }
   }
 }

@@ -2,7 +2,7 @@ import Foundation
 import UserNotifications
 
 /// Centralized notification management for the app
-class NotificationManager {
+class NotificationManager: ObservableObject, NotificationManaging {
   // MARK: - Singleton
 
   static let shared = NotificationManager()
@@ -44,9 +44,9 @@ class NotificationManager {
       case .keyboardUnlocked:
         return LocalizationKey.notificationKeyboardUnlocked.localized
       case .urlCommandSuccess:
-        return "URL Command".localized // Success notification title
+        return LocalizationKey.notificationUrlCommand.localized
       case .urlCommandError:
-        return "Error".localized // Error notification title
+        return LocalizationKey.notificationError.localized
       case let .general(title, _):
         return title
       }
@@ -90,6 +90,29 @@ class NotificationManager {
     }
   }
 
+  // MARK: - NotificationManaging Protocol Conformance
+
+  /// Send a notification of the specified type if enabled
+  /// - Parameters:
+  ///   - type: The type of notification to send
+  ///   - showNotifications: Whether notifications are enabled
+  func sendNotificationIfEnabled(_ type: NotificationType, showNotifications: Bool) {
+    guard shouldSendNotification(showNotifications: showNotifications) else {
+      print("🔔 Notification skipped - disabled in settings or not authorized")
+      return
+    }
+    sendNotification(type)
+  }
+
+  /// Send a custom notification
+  /// - Parameters:
+  ///   - title: Notification title
+  ///   - body: Notification body
+  ///   - isError: Whether this is an error notification
+  func sendNotification(title: String, body: String, isError _: Bool) {
+    sendNotification(.general(title: title, body: body))
+  }
+
   // MARK: - Initialization
 
   private init() {
@@ -102,7 +125,8 @@ class NotificationManager {
   /// Request notification permission from user
   /// - Parameter completion: Completion handler with authorization result
   func requestAuthorization(completion: @escaping (Bool, Error?) -> Void = { _, _ in }) {
-    notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+    notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) {
+      [weak self] granted, error in
       DispatchQueue.main.async {
         self?.isAuthorized = granted
         completion(granted, error)
@@ -286,11 +310,11 @@ enum NotificationError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .notAuthorized:
-      return "Notifications not authorized".localized
+      return "Notifications not authorized"
     case .invalidContent:
-      return "Invalid notification content".localized
+      return "Invalid notification content"
     case let .systemError(error):
-      return "System error".localized + ": \(error.localizedDescription)"
+      return "System error: \(error.localizedDescription)"
     }
   }
 }

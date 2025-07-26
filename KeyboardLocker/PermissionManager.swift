@@ -1,5 +1,5 @@
 import AppKit
-import Carbon
+import Core
 import Foundation
 
 /// Permission management for accessibility and notification permissions
@@ -15,11 +15,12 @@ class PermissionManager: ObservableObject {
 
   // MARK: - Private Properties
 
-  private let notificationManager = NotificationManager.shared
+  private let notificationManager: NotificationManaging
 
   // MARK: - Initialization
 
-  init() {
+  init(notificationManager: NotificationManaging = NotificationManager.shared) {
+    self.notificationManager = notificationManager
     checkAllPermissions()
     setupApplicationFocusMonitoring()
   }
@@ -38,26 +39,22 @@ class PermissionManager: ObservableObject {
 
   /// Request accessibility permission by opening system settings
   func requestAccessibilityPermission() {
-    // Show immediate authorization prompt if available
-    if !AXIsProcessTrusted() {
-      // Try to request with prompt first
-      let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-      let trusted = AXIsProcessTrustedWithOptions(options)
+    // Use Core library's permission helper
+    let currentStatus = PermissionHelper.checkAccessibilityPermission(promptUser: true)
 
-      DispatchQueue.main.async {
-        self.hasAccessibilityPermission = trusted
-      }
+    DispatchQueue.main.async {
+      self.hasAccessibilityPermission = currentStatus
+    }
 
-      // If still not trusted, open system preferences
-      if !trusted {
-        openAccessibilitySettings()
-      }
+    // If still not trusted, open system preferences
+    if !currentStatus {
+      PermissionHelper.openAccessibilitySettings()
     }
   }
 
   /// Request notification permission using NotificationManager
   func requestNotificationPermission() {
-    notificationManager.requestAuthorization { [weak self] _, error in
+    notificationManager.requestAuthorization { [weak self] (_: Bool, error: Error?) in
       // The NotificationManager handles state updates
       if let error = error {
         print("Failed to request notification permission: \(error)")
@@ -99,7 +96,7 @@ class PermissionManager: ObservableObject {
   }
 
   private func checkAccessibilityPermission() {
-    let currentPermission = AXIsProcessTrusted()
+    let currentPermission = PermissionHelper.hasAccessibilityPermission()
 
     // Only update and log if the permission status has changed
     if currentPermission != hasAccessibilityPermission {
@@ -121,12 +118,7 @@ class PermissionManager: ObservableObject {
   }
 
   private func openAccessibilitySettings() {
-    guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
-      return
-    }
-    NSWorkspace.shared.open(url)
-
-    // No need for delayed checking - focus monitoring will handle it
+    PermissionHelper.openAccessibilitySettings()
     print("Opened accessibility settings")
   }
 }

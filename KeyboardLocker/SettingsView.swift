@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-  @AppStorage("autoLockDuration") private var autoLockDuration = 30
-  @AppStorage("showNotifications") private var showNotifications = true
+  @StateObject private var appConfig = AppConfiguration.shared
   @EnvironmentObject var keyboardManager: KeyboardLockManager
 
   var body: some View {
@@ -17,7 +16,7 @@ struct SettingsView: View {
           HStack {
             Text(LocalizationKey.settingsAutoLockTime.localized)
             Spacer()
-            Picker("", selection: $autoLockDuration) {
+            Picker("", selection: $appConfig.autoLockDuration) {
               Text(LocalizationKey.time15Minutes.localized).tag(15)
               Text(LocalizationKey.time30Minutes.localized).tag(30)
               Text(LocalizationKey.time60Minutes.localized).tag(60)
@@ -25,6 +24,9 @@ struct SettingsView: View {
             }
             .pickerStyle(MenuPickerStyle())
             .frame(width: 100)
+            .onChange(of: appConfig.autoLockDuration) { _ in
+              keyboardManager.updateAutoLockSettings()
+            }
           }
 
           Text(LocalizationKey.settingsAutoLockDescription.localized)
@@ -43,7 +45,7 @@ struct SettingsView: View {
           .foregroundColor(.primary)
 
         VStack(alignment: .leading, spacing: 12) {
-          Toggle(LocalizationKey.settingsShowNotifications.localized, isOn: $showNotifications)
+          Toggle(LocalizationKey.settingsShowNotifications.localized, isOn: $appConfig.showNotifications)
 
           Text(LocalizationKey.settingsNotificationsDescription.localized)
             .font(.caption)
@@ -66,7 +68,7 @@ struct SettingsView: View {
               LocalizationKey.actionLock.localized + "/" + LocalizationKey.actionUnlock.localized
                 + ":")
             Spacer()
-            Text("⌘ + ⌥ + L")
+            Text("⌘ + ⌥ + L".localized)
               .font(.system(.body, design: .monospaced))
               .padding(.horizontal, 8)
               .padding(.vertical, 2)
@@ -89,7 +91,7 @@ struct SettingsView: View {
       HStack {
         Spacer()
         Button(LocalizationKey.settingsReset.localized) {
-          resetSettings()
+          appConfig.resetToDefaults()
         }
         .buttonStyle(PlainButtonStyle())
         .foregroundColor(.red)
@@ -98,11 +100,6 @@ struct SettingsView: View {
     .padding()
     .navigationTitle(LocalizationKey.settingsTitle.localized)
     .frame(width: 300)
-  }
-
-  private func resetSettings() {
-    autoLockDuration = 30
-    showNotifications = true
   }
 }
 

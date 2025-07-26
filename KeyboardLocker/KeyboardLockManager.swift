@@ -3,22 +3,31 @@ import Cocoa
 import Foundation
 import SwiftUI
 
-/// Core keyboard locking functionality with comprehensive input blocking
-class KeyboardLockManager: ObservableObject {
+/// UI-focused keyboard lock manager with full functionality
+class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   @Published var isLocked = false
-  @AppStorage("showNotifications") private var showNotifications = true
 
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
-  private var globalHotkeyMonitor: Any?
-  private var functionKeyMonitor: Any?
-  private var comprehensiveMonitor: Any? // Additional comprehensive monitoring
+  private var autoLockTimer: Timer?
+  private var lastActivityTime = Date()
+  private var lockStartTime: Date?
 
-  // Reference to NotificationManager
-  private let notificationManager = NotificationManager.shared
+  // Use protocol to reduce coupling
+  private let notificationManager: NotificationManaging
+  private let configuration: AppConfiguration
 
-  init() {
-    setupGlobalHotkey()
+  // Constants for hotkey
+  private let unlockKeyCode: UInt16 = 37 // 'L' key
+  private let unlockModifiers: UInt32 = .init(cmdKey | optionKey) // Cmd+Option
+
+  init(
+    notificationManager: NotificationManaging = NotificationManager.shared,
+    configuration: AppConfiguration = AppConfiguration.shared
+  ) {
+    self.notificationManager = notificationManager
+    self.configuration = configuration
+    setupActivityMonitoring()
   }
 
   deinit {
@@ -28,135 +37,199 @@ class KeyboardLockManager: ObservableObject {
   /// Clean up resources when object is deallocated
   private func cleanup() {
     unlockKeyboard()
-    removeGlobalHotkey()
-    removeFunctionKeyMonitor()
-    removeComprehensiveMonitor()
+    stopAutoLock()
   }
+
+  // MARK: - Public Interface
 
   func lockKeyboard() {
     guard !isLocked else { return }
 
+    do {
+      try performLockKeyboard()
+    } catch {
+      print("Failed to lock keyboard: \(error.localizedDescription)")
+    }
+  }
+
+  private func performLockKeyboard() throws {
     // Verify accessibility permissions are granted
     guard AXIsProcessTrusted() else {
-      print("Accessibility permission not granted")
-      return
+      throw KeyboardLockerError.accessibilityPermissionDenied
     }
 
-    do {
-      // Create the most comprehensive event mask possible
-      // Include ALL possible event types that could involve keyboard input
-      let eventTypes: [CGEventType] = [
-        .keyDown,
-        .keyUp,
-        .flagsChanged,
-        .scrollWheel, // Some scroll wheels can trigger shortcuts
-        .tabletPointer,
-        .tabletProximity,
-        .otherMouseDown,
-        .otherMouseUp,
-        .otherMouseDragged,
-      ]
+    // Use safe event type factory to create event mask
+    let eventMask = EventTypeFactory.createEventMask()
 
-      // Build comprehensive event mask
-      var eventMask: CGEventMask = 0
-      for eventType in eventTypes {
-        eventMask |= CGEventMask(1 << eventType.rawValue)
-      }
-
-      // Also include system-defined events mask manually
-      eventMask |= CGEventMask(1 << 14) // NX_SYSDEFINED
-
-      // Create event tap for global input monitoring with highest possible interception level
-      guard
-        let tap = CGEvent.tapCreate(
-          tap: .cgSessionEventTap, // Intercept at session level
-          place: .headInsertEventTap, // Insert at the head for maximum priority
-          options: .defaultTap, // Default options for maximum compatibility
-          eventsOfInterest: eventMask,
-          callback: { proxy, type, event, refcon in
-            Unmanaged<KeyboardLockManager>.fromOpaque(refcon!).takeUnretainedValue().handleKeyEvent(
-              proxy: proxy, type: type, event: event
-            )
-          },
-          userInfo: Unmanaged.passUnretained(self).toOpaque()
-        )
-      else {
-        throw NSError(
-          domain: "KeyboardLocker", code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to create event tap"]
-        )
-      }
-
-      eventTap = tap
-      runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-
-      guard let runLoopSource = runLoopSource else {
-        throw NSError(
-          domain: "KeyboardLocker", code: 2,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to create run loop source"]
-        )
-      }
-
-      // Attach to current run loop for event processing
-      CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-      CGEvent.tapEnable(tap: tap, enable: true)
-
-      isLocked = true
-      print("Keyboard locked successfully")
-
-      // Setup additional function key monitoring
-      setupFunctionKeyMonitor()
-
-      // Setup comprehensive backup monitoring
-      setupComprehensiveMonitor()
-
-      // Send notification using NotificationManager with settings check
-      notificationManager.sendNotificationIfEnabled(
-        .keyboardLocked,
-        showNotifications: showNotifications
-      )
-    } catch {
-      print("Failed to lock keyboard: \(error)")
-      recoverFromError()
+    // Create event tap for intercepting input events
+    guard let tap = CGEvent.tapCreate(
+      tap: .cgSessionEventTap,
+      place: .headInsertEventTap,
+      options: .defaultTap,
+      eventsOfInterest: eventMask,
+      callback: { proxy, type, event, refcon in
+        guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+        let manager = Unmanaged<KeyboardLockManager>.fromOpaque(refcon).takeUnretainedValue()
+        return manager.handleKeyEvent(proxy: proxy, type: type, event: event)
+      },
+      userInfo: Unmanaged.passUnretained(self).toOpaque()
+    )
+    else {
+      throw KeyboardLockerError.eventTapCreationFailed
     }
+
+    eventTap = tap
+    runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+
+    guard let runLoopSource = runLoopSource else {
+      throw KeyboardLockerError.runLoopSourceCreationFailed
+    }
+
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+
+    isLocked = true
+    lockStartTime = Date()
+    print("Keyboard locked successfully")
+
+    // Send notification to user
+    notificationManager.sendNotificationIfEnabled(
+      .keyboardLocked,
+      showNotifications: configuration.showNotifications
+    )
+
+    print("🔒 Keyboard locked successfully")
   }
 
   func unlockKeyboard() {
     guard isLocked else { return }
 
-    // Disable and clean up event tap
+    // Disable event tap
     if let eventTap = eventTap {
       CGEvent.tapEnable(tap: eventTap, enable: false)
-      CFMachPortInvalidate(eventTap)
-      self.eventTap = nil
     }
 
     // Remove run loop source
     if let runLoopSource = runLoopSource {
       CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-      self.runLoopSource = nil
     }
 
-    // Remove function key monitor
-    removeFunctionKeyMonitor()
+    // Invalidate and clean up
+    if let eventTap = eventTap {
+      CFMachPortInvalidate(eventTap)
+    }
 
-    // Remove comprehensive monitor
-    removeComprehensiveMonitor()
-
+    eventTap = nil
+    runLoopSource = nil
     isLocked = false
-    print("Keyboard unlocked successfully")
+    lockStartTime = nil
 
-    // Send notification using NotificationManager with settings check
+    // Send notification to user
     notificationManager.sendNotificationIfEnabled(
       .keyboardUnlocked,
-      showNotifications: showNotifications
+      showNotifications: configuration.showNotifications
     )
+
+    print("🔓 Keyboard unlocked successfully")
   }
 
-  /// Check if the event matches unlock combination (⌘+⌥+L)
-  private func isUnlockCombination(_ event: NSEvent) -> Bool {
-    return event.modifierFlags.contains([.command, .option]) && event.keyCode == 37 // L key code
+  func toggleLock() {
+    if isLocked {
+      unlockKeyboard()
+    } else {
+      lockKeyboard()
+    }
   }
+
+  // MARK: - Auto-Lock Management
+
+  func startAutoLock() {
+    guard !configuration.isAutoLockEnabled else {
+      print("Auto-lock is already enabled")
+      return
+    }
+
+    // Update configuration to enable auto-lock
+    configuration.autoLockDuration = max(configuration.autoLockDuration, 15) // Minimum 15 minutes
+    scheduleAutoLock()
+    print("Auto-lock enabled with \(configuration.autoLockDuration) minutes duration")
+  }
+
+  func stopAutoLock() {
+    // 禁用自动锁定
+    configuration.autoLockDuration = 0
+
+    // 停止并清理计时器
+    autoLockTimer?.invalidate()
+    autoLockTimer = nil
+
+    print("Auto-lock disabled")
+  }
+
+  func toggleAutoLock() {
+    if configuration.isAutoLockEnabled {
+      stopAutoLock()
+    } else {
+      startAutoLock()
+    }
+  }
+
+  func updateAutoLockSettings() {
+    if configuration.isAutoLockEnabled {
+      // 自动锁定已启用，重新调度计时器
+      scheduleAutoLock()
+      print("Auto-lock settings updated: enabled with \(configuration.autoLockDuration) minutes")
+    } else {
+      // 自动锁定已禁用，停止计时器
+      autoLockTimer?.invalidate()
+      autoLockTimer = nil
+      print("Auto-lock settings updated: disabled")
+    }
+  }
+
+  private func setupActivityMonitoring() {
+    // Monitor global events for activity detection
+    NSEvent.addGlobalMonitorForEvents(matching: [
+      .keyDown, .leftMouseDown, .rightMouseDown, .mouseMoved,
+    ]) { _ in
+      self.lastActivityTime = Date()
+      // 每次用户有活动时，重新调度自动锁定计时器
+      if self.configuration.isAutoLockEnabled, !self.isLocked {
+        self.scheduleAutoLock()
+      }
+    }
+
+    // 初始化时如果启用了自动锁定，开始计时
+    if configuration.isAutoLockEnabled {
+      scheduleAutoLock()
+    }
+  }
+
+  private func scheduleAutoLock() {
+    // 停止现有的计时器
+    autoLockTimer?.invalidate()
+
+    // 如果自动锁定被禁用，不设置新的计时器
+    guard configuration.isAutoLockEnabled else {
+      autoLockTimer = nil
+      return
+    }
+
+    // 设置新的计时器，从现在开始计算指定的时间
+    autoLockTimer = Timer.scheduledTimer(withTimeInterval: configuration.autoLockDurationInSeconds, repeats: false) { _ in
+      DispatchQueue.main.async {
+        // 双重检查：确保自动锁定仍然启用且键盘未锁定
+        if self.configuration.isAutoLockEnabled, !self.isLocked {
+          print("Auto-lock triggered after \(self.configuration.autoLockDuration) minutes of inactivity")
+          self.lockKeyboard()
+        }
+      }
+    }
+
+    print("Auto-lock timer scheduled for \(configuration.autoLockDuration) minutes from now")
+  }
+
+  // MARK: - Event Handling
 
   /// Handle intercepted events - comprehensive input blocking logic
   private func handleKeyEvent(
@@ -164,288 +237,133 @@ class KeyboardLockManager: ObservableObject {
     type: CGEventType,
     event: CGEvent
   ) -> Unmanaged<CGEvent>? {
-    let flags = event.flags
-    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    // Handle tap disabled case
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+      if let eventTap = eventTap {
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+      }
+      return nil
+    }
+
+    // If not locked, allow all events
+    guard isLocked else {
+      return Unmanaged.passUnretained(event)
+    }
+
+    let flags = SafeEventHandler.getFlags(from: event)
+    let keyCode = SafeEventHandler.getKeycode(from: event) ?? 0
 
     // Handle different event types comprehensively
     switch type {
     case .keyDown, .keyUp:
-      // Allow unlock combination (⌘+⌥+L) to pass through - only on keyDown
-      if type == .keyDown, flags.contains([.maskCommand, .maskAlternate]), keyCode == 37 {
-        // Allow this combination and unlock keyboard
-        DispatchQueue.main.async {
-          self.unlockKeyboard()
-        }
-        return Unmanaged.passRetained(event)
-      }
-
-      // Block ALL other keyboard events when locked
-      print("Blocked keyboard event: type=\(type.rawValue), keyCode=\(keyCode)")
-      return nil
+      return handleKeyboardEvent(type: type, event: event, keyCode: keyCode)
 
     case .flagsChanged:
-      // Block ALL modifier key changes to prevent any shortcuts
-      print("Blocked modifier key change: flags=\(flags)")
-      return nil
-
-    case .scrollWheel:
-      // Block scroll wheel events that might trigger shortcuts (like zoom)
-      let scrollingDeltaX = event.getDoubleValueField(.scrollWheelEventDeltaAxis1)
-      let scrollingDeltaY = event.getDoubleValueField(.scrollWheelEventDeltaAxis2)
-
-      // Only block if there are modifier keys pressed (likely shortcuts)
-      if !flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift]).isEmpty {
-        print(
-          "Blocked scroll shortcut: deltaX=\(scrollingDeltaX), deltaY=\(scrollingDeltaY), flags=\(flags)"
-        )
-        return nil
-      }
-
-      // Allow normal scrolling
-      return Unmanaged.passRetained(event)
-
-    case .otherMouseDown, .otherMouseUp, .otherMouseDragged:
-      // Block additional mouse buttons that might trigger shortcuts
-      let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
-
-      // Block if modifier keys are pressed (likely shortcuts)
-      if !flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift]).isEmpty {
-        print("Blocked mouse shortcut: button=\(buttonNumber), flags=\(flags)")
-        return nil
-      }
-
-      // Allow normal mouse events
-      return Unmanaged.passRetained(event)
-
-    case .tabletPointer, .tabletProximity:
-      // Block tablet events that might have shortcut functions
-      if !flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift]).isEmpty {
-        print("Blocked tablet shortcut event")
-        return nil
-      }
-
-      // Allow normal tablet events
-      return Unmanaged.passRetained(event)
+      return handleModifierEvent(flags: flags)
 
     default:
-      // For any unknown event types, check if they have modifier keys
-      if type.rawValue == 14 { // NX_SYSDEFINED - system defined events
-        print("Blocked system-defined event")
-        return nil // Block all system-defined events (media keys, function keys, etc.)
-      }
-
-      // Block other events if they have modifier keys (potential shortcuts)
-      if !flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift]).isEmpty {
-        print("Blocked unknown event with modifiers: type=\(type.rawValue), flags=\(flags)")
-        return nil
-      }
-
-      // Allow events without modifier keys
-      return Unmanaged.passRetained(event)
+      return handleOtherEvent(type: type, event: event, flags: flags)
     }
   }
 
-  // MARK: - Global Hotkey Management
-
-  /// Setup global hotkey monitoring for ⌘+⌥+L and ⌘+⌥+⇧+L
-  private func setupGlobalHotkey() {
-    globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
-      [weak self] event in
-      self?.handleGlobalHotkey(event: event)
-    }
-    print("Global hotkey monitor setup successfully")
-  }
-
-  /// Remove global hotkey monitoring
-  private func removeGlobalHotkey() {
-    if let monitor = globalHotkeyMonitor {
-      NSEvent.removeMonitor(monitor)
-      globalHotkeyMonitor = nil
-      print("Global hotkey monitor removed")
-    }
-  }
-
-  /// Setup comprehensive function key and system event monitoring
-  private func setupFunctionKeyMonitor() {
-    functionKeyMonitor = NSEvent.addGlobalMonitorForEvents(
-      matching: [
-        .keyDown, .keyUp, .systemDefined, .flagsChanged, .scrollWheel, .rightMouseDown,
-        .rightMouseUp, .otherMouseDown, .otherMouseUp,
-      ]
-    ) { [weak self] event in
-      self?.handleFunctionKeyEvent(event: event)
-    }
-    print("Comprehensive function key and system event monitor setup successfully")
-  }
-
-  /// Remove function key monitoring
-  private func removeFunctionKeyMonitor() {
-    if let monitor = functionKeyMonitor {
-      NSEvent.removeMonitor(monitor)
-      functionKeyMonitor = nil
-      print("Function key monitor removed")
-    }
-  }
-
-  /// Handle function key events and additional input types (F1-F12, media keys, etc.)
-  private func handleFunctionKeyEvent(event: NSEvent) {
-    guard isLocked else { return }
-
-    let keyCode = event.keyCode
-    let modifierFlags = event.modifierFlags
-
-    // Block function keys (F1-F12) and their variants
-    let functionKeyCodes: Set<UInt16> = [
-      122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, // F1-F12
-      119, 114, 115, 116, 117, // Additional function keys
-      113, 115, 116, 130, // Media keys and volume controls
-    ]
-
-    // Block based on event type
-    switch event.type {
-    case .keyDown, .keyUp:
-      if functionKeyCodes.contains(keyCode) {
-        print("NSEvent: Blocked function/media key: F\(keyCode)")
-        // Note: NSEvent global monitors cannot prevent the event, but we log it
-      }
-
-      // Block any key event when locked (backup to CGEvent tap)
-      if event.type == .keyDown {
-        print("NSEvent: Blocked additional key down: \(keyCode)")
-      }
-
-    case .systemDefined:
-      // Block ALL system-defined events (media keys, volume, brightness, etc.)
-      print("NSEvent: Blocked system-defined event: subtype=\(event.subtype)")
-
-    case .flagsChanged:
-      // Block modifier key changes
-      print("NSEvent: Blocked modifier change: \(modifierFlags)")
-
-    case .scrollWheel:
-      // Block scroll wheel with modifiers (zoom shortcuts, etc.)
-      if !modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-        print("NSEvent: Blocked scroll with modifiers")
-      }
-
-    case .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
-      // Block right-click and other mouse buttons with modifiers
-      if !modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-        print("NSEvent: Blocked mouse event with modifiers")
-      }
-
-    default:
-      break
-    }
-  }
-
-  /// Setup comprehensive backup monitoring for any missed events
-  private func setupComprehensiveMonitor() {
-    // Monitor ALL possible NSEvent types as a backup layer
-    let allEventTypes: NSEvent.EventTypeMask = [
-      .keyDown, .keyUp, .flagsChanged,
-      .leftMouseDown, .leftMouseUp, .leftMouseDragged,
-      .rightMouseDown, .rightMouseUp, .rightMouseDragged,
-      .otherMouseDown, .otherMouseUp, .otherMouseDragged,
-      .mouseEntered, .mouseExited, .mouseMoved,
-      .scrollWheel, .tabletPoint, .tabletProximity,
-      .systemDefined, .applicationDefined, .periodic,
-      .cursorUpdate, .rotate, .beginGesture, .endGesture,
-      .magnify, .swipe, .smartMagnify,
-      .pressure, .directTouch, .changeMode,
-    ]
-
-    comprehensiveMonitor = NSEvent.addGlobalMonitorForEvents(matching: allEventTypes) {
-      [weak self] event in
-      self?.handleComprehensiveEvent(event: event)
-    }
-    print("Comprehensive backup monitor setup successfully")
-  }
-
-  /// Remove comprehensive monitoring
-  private func removeComprehensiveMonitor() {
-    if let monitor = comprehensiveMonitor {
-      NSEvent.removeMonitor(monitor)
-      comprehensiveMonitor = nil
-      print("Comprehensive monitor removed")
-    }
-  }
-
-  /// Handle any events that might have been missed by primary monitoring
-  private func handleComprehensiveEvent(event: NSEvent) {
-    guard isLocked else { return }
-
-    // Log any input events that occur while locked for debugging
-    switch event.type {
-    case .keyDown, .keyUp, .flagsChanged:
-      print("BACKUP: Detected keyboard event: \(event.type) - keyCode: \(event.keyCode)")
-
-    case .systemDefined:
-      print("BACKUP: Detected system event: subtype \(event.subtype)")
-
-    case .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown,
-         .otherMouseUp:
-      if !event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-        print("BACKUP: Detected mouse shortcut attempt")
-      }
-
-    case .scrollWheel:
-      if !event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-        print("BACKUP: Detected scroll shortcut attempt")
-      }
-
-    case .swipe, .magnify, .rotate, .smartMagnify:
-      print("BACKUP: Detected gesture that might trigger shortcuts")
-
-    default:
-      if !event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-        print("BACKUP: Detected event with modifiers: \(event.type)")
-      }
-    }
-  }
-
-  /// Handle global hotkey events for lock/unlock
-  private func handleGlobalHotkey(event: NSEvent) {
-    // Check for ⌘+⌥+L combination
-    guard isUnlockCombination(event) else { return }
-
-    DispatchQueue.main.async { [weak self] in
-      guard let self = self else { return }
-
-      if self.isLocked {
+  private func handleKeyboardEvent(type: CGEventType, event: CGEvent, keyCode: Int64) -> Unmanaged<
+    CGEvent
+  >? {
+    // Allow unlock combination (⌘+⌥+L) to pass through - only on keyDown
+    if type == .keyDown, isUnlockHotkey(event: event) {
+      DispatchQueue.main.async {
         self.unlockKeyboard()
-      } else {
-        self.lockKeyboard()
       }
+      return nil // Consume this event, don't pass to system
+    }
+
+    // Block ALL other keyboard events when locked
+    print("Blocked keyboard event: type=\(type.rawValue), keyCode=\(keyCode)")
+    return nil
+  }
+
+  private func handleModifierEvent(flags: CGEventFlags) -> Unmanaged<CGEvent>? {
+    // Block ALL modifier key changes to prevent any shortcuts
+    print("Blocked modifier key change: flags=\(flags)")
+    return nil
+  }
+
+  private func handleOtherEvent(type: CGEventType, event: CGEvent, flags: CGEventFlags) -> Unmanaged<CGEvent>? {
+    // Check if this is a system-defined event (function keys, etc.)
+    if EventTypeFactory.isSystemDefinedEvent(type) {
+      // This is the key for function keys! Block ALL system-defined events
+      if let subtype = EventTypeFactory.getSystemDefinedSubtype(from: event) {
+        print("Blocked system-defined event: subtype=\(subtype)")
+      } else {
+        print("Blocked system-defined event: unable to get subtype")
+      }
+      // Directly block all system-defined events, including volume, brightness, and other function keys
+      return nil
+    }
+
+    // Block unknown event types with modifier keys
+    if SafeEventHandler.hasModifiers(event, [.maskCommand, .maskAlternate, .maskControl, .maskShift]) {
+      print("Blocked unknown event with modifiers: type=\(type.rawValue), flags=\(flags)")
+      return nil
+    }
+
+    // Allow events without modifier keys
+    return Unmanaged.passUnretained(event)
+  }
+
+  private func isUnlockHotkey(event: CGEvent) -> Bool {
+    let flags = SafeEventHandler.getFlags(from: event)
+    let keyCode = SafeEventHandler.getKeycode(from: event) ?? 0
+
+    // Check for configured unlock hotkey (default: Cmd + Option + L)
+    let expectedModifiers = unlockModifiers
+    let expectedKeyCode = unlockKeyCode
+
+    var hasRequiredModifiers = true
+
+    if expectedModifiers & UInt32(cmdKey) != 0 {
+      hasRequiredModifiers = hasRequiredModifiers && flags.contains(.maskCommand)
+    }
+    if expectedModifiers & UInt32(optionKey) != 0 {
+      hasRequiredModifiers = hasRequiredModifiers && flags.contains(.maskAlternate)
+    }
+    if expectedModifiers & UInt32(controlKey) != 0 {
+      hasRequiredModifiers = hasRequiredModifiers && flags.contains(.maskControl)
+    }
+    if expectedModifiers & UInt32(shiftKey) != 0 {
+      hasRequiredModifiers = hasRequiredModifiers && flags.contains(.maskShift)
+    }
+
+    return hasRequiredModifiers && UInt16(keyCode) == expectedKeyCode
+  }
+
+  // MARK: - Hotkey Management
+
+  func updateUnlockHotkey(keyCode _: UInt16, modifiers _: UInt32) {
+    // Hotkeys are now fixed as constants since they are standard
+    print("Unlock hotkey is fixed: Cmd+Option+L (keyCode=37, modifiers=\(unlockModifiers))")
+  }
+
+  // MARK: - Utility Methods
+
+  func getLockDurationString() -> String? {
+    guard let lockStartTime = lockStartTime, isLocked else {
+      return nil
+    }
+
+    let duration = Date().timeIntervalSince(lockStartTime)
+    let minutes = Int(duration) / 60
+    let seconds = Int(duration) % 60
+
+    if minutes > 0 {
+      return String(format: "%dm %ds", minutes, seconds)
+    } else {
+      return String(format: "%ds", seconds)
     }
   }
 
-  // MARK: - Error Recovery
-
-  /// Attempts to recover from errors by ensuring keyboard is unlocked
-  private func recoverFromError() {
-    print("Attempting error recovery...")
-
-    // Force cleanup of any existing event taps
-    if let eventTap = eventTap {
-      CGEvent.tapEnable(tap: eventTap, enable: false)
-      CFMachPortInvalidate(eventTap)
-      self.eventTap = nil
-    }
-
-    if let runLoopSource = runLoopSource {
-      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-      self.runLoopSource = nil
-    }
-
-    // Reset state
-    isLocked = false
-    print("Error recovery completed - keyboard unlocked")
-
-    // Show recovery notification using NotificationManager with settings check
-    notificationManager.sendNotificationIfEnabled(.general(
-      title: LocalizationKey.errorRecoveryTitle.localized,
-      body: LocalizationKey.errorRecoveryMessage.localized
-    ), showNotifications: showNotifications)
+  func forceCleanup() {
+    unlockKeyboard()
+    stopAutoLock()
   }
 }

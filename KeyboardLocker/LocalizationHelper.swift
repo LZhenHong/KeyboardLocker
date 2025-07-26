@@ -108,6 +108,11 @@ enum LocalizationKey {
   static let notificationKeyboardUnlocked = "notification.keyboard.unlocked"
   static let notificationLockedMessage = "notification.locked.message"
   static let notificationUnlockedMessage = "notification.unlocked.message"
+  static let notificationUrlCommand = "notification.url.command"
+  static let notificationError = "notification.error"
+
+  // Lock Duration
+  static let lockDurationFormat = "lock.duration.format"
 
   // Permissions
   static let permissionAccessibilityTitle = "permission.accessibility.title"
@@ -115,7 +120,6 @@ enum LocalizationKey {
   static let permissionRequired = "permission.required"
   static let permissionDescription = "permission.description"
   static let openSystemPreferences = "open.system.preferences"
-  static let refreshPermission = "refresh.permission"
   static let autoDetectionEnabled = "auto.detection.enabled"
 
   // Error Recovery

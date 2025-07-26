@@ -5,10 +5,6 @@ import PackageDescription
 let package = Package(
   name: "Core",
   platforms: [.macOS(.v13)],
-  products: [
-    .library(name: "Core", targets: ["Core"]),
-  ],
-  targets: [
-    .target(name: "Core"),
-  ]
+  products: [.library(name: "Core", targets: ["Core"])],
+  targets: [.target(name: "Core")]
 )

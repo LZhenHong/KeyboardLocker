@@ -36,7 +36,9 @@ struct SettingsView: View {
 
       VStack(alignment: .leading, spacing: 12) {
         HStack {
-          Picker("Auto-lock Duration", selection: $coreConfig.autoLockDuration) {
+          Picker(
+            LocalizationKey.timeAutoLockDuration.localized, selection: $coreConfig.autoLockDuration
+          ) {
             ForEach(durationOptions, id: \.self) { duration in
               Text(formatDuration(duration))
                 .tag(duration)
@@ -50,7 +52,7 @@ struct SettingsView: View {
           HStack {
             Image(systemName: "timer")
               .foregroundColor(.secondary)
-            Text("Starts counting when you stop typing or using the mouse")
+            Text(LocalizationKey.timeActivityText.localized)
               .font(.caption)
               .foregroundColor(.secondary)
             Spacer()
@@ -97,9 +99,7 @@ struct SettingsView: View {
 
       VStack(alignment: .leading, spacing: 8) {
         HStack {
-          Text(
-            LocalizationKey.actionLock.localized + "/" + LocalizationKey.actionUnlock.localized
-              + ":")
+          Text(LocalizationKey.actionLock.localized + "/" + LocalizationKey.actionUnlock.localized + ":")
           Spacer()
           Text("⌘ + ⌥ + L".localized)
             .font(.system(.body, design: .monospaced))
@@ -133,7 +133,7 @@ struct SettingsView: View {
   private func formatDuration(_ interval: AutoLockInterval) -> String {
     switch interval {
     case .never:
-      return LocalizationKey.timeNever
+      return LocalizationKey.timeNever.localized
     case let .minutes(m):
       return LocalizationKey.timeMinutes.localized(m)
     }

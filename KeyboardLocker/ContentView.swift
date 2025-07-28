@@ -92,7 +92,7 @@ struct ContentView: View {
               Image(systemName: "timer")
                 .foregroundColor(.orange)
                 .font(.caption)
-              Text("Auto-lock: \(autoLockStatusText)")
+              Text(LocalizationKey.autoLockStatus.localized(autoLockStatusText))
                 .font(.caption)
                 .foregroundColor(.secondary)
               Spacer()
@@ -267,7 +267,7 @@ struct ContentView: View {
   private var autoLockStatusText: String {
     let duration = keyboardManager.autoLockDuration
     if duration == 0 {
-      return "Disabled"
+      return LocalizationKey.autoLockDisabled.localized
     }
 
     // Get time since last activity
@@ -279,7 +279,7 @@ struct ContentView: View {
       let seconds = Int(remainingTime.truncatingRemainder(dividingBy: 60))
       return String(format: "%02d:%02d", minutes, seconds)
     } else {
-      return "Ready to lock"
+      return LocalizationKey.autoLockReadyToLock.localized
     }
   }
 }

@@ -57,6 +57,7 @@ extension Text {
 enum LocalizationKey {
   // App
   static let appTitle = "app.title"
+  static let appMenuTitle = "app.menu.title"
 
   // Main Interface
   static let statusLocked = "status.locked"
@@ -77,7 +78,6 @@ enum LocalizationKey {
 
   // Settings
   static let settingsAutoLock = "settings.auto.lock"
-  static let settingsAutoLockTime = "settings.auto.lock.time"
   static let settingsAutoLockDescription = "settings.auto.lock.description"
   static let settingsNotifications = "settings.notifications"
   static let settingsShowNotifications = "settings.show.notifications"
@@ -89,6 +89,11 @@ enum LocalizationKey {
   // Time durations
   static let timeMinutes = "time.minutes"
   static let timeNever = "time.never"
+  static let timeActivityText = "time.activity.text"
+  static let timeAutoLockDuration = "time.auto.lock.duration"
+  static let autoLockStatus = "auto.lock.status"
+  static let autoLockDisabled = "auto.lock.disabled"
+  static let autoLockReadyToLock = "auto.lock.ready.to.lock"
 
   // About
   static let aboutVersionFormat = "about.version.format"
@@ -97,8 +102,6 @@ enum LocalizationKey {
   static let aboutFeatureShortcut = "about.feature.shortcut"
   static let aboutFeatureNotifications = "about.feature.notifications"
   static let aboutFeatureAutoLock = "about.feature.auto.lock"
-  static let aboutFeedback = "about.feedback"
-  static let aboutHelp = "about.help"
   static let aboutGitHub = "about.github"
 
   // Notifications
@@ -113,16 +116,10 @@ enum LocalizationKey {
   static let lockDurationFormat = "lock.duration.format"
 
   // Permissions
-  static let permissionAccessibilityTitle = "permission.accessibility.title"
-  static let permissionAccessibilityMessage = "permission.accessibility.message"
   static let permissionRequired = "permission.required"
   static let permissionDescription = "permission.description"
   static let openSystemPreferences = "open.system.preferences"
   static let autoDetectionEnabled = "auto.detection.enabled"
-
-  // Error Recovery
-  static let errorRecoveryTitle = "error.recovery.title"
-  static let errorRecoveryMessage = "error.recovery.message"
 
   // URL Schemes - User facing messages only
   static let urlErrorInvalidScheme = "url.error.invalid.scheme"

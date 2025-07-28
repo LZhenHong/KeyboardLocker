@@ -30,7 +30,7 @@ struct KeyboardLockerApp: App {
 
   var body: some Scene {
     // Modern MenuBarExtra for native menu bar integration
-    MenuBarExtra("Keyboard Locker", systemImage: "lock.shield") {
+    MenuBarExtra(LocalizationKey.appMenuTitle.localized, systemImage: "lock.shield") {
       ContentView()
         .environmentObject(keyboardLockManager)
         .environmentObject(permissionManager)

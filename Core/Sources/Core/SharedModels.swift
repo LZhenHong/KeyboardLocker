@@ -136,31 +136,6 @@ public enum CoreConstants {
 
   /// Timeout for IPC connections (in seconds)
   public static let ipcTimeout: TimeInterval = 5.0
-
-  /// Auto-lock timer intervals (in minutes)
-  public enum AutoLockInterval: Int, CaseIterable {
-    case never = 0
-    case fifteen = 15
-    case thirty = 30
-    case sixty = 60
-
-    public var description: String {
-      switch self {
-      case .never:
-        "Never"
-      case .fifteen:
-        "15 minutes"
-      case .thirty:
-        "30 minutes"
-      case .sixty:
-        "1 hour"
-      }
-    }
-
-    public var timeInterval: TimeInterval {
-      TimeInterval(rawValue * 60)
-    }
-  }
 }
 
 // MARK: - Lock Status

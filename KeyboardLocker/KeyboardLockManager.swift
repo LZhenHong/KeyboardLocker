@@ -79,21 +79,25 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   // MARK: - Auto-Lock Management (using Core API directly)
 
   func startAutoLock() {
-    let durationMinutes = max(coreAPI.configuration.autoLockDuration / 60, 1) // Convert to minutes, minimum 1
-    coreAPI.configuration.autoLockDuration = durationMinutes * 60 // This will trigger Core API update
-    print("✅ Auto-lock enabled with \(durationMinutes) minutes duration (activity-based)")
+    // Use thirtyMinutes as default when enabling auto-lock if currently disabled
+    if !coreAPI.configuration.autoLockDuration.isEnabled {
+      coreAPI.configuration.autoLockDuration = .minutes(30)
+    }
+    print(
+      "✅ Auto-lock enabled with \(coreAPI.configuration.autoLockDuration.minutes) duration (activity-based)"
+    )
   }
 
   func stopAutoLock() {
-    coreAPI.configuration.autoLockDuration = 0 // This will trigger Core API update
+    coreAPI.configuration.autoLockDuration = .never
     print("✅ Auto-lock disabled")
   }
 
   func toggleAutoLock() {
-    if coreAPI.configuration.autoLockDuration > 0 {
-      coreAPI.configuration.autoLockDuration = 0
+    if coreAPI.configuration.autoLockDuration.isEnabled {
+      coreAPI.configuration.autoLockDuration = .never
     } else {
-      coreAPI.configuration.autoLockDuration = 1800 // Default 30 minutes
+      coreAPI.configuration.autoLockDuration = .minutes(30)
     }
     print("✅ Auto-lock toggled")
     // Update UI state
@@ -130,16 +134,16 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
     print("ℹ️ Permission request sent. Please grant accessibility permission in System Settings.")
   }
 
-  // MARK: - Configuration Access (forwarded to Core directly)
+  // MARK: - Configuration Access (直接使用CoreConfiguration)
 
-  /// Auto-lock duration in minutes for UI display (using Core config)
+  /// Auto-lock duration in minutes for UI display
   var autoLockDuration: Int {
-    coreAPI.configuration.autoLockDuration / 60 // Convert seconds to minutes for UI
+    CoreConfiguration.shared.autoLockDuration.minutes
   }
 
-  /// Check if auto-lock is enabled (using Core config)
+  /// Check if auto-lock is enabled
   var isAutoLockEnabled: Bool {
-    coreAPI.configuration.autoLockDuration > 0
+    CoreConfiguration.shared.autoLockDuration.isEnabled
   }
 
   /// Get/set notification preference (using Core directly)
@@ -165,7 +169,7 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
       .autoconnect()
       .sink { [weak self] _ in
         self?.isLocked = self?.coreAPI.isLocked ?? false
-        self?.autoLockEnabled = (self?.coreAPI.configuration.autoLockDuration ?? 0) > 0
+        self?.autoLockEnabled = self?.coreAPI.configuration.autoLockDuration.isEnabled ?? false
       }
       .store(in: &cancellables)
   }
@@ -174,14 +178,14 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   private func syncInitialState() {
     DispatchQueue.main.async {
       self.isLocked = self.coreAPI.isLocked
-      self.autoLockEnabled = self.coreAPI.configuration.autoLockDuration > 0
+      self.autoLockEnabled = self.coreAPI.configuration.autoLockDuration.isEnabled
     }
   }
 
   /// Sync auto-lock configuration from Core
   private func syncAutoLockConfiguration() {
     DispatchQueue.main.async {
-      self.autoLockEnabled = self.coreAPI.configuration.autoLockDuration > 0
+      self.autoLockEnabled = self.coreAPI.configuration.autoLockDuration.isEnabled
     }
   }
 

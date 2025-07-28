@@ -66,30 +66,35 @@ public class KeyboardLockerAPI: ObservableObject {
 
   // MARK: - Auto-lock Configuration (Core Logic Only)
 
-  /// Enable auto-lock with specified duration in seconds
-  /// Core只关心传入的时间值，不管理UI选项
-  public func enableAutoLock(seconds: TimeInterval) {
-    configuration.autoLockDuration = Int(seconds)
-    activityMonitor.enableAutoLock(seconds: seconds)
+  /// Enable auto-lock with specified duration in minutes
+  public func enableAutoLock(minutes: Int) {
+    let autoLockSetting: CoreConfiguration.AutoLockDuration = minutes == 0 ? .never : .minutes(minutes)
 
-    // Start activity monitoring if not already started
-    if seconds > 0 {
+    configuration.autoLockDuration = autoLockSetting
+    activityMonitor.enableAutoLock(seconds: autoLockSetting.seconds)
+
+    // Start activity monitoring if enabled
+    if autoLockSetting.isEnabled {
       activityMonitor.startMonitoring()
-      print("✅ Auto-lock enabled: \(Int(seconds / 60)) minutes")
+      print("✅ Auto-lock enabled: \(minutes)")
     } else {
       activityMonitor.stopMonitoring()
       print("❌ Auto-lock disabled")
     }
   }
 
-  /// Enable auto-lock with specified duration in minutes (convenience method)
-  public func enableAutoLock(minutes: Int) {
-    enableAutoLock(seconds: TimeInterval(minutes * 60))
+  /// Enable auto-lock with specified duration in seconds (for backward compatibility)
+  public func enableAutoLock(seconds: TimeInterval) {
+    let minutes = Int(seconds / 60)
+    enableAutoLock(minutes: minutes)
   }
 
   /// Disable auto-lock
   public func disableAutoLock() {
-    enableAutoLock(seconds: 0)
+    configuration.autoLockDuration = .never
+    activityMonitor.enableAutoLock(seconds: 0)
+    activityMonitor.stopMonitoring()
+    print("❌ Auto-lock disabled")
   }
 
   /// Get current auto-lock status
@@ -97,14 +102,14 @@ public class KeyboardLockerAPI: ObservableObject {
     configuration.isAutoLockEnabled
   }
 
-  /// Get auto-lock duration in seconds (Core stores in seconds)
+  /// Get auto-lock duration in seconds
   public func getAutoLockDurationSeconds() -> Int {
-    configuration.autoLockDuration
+    Int(configuration.autoLockDurationInSeconds)
   }
 
-  /// Get auto-lock duration in minutes (convenience method for UI)
+  /// Get auto-lock duration in minutes
   public func getAutoLockDuration() -> Int {
-    configuration.autoLockDuration / 60
+    configuration.autoLockDuration.minutes
   }
 
   /// Get time since last user activity (for UI display)
@@ -173,10 +178,10 @@ public class KeyboardLockerAPI: ObservableObject {
 
   /// Setup configuration observer to sync auto-lock settings
   private func setupConfigurationObserver() {
-    // Sync initial auto-lock configuration
-    let duration = configuration.autoLockDuration
-    if duration > 0 {
-      activityMonitor.enableAutoLock(seconds: TimeInterval(duration))
+    // Sync initial auto-lock configuration using new enum
+    let autoLockConfig = configuration.autoLockDuration
+    if autoLockConfig.isEnabled {
+      activityMonitor.enableAutoLock(seconds: autoLockConfig.seconds)
       activityMonitor.startMonitoring()
     }
   }

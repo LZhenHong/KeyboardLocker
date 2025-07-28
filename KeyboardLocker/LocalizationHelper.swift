@@ -87,9 +87,7 @@ enum LocalizationKey {
   static let settingsReset = "settings.reset"
 
   // Time durations
-  static let time15Minutes = "time.15.minutes"
-  static let time30Minutes = "time.30.minutes"
-  static let time60Minutes = "time.60.minutes"
+  static let timeMinutes = "time.minutes"
   static let timeNever = "time.never"
 
   // About

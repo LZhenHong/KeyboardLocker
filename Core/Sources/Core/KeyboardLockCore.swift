@@ -73,20 +73,6 @@ public class KeyboardLockCore {
     (_isLocked, _lockedAt)
   }
 
-  // MARK: - Deprecated Properties (for backward compatibility)
-
-  public var autoLockDuration: Int {
-    0 // Auto-lock logic moved to business layer
-  }
-
-  public var isAutoLockEnabled: Bool {
-    false // Auto-lock logic moved to business layer
-  }
-
-  public var autoLockDurationInSeconds: TimeInterval {
-    0 // Auto-lock logic moved to business layer
-  }
-
   // MARK: - Initialization
 
   private init() {

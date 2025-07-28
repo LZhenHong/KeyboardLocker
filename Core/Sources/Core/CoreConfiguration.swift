@@ -22,8 +22,9 @@ public class CoreConfiguration: ObservableObject {
     case appVersion
   }
 
-  public enum AutoLockDuration: Codable, Equatable, Hashable, Identifiable {
+  public enum Duration: Codable, Equatable, Hashable, Identifiable {
     case never
+    case infinite
     case minutes(Int) // Duration in minutes
 
     // MARK: - Identifiable
@@ -31,9 +32,11 @@ public class CoreConfiguration: ObservableObject {
     public var id: String {
       switch self {
       case .never:
-        return "never"
+        "never"
+      case .infinite:
+        "infinite"
       case let .minutes(minutes):
-        return "minutes_\(minutes)"
+        "minutes_\(minutes)"
       }
     }
 
@@ -41,22 +44,36 @@ public class CoreConfiguration: ObservableObject {
     public var minutes: Int {
       switch self {
       case .never:
-        return 0
+        0
+      case .infinite:
+        .max
       case let .minutes(minutes):
-        return minutes
+        minutes
       }
     }
 
     /// Convert to seconds
     public var seconds: TimeInterval {
-      TimeInterval(minutes * 60)
+      switch self {
+      case .never:
+        0
+
+      case .infinite:
+        0
+
+      case let .minutes(minutes):
+        TimeInterval(minutes * 60)
+      }
     }
 
     /// Whether auto-lock is enabled
     public var isEnabled: Bool {
-      return self != .never
+      self != .never
     }
   }
+
+  /// Backward compatibility alias
+  public typealias AutoLockDuration = Duration
 
   // MARK: - Published Properties with AppStorage
 

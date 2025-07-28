@@ -86,14 +86,40 @@ enum LocalizationKey {
   static let settingsKeyboardDescription = "settings.keyboard.description"
   static let settingsReset = "settings.reset"
 
-  // Time durations
+  // Time durations and duration display
   static let timeMinutes = "time.minutes"
-  static let timeNever = "time.never"
   static let timeActivityText = "time.activity.text"
   static let timeAutoLockDuration = "time.auto.lock.duration"
   static let autoLockStatus = "auto.lock.status"
   static let autoLockDisabled = "auto.lock.disabled"
   static let autoLockReadyToLock = "auto.lock.ready.to.lock"
+
+  // Duration basic values (shared between time and duration contexts)
+  static let durationNever = "duration.never"
+  static let durationInfinite = "duration.infinite"
+
+  // Backward compatibility aliases
+  static let timeNever = durationNever
+  static let timeInfinite = durationInfinite
+
+  // Duration display - parameterized forms
+  static let durationMinutes = "duration.minutes" // "%d minute(s)"
+  static let durationHours = "duration.hours" // "%d hour(s)"
+  static let durationHoursMinutes = "duration.hours.minutes" // "%d hour(s) %d minute(s)"
+
+  // Duration descriptions for settings
+  static let durationNeverDescription = "duration.never.description"
+  static let durationInfiniteDescription = "duration.infinite.description"
+  static let durationMinutesDescription = "duration.minutes.description"
+  static let durationHoursDescription = "duration.hours.description"
+  static let durationHoursMinutesDescription = "duration.hours.minutes.description"
+  static let durationAutoUnlock = "duration.auto.unlock" // "Auto unlock after %@"
+
+  // Countdown formatting
+  static let countdownFinished = "countdown.finished"
+  static let countdownHoursFormat = "countdown.hours.format"
+  static let countdownMinutesFormat = "countdown.minutes.format"
+  static let countdownSecondsFormat = "countdown.seconds.format"
 
   // About
   static let aboutVersionFormat = "about.version.format"
@@ -119,7 +145,6 @@ enum LocalizationKey {
   static let permissionRequired = "permission.required"
   static let permissionDescription = "permission.description"
   static let openSystemPreferences = "open.system.preferences"
-  static let autoDetectionEnabled = "auto.detection.enabled"
 
   // URL Schemes - User facing messages only
   static let urlErrorInvalidScheme = "url.error.invalid.scheme"

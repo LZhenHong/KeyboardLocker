@@ -6,13 +6,6 @@ struct SettingsView: View {
 
   private typealias AutoLockInterval = CoreConfiguration.AutoLockDuration
 
-  private let durationOptions: [AutoLockInterval] = [
-    .never,
-    .minutes(15),
-    .minutes(30),
-    .minutes(60),
-  ]
-
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
       autoLockSection
@@ -39,8 +32,8 @@ struct SettingsView: View {
           Picker(
             LocalizationKey.timeAutoLockDuration.localized, selection: $coreConfig.autoLockDuration
           ) {
-            ForEach(durationOptions, id: \.self) { duration in
-              Text(formatDuration(duration))
+            ForEach(LockDurationHelper.autoLockPresets, id: \.self) { duration in
+              Text(LockDurationHelper.localizedDisplayString(for: duration))
                 .tag(duration)
             }
           }
@@ -127,15 +120,6 @@ struct SettingsView: View {
       }
       .buttonStyle(PlainButtonStyle())
       .foregroundColor(.red)
-    }
-  }
-
-  private func formatDuration(_ interval: AutoLockInterval) -> String {
-    switch interval {
-    case .never:
-      return LocalizationKey.timeNever.localized
-    case let .minutes(m):
-      return LocalizationKey.timeMinutes.localized(m)
     }
   }
 }

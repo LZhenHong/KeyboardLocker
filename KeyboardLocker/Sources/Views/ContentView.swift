@@ -208,17 +208,6 @@ struct ContentView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .padding(.top, 8)
-
-        // Auto-detection status info
-        HStack {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundColor(.green)
-            .font(.caption)
-          Text(LocalizationKey.autoDetectionEnabled.localized)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-        .padding(.top, 8)
       }
       .padding(.horizontal, 16)
 
@@ -275,9 +264,7 @@ struct ContentView: View {
     let remainingTime = max(0, TimeInterval(duration * 60) - timeSinceActivity)
 
     if remainingTime > 0 {
-      let minutes = Int(remainingTime / 60)
-      let seconds = Int(remainingTime.truncatingRemainder(dividingBy: 60))
-      return String(format: "%02d:%02d", minutes, seconds)
+      return CountdownFormatter.countdownString(from: remainingTime)
     } else {
       return LocalizationKey.autoLockReadyToLock.localized
     }

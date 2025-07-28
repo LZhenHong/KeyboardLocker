@@ -1,8 +1,18 @@
+import Core
 import SwiftUI
 
 struct SettingsView: View {
-  @StateObject private var appConfig = AppConfiguration.shared
-  @EnvironmentObject var keyboardManager: KeyboardLockManager
+  @ObservedObject private var coreConfig = CoreConfiguration.shared
+
+  // Auto-lock duration options (in seconds)
+  private let durationOptions: [(Int, String)] = [
+    (0, "Never"),
+    (900, "15 minutes"),
+    (1800, "30 minutes"),
+    (3600, "1 hour"),
+    (7200, "2 hours"),
+    (14400, "4 hours"),
+  ]
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -14,18 +24,23 @@ struct SettingsView: View {
 
         VStack(alignment: .leading, spacing: 12) {
           HStack {
-            Text(LocalizationKey.settingsAutoLockTime.localized)
-            Spacer()
-            Picker("", selection: $appConfig.autoLockDuration) {
-              Text(LocalizationKey.time15Minutes.localized).tag(15)
-              Text(LocalizationKey.time30Minutes.localized).tag(30)
-              Text(LocalizationKey.time60Minutes.localized).tag(60)
-              Text(LocalizationKey.timeNever.localized).tag(0)
+            Picker("Auto-lock Duration", selection: $coreConfig.autoLockDuration) {
+              ForEach(durationOptions, id: \.0) { value, label in
+                Text(label).tag(value)
+              }
             }
             .pickerStyle(MenuPickerStyle())
-            .frame(width: 100)
-            .onChange(of: appConfig.autoLockDuration) { _ in
-              keyboardManager.updateAutoLockSettings()
+          }
+
+          // Show current activity status if auto-lock is enabled
+          if coreConfig.autoLockDuration > 0 {
+            HStack {
+              Image(systemName: "timer")
+                .foregroundColor(.secondary)
+              Text("Starts counting when you stop typing or using the mouse")
+                .font(.caption)
+                .foregroundColor(.secondary)
+              Spacer()
             }
           }
 
@@ -45,7 +60,10 @@ struct SettingsView: View {
           .foregroundColor(.primary)
 
         VStack(alignment: .leading, spacing: 12) {
-          Toggle(LocalizationKey.settingsShowNotifications.localized, isOn: $appConfig.showNotifications)
+          Toggle(
+            LocalizationKey.settingsShowNotifications.localized,
+            isOn: $coreConfig.showNotifications
+          )
 
           Text(LocalizationKey.settingsNotificationsDescription.localized)
             .font(.caption)
@@ -91,7 +109,7 @@ struct SettingsView: View {
       HStack {
         Spacer()
         Button(LocalizationKey.settingsReset.localized) {
-          appConfig.resetToDefaults()
+          coreConfig.resetToDefaults()
         }
         .buttonStyle(PlainButtonStyle())
         .foregroundColor(.red)

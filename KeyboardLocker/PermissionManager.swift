@@ -1,6 +1,5 @@
 import AppKit
 import Core
-import Foundation
 
 /// Permission management for accessibility and notification permissions
 class PermissionManager: ObservableObject {
@@ -10,7 +9,7 @@ class PermissionManager: ObservableObject {
 
   // Computed property that delegates to NotificationManager
   var hasNotificationPermission: Bool {
-    return notificationManager.isAuthorized
+    notificationManager.isAuthorized
   }
 
   // MARK: - Private Properties
@@ -56,7 +55,7 @@ class PermissionManager: ObservableObject {
   func requestNotificationPermission() {
     notificationManager.requestAuthorization { [weak self] (_: Bool, error: Error?) in
       // The NotificationManager handles state updates
-      if let error = error {
+      if let error {
         print("Failed to request notification permission: \(error)")
       }
       // Trigger objectWillChange to update any UI that depends on hasNotificationPermission

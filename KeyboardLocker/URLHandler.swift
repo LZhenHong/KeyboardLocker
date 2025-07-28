@@ -13,13 +13,13 @@ class URLCommandHandler {
     var localizedDescription: String {
       switch self {
       case .lock:
-        return LocalizationKey.actionLock.localized
+        LocalizationKey.actionLock.localized
       case .unlock:
-        return LocalizationKey.actionUnlock.localized
+        LocalizationKey.actionUnlock.localized
       case .toggle:
-        return "Toggle keyboard lock state" // No UI display, no need for i18n
+        "Toggle keyboard lock state" // No UI display, no need for i18n
       case .status:
-        return "Get keyboard lock status" // No UI display, no need for i18n
+        "Get keyboard lock status" // No UI display, no need for i18n
       }
     }
   }
@@ -32,18 +32,18 @@ class URLCommandHandler {
     var message: String {
       switch self {
       case let .success(message):
-        return message
+        message
       case let .error(error):
-        return error
+        error
       }
     }
 
     var isSuccess: Bool {
       switch self {
       case .success:
-        return true
+        true
       case .error:
-        return false
+        false
       }
     }
   }
@@ -85,7 +85,7 @@ class URLCommandHandler {
 
     // Parse command
     guard let command = URLCommand(rawValue: host.lowercased()) else {
-      let supportedCommands = URLCommand.allCases.map { $0.rawValue }.joined(separator: ", ")
+      let supportedCommands = URLCommand.allCases.map(\.rawValue).joined(separator: ", ")
       let error = LocalizationKey.urlErrorUnknownCommand.localized(host, supportedCommands)
       print("❌ Unknown command: \(host)")
       return .error(error)
@@ -214,11 +214,11 @@ class URLCommandHandler {
 extension URLCommandHandler {
   /// Test URL creation helper
   static func createTestURL(for command: URLCommand) -> URL? {
-    return URL(string: "keyboardlocker://\(command.rawValue)")
+    URL(string: "keyboardlocker://\(command.rawValue)")
   }
 
   /// Get all supported commands for documentation
   static func getSupportedCommands() -> [String] {
-    return URLCommand.allCases.map { "keyboardlocker://\($0.rawValue)" }
+    URLCommand.allCases.map { "keyboardlocker://\($0.rawValue)" }
   }
 }

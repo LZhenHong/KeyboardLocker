@@ -62,18 +62,18 @@ enum KeyboardLockResult {
   var isSuccess: Bool {
     switch self {
     case .success:
-      return true
+      true
     case .failure:
-      return false
+      false
     }
   }
 
   var error: KeyboardLockerError? {
     switch self {
     case .success:
-      return nil
+      nil
     case let .failure(error):
-      return error
+      error
     }
   }
 }
@@ -90,15 +90,15 @@ enum KeyboardLockerError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .accessibilityPermissionDenied:
-      return "Accessibility permission not granted"
+      "Accessibility permission not granted"
     case .eventTapCreationFailed:
-      return "Failed to create event tap"
+      "Failed to create event tap"
     case .runLoopSourceCreationFailed:
-      return "Failed to create run loop source"
+      "Failed to create run loop source"
     case .invalidEventType:
-      return "Invalid event type encountered"
+      "Invalid event type encountered"
     case .managerNotAvailable:
-      return "Keyboard lock manager not available"
+      "Keyboard lock manager not available"
     }
   }
 }

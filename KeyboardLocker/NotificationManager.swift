@@ -24,7 +24,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
     case general = "GENERAL"
 
     var identifier: String {
-      return rawValue
+      rawValue
     }
   }
 
@@ -40,52 +40,52 @@ class NotificationManager: ObservableObject, NotificationManaging {
     var title: String {
       switch self {
       case .keyboardLocked:
-        return LocalizationKey.notificationKeyboardLocked.localized
+        LocalizationKey.notificationKeyboardLocked.localized
       case .keyboardUnlocked:
-        return LocalizationKey.notificationKeyboardUnlocked.localized
+        LocalizationKey.notificationKeyboardUnlocked.localized
       case .urlCommandSuccess:
-        return LocalizationKey.notificationUrlCommand.localized
+        LocalizationKey.notificationUrlCommand.localized
       case .urlCommandError:
-        return LocalizationKey.notificationError.localized
+        LocalizationKey.notificationError.localized
       case let .general(title, _):
-        return title
+        title
       }
     }
 
     var body: String {
       switch self {
       case .keyboardLocked:
-        return LocalizationKey.notificationLockedMessage.localized
+        LocalizationKey.notificationLockedMessage.localized
       case .keyboardUnlocked:
-        return LocalizationKey.notificationUnlockedMessage.localized
+        LocalizationKey.notificationUnlockedMessage.localized
       case let .urlCommandSuccess(message):
-        return message
+        message
       case let .urlCommandError(message):
-        return message
+        message
       case let .general(_, body):
-        return body
+        body
       }
     }
 
     var category: NotificationCategory {
       switch self {
       case .keyboardLocked, .keyboardUnlocked:
-        return .keyboardStatus
+        .keyboardStatus
       case .urlCommandSuccess:
-        return .urlCommand
+        .urlCommand
       case .urlCommandError:
-        return .urlError
+        .urlError
       case .general:
-        return .general
+        .general
       }
     }
 
     var sound: UNNotificationSound {
       switch self {
       case .urlCommandError:
-        return .defaultCritical
+        .defaultCritical
       default:
-        return .default
+        .default
       }
     }
   }
@@ -131,7 +131,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
         self?.isAuthorized = granted
         completion(granted, error)
 
-        if let error = error {
+        if let error {
           print("❌ Failed to request notification permission: \(error.localizedDescription)")
         } else {
           print("✅ Notification permission \(granted ? "granted" : "denied")")
@@ -192,7 +192,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
 
     notificationCenter.add(request) { error in
       DispatchQueue.main.async {
-        if let error = error {
+        if let error {
           print("❌ Failed to send notification: \(error.localizedDescription)")
         } else {
           print("✅ Notification sent: \(type.title)")
@@ -221,7 +221,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
       let identifiersToRemove =
         requests
           .filter { $0.content.categoryIdentifier == category.identifier }
-          .map { $0.identifier }
+          .map(\.identifier)
 
       self?.notificationCenter.removePendingNotificationRequests(
         withIdentifiers: identifiersToRemove)
@@ -234,7 +234,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
       let identifiersToRemove =
         notifications
           .filter { $0.request.content.categoryIdentifier == category.identifier }
-          .map { $0.request.identifier }
+          .map(\.request.identifier)
 
       self?.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
       print(
@@ -280,7 +280,7 @@ class NotificationManager: ObservableObject, NotificationManaging {
     }
 
     notificationCenter.setNotificationCategories(Set(categories))
-    print("📋 Notification categories configured: \(categories.map { $0.identifier })")
+    print("📋 Notification categories configured: \(categories.map(\.identifier))")
   }
 
   private func generateNotificationIdentifier(for type: NotificationType) -> String {
@@ -310,11 +310,11 @@ enum NotificationError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .notAuthorized:
-      return "Notifications not authorized"
+      "Notifications not authorized"
     case .invalidContent:
-      return "Invalid notification content"
+      "Invalid notification content"
     case let .systemError(error):
-      return "System error: \(error.localizedDescription)"
+      "System error: \(error.localizedDescription)"
     }
   }
 }
@@ -326,7 +326,7 @@ extension NotificationManager {
   /// - Parameter showNotifications: User's notification preference
   /// - Returns: Whether notifications should be sent
   func shouldSendNotification(showNotifications: Bool) -> Bool {
-    return showNotifications && isAuthorized
+    showNotifications && isAuthorized
   }
 
   /// Send notification conditionally based on user settings

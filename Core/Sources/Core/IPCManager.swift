@@ -103,7 +103,7 @@ public class IPCManager: NSObject {
   public func sendCommand(_ command: IPCCommand, timeout: TimeInterval = CoreConstants.ipcTimeout)
     async throws -> IPCResponse
   {
-    return try await withCheckedThrowingContinuation { continuation in
+    try await withCheckedThrowingContinuation { continuation in
       sendCommand(command, timeout: timeout) { result in
         continuation.resume(with: result)
       }
@@ -183,26 +183,27 @@ public class IPCServiceHandler: NSObject, IPCServiceProtocol {
     do {
       switch command {
       case .lock:
-        if try lockCore.lockKeyboard() {
-          return IPCResponse.success("Keyboard locked successfully")
-        } else {
-          return IPCResponse.error("Keyboard is already locked")
-        }
+        try lockCore.lockKeyboard()
+        return IPCResponse.success("Keyboard locked successfully")
 
       case .unlock:
-        if lockCore.unlockKeyboard() {
-          return IPCResponse.success("Keyboard unlocked successfully")
-        } else {
-          return IPCResponse.error("Keyboard is not locked")
-        }
+        lockCore.unlockKeyboard()
+        return IPCResponse.success("Keyboard unlocked successfully")
 
       case .toggle:
-        let newStatus = try lockCore.toggleLock()
-        let statusMessage = newStatus ? "locked" : "unlocked"
+        lockCore.toggleLock()
+        let coreInfo = lockCore.basicLockInfo
+        let statusMessage = coreInfo.isLocked ? "locked" : "unlocked"
         return IPCResponse.success("Keyboard \(statusMessage) successfully")
 
       case .status:
-        let status = lockCore.lockStatus
+        let coreInfo = lockCore.basicLockInfo
+        let status = LockStatus(
+          isLocked: coreInfo.isLocked,
+          lockedAt: coreInfo.lockedAt,
+          autoLockEnabled: false, // Auto-lock is now in business layer
+          autoLockInterval: 0 // Auto-lock is now in business layer
+        )
         return IPCResponse.success(
           "Keyboard is currently \(status.isLocked ? "locked" : "unlocked")",
           data: status.toDictionary()

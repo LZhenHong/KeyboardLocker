@@ -1,264 +1,301 @@
+import AppKit
 import ApplicationServices
 import Carbon
 import Foundation
 
-/// Core keyboard locking functionality that can be shared between main app and CLI
+// MARK: - Event Handling Helpers
+
+private enum EventTypeFactory {
+  static func createEventMask() -> CGEventMask {
+    (1 << CGEventType.keyDown.rawValue) |
+      (1 << CGEventType.keyUp.rawValue) |
+      (1 << CGEventType.flagsChanged.rawValue) |
+      (1 << CGEventType.otherMouseDown.rawValue) |
+      (1 << CGEventType.otherMouseUp.rawValue)
+  }
+}
+
+private enum SafeEventHandler {
+  static func getFlags(from event: CGEvent) -> CGEventFlags {
+    event.flags
+  }
+
+  static func getKeycode(from event: CGEvent) -> Int64? {
+    event.getIntegerValueField(.keyboardEventKeycode)
+  }
+}
+
+/// Pure core keyboard locking engine - only handles low-level keyboard interception
+/// Business logic and UI concerns are handled by upper layers
 public class KeyboardLockCore {
   // MARK: - Singleton
 
   public static let shared = KeyboardLockCore()
 
-  // MARK: - Private Properties
+  // MARK: - State Properties (Read-Only)
 
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
-  private var isLocked = false
-  private var lockedAt: Date?
-  private var autoLockTimer: Timer?
-  private var autoLockInterval: TimeInterval = 0 // 0 means disabled
+  private var _isLocked = false
+  private var _lockedAt: Date?
 
-  // MARK: - Public Properties
-
-  /// Current lock status
-  public var lockStatus: LockStatus {
-    return LockStatus(
-      isLocked: isLocked,
-      lockedAt: lockedAt,
-      autoLockEnabled: autoLockInterval > 0,
-      autoLockInterval: Int(autoLockInterval / 60)
-    )
+  // Internal access for callback
+  var internalEventTap: CFMachPort? {
+    eventTap
   }
 
-  /// Whether keyboard is currently locked
+  // Constants for hotkey detection
+  private let unlockKeyCode: UInt16 = 37 // 'L' key
+  private let unlockModifiers: UInt32 = .init(cmdKey | optionKey) // Cmd+Option
+
+  // MARK: - Callbacks for UI Layer
+
+  /// Callback triggered when lock state changes
+  public var onLockStateChanged: ((Bool, Date?) -> Void)?
+
+  /// Callback triggered when unlock hotkey is detected
+  public var onUnlockHotkeyDetected: (() -> Void)?
+
+  // MARK: - Public Read-Only Properties
+
+  /// Current keyboard lock state
   public var isKeyboardLocked: Bool {
-    return isLocked
+    _isLocked
+  }
+
+  /// When keyboard was locked
+  public var keyboardLockedAt: Date? {
+    _lockedAt
+  }
+
+  /// Current lock status for external systems (simplified for Core layer)
+  public var basicLockInfo: (isLocked: Bool, lockedAt: Date?) {
+    (_isLocked, _lockedAt)
+  }
+
+  // MARK: - Deprecated Properties (for backward compatibility)
+
+  public var autoLockDuration: Int {
+    0 // Auto-lock logic moved to business layer
+  }
+
+  public var isAutoLockEnabled: Bool {
+    false // Auto-lock logic moved to business layer
+  }
+
+  public var autoLockDurationInSeconds: TimeInterval {
+    0 // Auto-lock logic moved to business layer
   }
 
   // MARK: - Initialization
 
   private init() {
-    // Private initializer for singleton
+    print("🔑 KeyboardLockCore initialized")
   }
 
   deinit {
-    unlockKeyboard()
-    stopAutoLockTimer()
+    print("🔑 KeyboardLockCore deallocated")
+    forceCleanup()
   }
 
-  // MARK: - Public Methods
+  // MARK: - Core Locking Methods
 
-  /// Lock the keyboard with comprehensive event blocking
-  /// - Throws: CoreError if locking fails
-  /// - Returns: True if successfully locked, false if already locked
-  @discardableResult
-  public func lockKeyboard() throws -> Bool {
-    guard !isLocked else {
-      throw CoreError.alreadyLocked
+  /// Lock keyboard input
+  /// - Throws: KeyboardLockError if locking fails
+  public func lockKeyboard() throws {
+    guard !_isLocked else {
+      throw KeyboardLockError.alreadyLocked
     }
 
-    // Validate permissions first
-    try PermissionHelper.validatePermissions()
+    // Use AX API directly.
+    let axOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): false]
+    guard AXIsProcessTrustedWithOptions(axOptions as CFDictionary) else {
+      throw KeyboardLockError.permissionDenied
+    }
 
-    // Create event tap to intercept keyboard events
-    let eventMask = (1 << CGEventType.keyDown.rawValue) |
-      (1 << CGEventType.keyUp.rawValue) |
-      (1 << CGEventType.flagsChanged.rawValue)
+    try createEventTap()
+
+    _isLocked = true
+    _lockedAt = Date()
+
+    // Notify business layer
+    onLockStateChanged?(_isLocked, _lockedAt)
+
+    print("🔒 Keyboard locked at \(Date())")
+  }
+
+  /// Unlock keyboard input
+  public func unlockKeyboard() {
+    guard _isLocked else {
+      print("⚠️ Keyboard is already unlocked")
+      return
+    }
+
+    destroyEventTap()
+
+    _isLocked = false
+    let wasLockedAt = _lockedAt
+    _lockedAt = nil
+
+    // Notify business layer
+    onLockStateChanged?(_isLocked, nil)
+
+    if let lockedAt = wasLockedAt {
+      let duration = Date().timeIntervalSince(lockedAt)
+      print("🔓 Keyboard unlocked after \(formatDuration(duration))")
+    }
+  }
+
+  /// Toggle lock state
+  public func toggleLock() {
+    if _isLocked {
+      unlockKeyboard()
+    } else {
+      do {
+        try lockKeyboard()
+      } catch {
+        print("❌ Failed to lock keyboard: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  // MARK: - Utility Methods
+
+  /// Get lock duration string
+  public func getLockDurationString() -> String? {
+    guard let lockedAt = _lockedAt else { return nil }
+    let duration = Date().timeIntervalSince(lockedAt)
+    return formatDuration(duration)
+  }
+
+  /// Force cleanup all resources
+  public func forceCleanup() {
+    print("🧹 KeyboardLockCore: Force cleanup initiated")
+
+    if _isLocked {
+      unlockKeyboard()
+    }
+
+    destroyEventTap()
+  }
+
+  // MARK: - Private Event Tap Methods
+
+  /// Create event tap for keyboard monitoring
+  private func createEventTap() throws {
+    let eventMask = EventTypeFactory.createEventMask()
 
     eventTap = CGEvent.tapCreate(
       tap: .cgSessionEventTap,
       place: .headInsertEventTap,
       options: .defaultTap,
-      eventsOfInterest: CGEventMask(eventMask),
-      callback: { proxy, type, event, refcon -> Unmanaged<CGEvent>? in
-        return KeyboardLockCore.eventCallback(
-          proxy: proxy, type: type, event: event, refcon: refcon
-        )
-      },
+      eventsOfInterest: eventMask,
+      callback: globalEventCallback,
       userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
     )
 
-    guard let eventTap = eventTap else {
-      throw CoreError.eventTapCreationFailed
+    guard let eventTap else {
+      throw KeyboardLockError.eventTapCreationFailed
     }
 
-    // Create run loop source and add to current run loop
     runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-    guard let runLoopSource = runLoopSource else {
-      CFMachPortInvalidate(eventTap)
-      self.eventTap = nil
-      throw CoreError.eventTapCreationFailed
+    guard let runLoopSource else {
+      throw KeyboardLockError.runLoopSourceCreationFailed
     }
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-
-    // Enable the event tap
     CGEvent.tapEnable(tap: eventTap, enable: true)
 
-    // Update state
-    isLocked = true
-    lockedAt = Date()
-
-    print("🔒 Keyboard locked successfully")
-    return true
+    print("🎯 Event tap created and enabled")
   }
 
-  /// Unlock the keyboard
-  /// - Returns: True if successfully unlocked, false if not locked
-  @discardableResult
-  public func unlockKeyboard() -> Bool {
-    guard isLocked else {
-      return false
-    }
-
-    // Disable event tap
-    if let eventTap = eventTap {
+  /// Destroy event tap and cleanup resources
+  private func destroyEventTap() {
+    if let eventTap {
       CGEvent.tapEnable(tap: eventTap, enable: false)
-    }
-
-    // Remove run loop source
-    if let runLoopSource = runLoopSource {
-      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-    }
-
-    // Invalidate and clean up
-    if let eventTap = eventTap {
       CFMachPortInvalidate(eventTap)
+      self.eventTap = nil
+      print("🎯 Event tap disabled and invalidated")
     }
 
-    eventTap = nil
-    runLoopSource = nil
-    isLocked = false
-    lockedAt = nil
-
-    print("🔓 Keyboard unlocked successfully")
-    return true
-  }
-
-  /// Toggle keyboard lock status
-  /// - Throws: CoreError if operation fails
-  /// - Returns: New lock status (true = locked, false = unlocked)
-  @discardableResult
-  public func toggleLock() throws -> Bool {
-    if isLocked {
-      unlockKeyboard()
-      return false
-    } else {
-      try lockKeyboard()
-      return true
+    if let runLoopSource {
+      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+      self.runLoopSource = nil
+      print("🎯 Run loop source removed")
     }
   }
 
-  // MARK: - Auto-Lock Feature
+  /// Handle keyboard events (internal for callback)
+  func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    // Check for unlock hotkey combination
+    if type == .keyDown {
+      let keycode = SafeEventHandler.getKeycode(from: event)
+      let flags = SafeEventHandler.getFlags(from: event)
 
-  /// Set auto-lock timer
-  /// - Parameter interval: Time interval in seconds, 0 to disable
-  public func setAutoLockInterval(_ interval: TimeInterval) {
-    autoLockInterval = interval
+      if keycode == Int64(unlockKeyCode), flags.contains(.maskCommand),
+         flags.contains(.maskAlternate)
+      {
+        print("🔑 Unlock hotkey detected: ⌘+⌥+L")
 
-    if interval > 0 {
-      startAutoLockTimer()
-    } else {
-      stopAutoLockTimer()
-    }
-  }
+        // Notify business layer through callback
+        DispatchQueue.main.async {
+          self.onUnlockHotkeyDetected?()
+        }
 
-  /// Start auto-lock timer
-  private func startAutoLockTimer() {
-    stopAutoLockTimer() // Stop existing timer
-
-    guard autoLockInterval > 0 else { return }
-
-    autoLockTimer = Timer.scheduledTimer(withTimeInterval: autoLockInterval, repeats: false) {
-      [weak self] _ in
-      guard let self = self, !self.isLocked else { return }
-
-      do {
-        try self.lockKeyboard()
-        print("🔒 Auto-lock activated after \(Int(self.autoLockInterval / 60)) minutes")
-      } catch {
-        print("❌ Auto-lock failed: \(error.localizedDescription)")
+        // Don't pass through this event
+        return nil
       }
     }
-  }
 
-  /// Stop auto-lock timer
-  private func stopAutoLockTimer() {
-    autoLockTimer?.invalidate()
-    autoLockTimer = nil
-  }
-
-  /// Reset auto-lock timer (call this on user activity)
-  public func resetAutoLockTimer() {
-    guard autoLockInterval > 0, !isLocked else { return }
-    startAutoLockTimer()
-  }
-
-  // MARK: - Event Handling
-
-  /// Check if the given event represents the unlock hotkey combination
-  /// Default: Cmd + Option + L
-  private func isUnlockHotkey(event: CGEvent) -> Bool {
-    let flags = event.flags
-    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
-    // Check for Cmd + Option + L (keycode 37 is 'L')
-    return flags.contains(.maskCommand) && flags.contains(.maskAlternate)
-      && keyCode == CoreConstants.defaultUnlockKeyCode
-  }
-
-  /// Event callback function for event tap
-  private static func eventCallback(
-    proxy _: CGEventTapProxy,
-    type: CGEventType,
-    event: CGEvent,
-    refcon: UnsafeMutableRawPointer?
-  ) -> Unmanaged<CGEvent>? {
-    guard let refcon = refcon else { return nil }
-    let keyboardLock = Unmanaged<KeyboardLockCore>.fromOpaque(refcon).takeUnretainedValue()
-
-    // Handle tap disabled case
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      if let eventTap = keyboardLock.eventTap {
-        CGEvent.tapEnable(tap: eventTap, enable: true)
-      }
-      return nil
-    }
-
-    // Only process events when locked
-    guard keyboardLock.isLocked else {
-      return Unmanaged.passRetained(event)
-    }
-
-    // Check for unlock hotkey before blocking
-    if keyboardLock.isUnlockHotkey(event: event) {
-      keyboardLock.unlockKeyboard()
-      return nil // Block this event too
-    }
-
-    // Block all other keyboard events when locked
+    // Block all keyboard events when locked
     return nil
   }
 
-  // MARK: - Utility Methods
+  // MARK: - Helper Methods
 
-  /// Get formatted lock duration string
-  public func getLockDurationString() -> String? {
-    guard let lockedAt = lockedAt else { return nil }
-
-    let duration = Date().timeIntervalSince(lockedAt)
-    let minutes = Int(duration / 60)
-    let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
+  /// Format duration for display
+  private func formatDuration(_ duration: TimeInterval) -> String {
+    let minutes = Int(duration) / 60
+    let seconds = Int(duration) % 60
 
     if minutes > 0 {
-      return "\(minutes)m \(seconds)s"
+      return String(format: "%d:%02d", minutes, seconds)
     } else {
-      return "\(seconds)s"
+      return String(format: "%ds", seconds)
     }
   }
+}
 
-  /// Force cleanup (for emergency situations)
-  public func forceCleanup() {
-    unlockKeyboard()
-    stopAutoLockTimer()
+// MARK: - Global Event Callback
+
+private func globalEventCallback(
+  proxy _: CGEventTapProxy,
+  type: CGEventType,
+  event: CGEvent,
+  refcon: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+  guard let refcon else {
+    return Unmanaged.passUnretained(event)
   }
+
+  let core = Unmanaged<KeyboardLockCore>.fromOpaque(refcon).takeUnretainedValue()
+
+  // Handle tap disabled event
+  if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+    print("⚠️ Event tap disabled by system, attempting to re-enable...")
+
+    if let eventTap = core.internalEventTap {
+      CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+
+    return Unmanaged.passUnretained(event)
+  }
+
+  // Only process events when locked
+  guard core.isKeyboardLocked else {
+    return Unmanaged.passUnretained(event)
+  }
+
+  // Handle the event through core
+  return core.handleEvent(type: type, event: event)
 }

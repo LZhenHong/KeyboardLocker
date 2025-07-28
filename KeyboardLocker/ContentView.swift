@@ -85,6 +85,20 @@ struct ContentView: View {
             }
             .padding(.leading, 16) // Align with status text
           }
+
+          // Show auto-lock status when enabled and not locked
+          if !isKeyboardLocked, keyboardManager.isAutoLockEnabled {
+            HStack {
+              Image(systemName: "timer")
+                .foregroundColor(.orange)
+                .font(.caption)
+              Text("Auto-lock: \(autoLockStatusText)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+              Spacer()
+            }
+            .padding(.leading, 16)
+          }
         }
 
         // Lock/unlock button
@@ -243,9 +257,29 @@ struct ContentView: View {
       lockDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
         // Force UI update by triggering objectWillChange
         DispatchQueue.main.async {
-          self.keyboardManager.objectWillChange.send()
+          keyboardManager.objectWillChange.send()
         }
       }
+    }
+  }
+
+  /// Get auto-lock status text for display
+  private var autoLockStatusText: String {
+    let duration = keyboardManager.autoLockDuration
+    if duration == 0 {
+      return "Disabled"
+    }
+
+    // Get time since last activity
+    let timeSinceActivity = keyboardManager.getTimeSinceLastActivity()
+    let remainingTime = max(0, TimeInterval(duration * 60) - timeSinceActivity)
+
+    if remainingTime > 0 {
+      let minutes = Int(remainingTime / 60)
+      let seconds = Int(remainingTime.truncatingRemainder(dividingBy: 60))
+      return String(format: "%02d:%02d", minutes, seconds)
+    } else {
+      return "Ready to lock"
     }
   }
 }

@@ -1,5 +1,41 @@
 import Foundation
 
+// MARK: - Error Types
+
+/// Keyboard lock operation errors
+public enum KeyboardLockError: Error, LocalizedError {
+  case permissionDenied
+  case eventTapCreationFailed
+  case runLoopSourceCreationFailed
+  case alreadyLocked
+  case notLocked
+  case invalidConfiguration
+  case systemError(String)
+
+  public var errorDescription: String? {
+    switch self {
+    case .permissionDenied:
+      "Accessibility permission is required to control keyboard input"
+    case .eventTapCreationFailed:
+      "Failed to create event tap for keyboard monitoring"
+    case .runLoopSourceCreationFailed:
+      "Failed to create run loop source"
+    case .alreadyLocked:
+      "Keyboard is already locked"
+    case .notLocked:
+      "Keyboard is not currently locked"
+    case .invalidConfiguration:
+      "Invalid configuration provided"
+    case let .systemError(message):
+      "System error: \(message)"
+    }
+  }
+
+  public var failureReason: String? {
+    errorDescription
+  }
+}
+
 // MARK: - IPC Commands
 
 /// Commands that can be sent from CLI tool to main app
@@ -13,15 +49,15 @@ public enum IPCCommand: String, Codable, CaseIterable {
   public var description: String {
     switch self {
     case .lock:
-      return "Lock the keyboard"
+      "Lock the keyboard"
     case .unlock:
-      return "Unlock the keyboard"
+      "Unlock the keyboard"
     case .toggle:
-      return "Toggle keyboard lock status"
+      "Toggle keyboard lock status"
     case .status:
-      return "Get current keyboard lock status"
+      "Get current keyboard lock status"
     case .quit:
-      return "Quit the main application"
+      "Quit the main application"
     }
   }
 }
@@ -44,12 +80,12 @@ public struct IPCResponse: Codable {
 
   /// Convenience initializer for success responses
   public static func success(_ message: String, data: [String: String]? = nil) -> IPCResponse {
-    return IPCResponse(success: true, message: message, data: data)
+    IPCResponse(success: true, message: message, data: data)
   }
 
   /// Convenience initializer for error responses
   public static func error(_ message: String) -> IPCResponse {
-    return IPCResponse(success: false, message: message, data: nil)
+    IPCResponse(success: false, message: message, data: nil)
   }
 }
 
@@ -68,19 +104,19 @@ public enum CoreError: Error, LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .accessibilityPermissionDenied:
-      return "Accessibility permission is required to control keyboard input"
+      "Accessibility permission is required to control keyboard input"
     case .eventTapCreationFailed:
-      return "Failed to create event tap for keyboard monitoring"
+      "Failed to create event tap for keyboard monitoring"
     case .ipcConnectionFailed:
-      return "Failed to connect to main application"
+      "Failed to connect to main application"
     case .invalidCommand:
-      return "Invalid command provided"
+      "Invalid command provided"
     case .mainAppNotRunning:
-      return "Main application is not running"
+      "Main application is not running"
     case .alreadyLocked:
-      return "Keyboard is already locked"
+      "Keyboard is already locked"
     case .notLocked:
-      return "Keyboard is not currently locked"
+      "Keyboard is not currently locked"
     }
   }
 }
@@ -111,18 +147,18 @@ public enum CoreConstants {
     public var description: String {
       switch self {
       case .never:
-        return "Never"
+        "Never"
       case .fifteen:
-        return "15 minutes"
+        "15 minutes"
       case .thirty:
-        return "30 minutes"
+        "30 minutes"
       case .sixty:
-        return "1 hour"
+        "1 hour"
       }
     }
 
     public var timeInterval: TimeInterval {
-      return TimeInterval(rawValue * 60)
+      TimeInterval(rawValue * 60)
     }
   }
 }
@@ -156,7 +192,7 @@ public struct LockStatus: Codable {
       "autoLockInterval": "\(autoLockInterval)",
     ]
 
-    if let lockedAt = lockedAt {
+    if let lockedAt {
       let formatter = ISO8601DateFormatter()
       dict["lockedAt"] = formatter.string(from: lockedAt)
     }

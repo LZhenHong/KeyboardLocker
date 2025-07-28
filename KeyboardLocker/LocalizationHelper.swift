@@ -7,17 +7,17 @@ import SwiftUI
 extension Bundle {
   /// Get app version number from Info.plist
   var appVersion: String {
-    return infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
   }
 
   /// Get build version number from Info.plist
   var buildVersion: String {
-    return infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    infoDictionary?["CFBundleVersion"] as? String ?? "1"
   }
 
   /// Human readable copyright information from Info.plist
   var copyright: String {
-    return object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? ""
+    object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? ""
   }
 
   /// Formatted version string using localized format
@@ -33,7 +33,7 @@ extension Bundle {
 extension String {
   /// Returns a localized string for the given key using the modern .xcstrings format
   var localized: String {
-    return String(localized: String.LocalizationValue(self))
+    String(localized: String.LocalizationValue(self))
   }
 
   /// Returns a localized string with format arguments using .xcstrings

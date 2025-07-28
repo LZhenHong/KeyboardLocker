@@ -8,7 +8,7 @@ public class PermissionHelper {
 
   /// Check if accessibility permission is currently granted
   public static func hasAccessibilityPermission() -> Bool {
-    return AXIsProcessTrusted()
+    AXIsProcessTrusted()
   }
 
   /// Check accessibility permission with option to show system prompt
@@ -37,10 +37,10 @@ public class PermissionHelper {
     if #available(macOS 10.15, *) {
       // For now, we'll assume screen recording permission is not strictly required
       // In a real implementation, you might use ScreenCaptureKit or other methods
-      return true
+      true
     } else {
       // Screen recording permission not required on older macOS versions
-      return true
+      true
     }
   }
 
@@ -49,7 +49,7 @@ public class PermissionHelper {
   /// Get a summary of all required permissions
   /// - Returns: Dictionary with permission names and their status
   public static func getPermissionStatus() -> [String: Bool] {
-    return [
+    [
       "accessibility": hasAccessibilityPermission(),
       "screenRecording": hasScreenRecordingPermission(),
     ]
@@ -58,7 +58,7 @@ public class PermissionHelper {
   /// Check if all required permissions are granted
   /// - Returns: True if all required permissions are available
   public static func hasAllRequiredPermissions() -> Bool {
-    return hasAccessibilityPermission()
+    hasAccessibilityPermission()
     // Add other required permissions here if needed
     // && hasScreenRecordingPermission()
   }

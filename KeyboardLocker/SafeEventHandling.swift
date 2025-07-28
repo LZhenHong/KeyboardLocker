@@ -62,14 +62,14 @@ enum SafeEventHandler {
   /// - Parameter event: The CGEvent to extract keycode from
   /// - Returns: Keycode value if available, nil otherwise
   static func getKeycode(from event: CGEvent) -> Int64? {
-    return event.getIntegerValueField(.keyboardEventKeycode)
+    event.getIntegerValueField(.keyboardEventKeycode)
   }
 
   /// Safely get event flags
   /// - Parameter event: The CGEvent to extract flags from
   /// - Returns: CGEventFlags for the event
   static func getFlags(from event: CGEvent) -> CGEventFlags {
-    return event.flags
+    event.flags
   }
 
   /// Check if event has specific modifier flags

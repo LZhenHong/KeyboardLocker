@@ -9,7 +9,7 @@ struct KeyboardLockerApp: App {
   @StateObject private var permissionManager = DependencyFactory.shared.makePermissionManager()
 
   // Use AppDelegate for URL handling
-  @NSApplicationDelegateAdaptor(KeyboardLockerAppDelegate.self) var appDelegate
+  @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
   init() {
     // Create keyboard lock manager safely without force casting

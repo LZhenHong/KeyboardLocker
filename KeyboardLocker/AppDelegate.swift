@@ -3,7 +3,7 @@ import Core
 import SwiftUI
 
 /// Custom AppDelegate for handling URL schemes and application lifecycle
-class KeyboardLockerAppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate {
   var urlHandler: URLCommandHandler = .shared
   var keyboardLockManager: KeyboardLockManaging?
 

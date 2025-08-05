@@ -7,4 +7,5 @@
 
 import Foundation
 
-print("Hello, World!")
+// TODO: Implement command line interface for KeyboardLocker
+// This tool will provide CLI access to keyboard locking functionality

@@ -7,6 +7,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   var urlHandler: URLCommandHandler = .shared
   var keyboardLockManager: KeyboardLockManaging?
 
+  func configure(_ manager: KeyboardLockManaging) {
+    keyboardLockManager = manager
+    urlHandler.setKeyboardLockManager(manager)
+  }
+
   func applicationDidFinishLaunching(_: Notification) {
     print("Application did finish launching")
   }
@@ -31,9 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   ///   - application: The application instance
   ///   - urls: Array of URLs to handle
   func application(_: NSApplication, open urls: [URL]) {
-    for url in urls {
-      handleIncomingURL(url)
-    }
+    urls.forEach(handleIncomingURL(_:))
   }
 
   /// Process individual URL requests

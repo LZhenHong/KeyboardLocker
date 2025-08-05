@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsView: View {
   @ObservedObject private var coreConfig = CoreConfiguration.shared
 
-  private typealias AutoLockInterval = CoreConfiguration.AutoLockDuration
+  private typealias AutoLockInterval = CoreConfiguration.Duration
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {

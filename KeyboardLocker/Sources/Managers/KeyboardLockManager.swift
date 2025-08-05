@@ -18,8 +18,8 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   ) {
     self.notificationManager = notificationManager
 
-    // Setup observers and sync
-    setupCoreObservers()
+    // Setup state change callback and sync
+    setupLockStateCallback()
     syncInitialState()
   }
 
@@ -30,7 +30,6 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   /// Clean up resources when object is deallocated
   private func cleanup() {
     // Core API handles its own cleanup
-    print("🧹 KeyboardLockManager cleanup completed")
   }
 
   // MARK: - Public Interface (UI Actions)
@@ -38,7 +37,6 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
   func lockKeyboard() {
     do {
       try coreAPI.lockKeyboard()
-      print("✅ Keyboard locked successfully")
 
       // Send notification to user (UI concern)
       notificationManager.sendNotificationIfEnabled(
@@ -56,7 +54,6 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
     }
 
     coreAPI.unlockKeyboard()
-    print("✅ Keyboard unlocked successfully")
 
     // Send notification to user (UI concern)
     notificationManager.sendNotificationIfEnabled(
@@ -76,6 +73,21 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
     )
   }
 
+  /// Start a timed lock with specified duration
+  func lockKeyboard(with duration: CoreConfiguration.Duration) {
+    do {
+      try coreAPI.lockKeyboardWithDuration(duration)
+
+      // Send notification to user (UI concern)
+      notificationManager.sendNotificationIfEnabled(
+        .keyboardLocked,
+        showNotifications: coreAPI.isNotificationsEnabled()
+      )
+    } catch {
+      print("❌ Failed to start timed lock: \(error.localizedDescription)")
+    }
+  }
+
   // MARK: - Auto-Lock Management (using Core API directly)
 
   func startAutoLock() {
@@ -83,14 +95,10 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
     if !coreAPI.configuration.autoLockDuration.isEnabled {
       coreAPI.configuration.autoLockDuration = .minutes(30)
     }
-    print(
-      "✅ Auto-lock enabled with \(coreAPI.configuration.autoLockDuration.minutes) duration (activity-based)"
-    )
   }
 
   func stopAutoLock() {
     coreAPI.configuration.autoLockDuration = .never
-    print("✅ Auto-lock disabled")
   }
 
   func toggleAutoLock() {
@@ -99,14 +107,8 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
     } else {
       coreAPI.configuration.autoLockDuration = .minutes(30)
     }
-    print("✅ Auto-lock toggled")
     // Update UI state
     syncAutoLockConfiguration()
-  }
-
-  func updateAutoLockSettings() {
-    // Settings are now managed directly through Core API
-    print("✅ Auto-lock settings updated with activity monitoring")
   }
 
   /// Get time since last user activity (for UI display)
@@ -131,7 +133,6 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
 
   func requestPermissions() {
     coreAPI.requestAccessibilityPermission()
-    print("ℹ️ Permission request sent. Please grant accessibility permission in System Settings.")
   }
 
   // MARK: - Configuration Access (直接使用CoreConfiguration)
@@ -156,22 +157,21 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
 
   func forceCleanup() {
     // Core API manages its own cleanup
-    print("🧹 KeyboardLockManager force cleanup completed")
     syncInitialState()
   }
 
   // MARK: - Private Methods
 
-  /// Setup observers for Core configuration changes
-  private func setupCoreObservers() {
-    // Check lock status and auto-lock status periodically
-    Timer.publish(every: 0.5, on: .main, in: .common)
-      .autoconnect()
-      .sink { [weak self] _ in
-        self?.isLocked = self?.coreAPI.isLocked ?? false
+  /// Setup lock state change callback from Core
+  private func setupLockStateCallback() {
+    // Use Core's callback instead of timer-based polling
+    coreAPI.setLockStateChangeCallback { [weak self] isLocked, _ in
+      DispatchQueue.main.async {
+        self?.isLocked = isLocked
+        // Auto-lock state should also be synced when lock state changes
         self?.autoLockEnabled = self?.coreAPI.configuration.autoLockDuration.isEnabled ?? false
       }
-      .store(in: &cancellables)
+    }
   }
 
   /// Sync initial state from Core
@@ -188,8 +188,4 @@ class KeyboardLockManager: ObservableObject, KeyboardLockManaging {
       self.autoLockEnabled = self.coreAPI.configuration.autoLockDuration.isEnabled
     }
   }
-
-  // MARK: - Combine Support
-
-  private var cancellables = Set<AnyCancellable>()
 }

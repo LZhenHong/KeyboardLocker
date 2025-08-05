@@ -43,7 +43,6 @@ protocol KeyboardLockManaging: AnyObject {
   func startAutoLock()
   func stopAutoLock()
   func toggleAutoLock()
-  func updateAutoLockSettings()
 }
 
 /// Enhanced protocol with result-based operations for better error handling

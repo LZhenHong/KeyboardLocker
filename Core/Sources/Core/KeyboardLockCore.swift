@@ -38,6 +38,8 @@ public class KeyboardLockCore {
   private var runLoopSource: CFRunLoopSource?
   private var _isLocked = false
   private var _lockedAt: Date?
+  private var timedLockTimer: Timer?
+  private var timedLockDuration: CoreConfiguration.Duration?
 
   // Internal access for callback
   var internalEventTap: CFMachPort? {
@@ -45,7 +47,7 @@ public class KeyboardLockCore {
   }
 
   // Constants for hotkey detection
-  private let unlockKeyCode: UInt16 = 37 // 'L' key
+  private let unlockKeyCode: UInt16 = CoreConstants.defaultUnlockKeyCode
   private let unlockModifiers: UInt32 = .init(cmdKey | optionKey) // Cmd+Option
 
   // MARK: - Callbacks for UI Layer
@@ -75,12 +77,9 @@ public class KeyboardLockCore {
 
   // MARK: - Initialization
 
-  private init() {
-    print("🔑 KeyboardLockCore initialized")
-  }
+  private init() {}
 
   deinit {
-    print("🔑 KeyboardLockCore deallocated")
     forceCleanup()
   }
 
@@ -106,18 +105,20 @@ public class KeyboardLockCore {
 
     // Notify business layer
     onLockStateChanged?(_isLocked, _lockedAt)
-
-    print("🔒 Keyboard locked at \(Date())")
   }
 
   /// Unlock keyboard input
   public func unlockKeyboard() {
     guard _isLocked else {
-      print("⚠️ Keyboard is already unlocked")
       return
     }
 
     destroyEventTap()
+
+    // Clean up timed lock resources
+    timedLockTimer?.invalidate()
+    timedLockTimer = nil
+    timedLockDuration = nil
 
     _isLocked = false
     let wasLockedAt = _lockedAt
@@ -143,6 +144,54 @@ public class KeyboardLockCore {
         print("❌ Failed to lock keyboard: \(error.localizedDescription)")
       }
     }
+  }
+
+  /// Lock keyboard with specified duration (timed lock)
+  /// - Parameter duration: Duration for which to lock the keyboard
+  /// - Throws: KeyboardLockError if locking fails
+  public func lockKeyboardWithDuration(_ duration: CoreConfiguration.Duration) throws {
+    // First lock the keyboard normally
+    try lockKeyboard()
+
+    // Store the duration
+    timedLockDuration = duration
+
+    // Set up timer for auto-unlock (only for finite durations)
+    if case let .minutes(minutes) = duration, minutes > 0 {
+      let timeInterval = TimeInterval(minutes * 60)
+      timedLockTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) {
+        [weak self] _ in
+        DispatchQueue.main.async {
+          self?.unlockKeyboard()
+          print("⏰ Timed lock completed after \(minutes) minutes")
+        }
+      }
+      print("⏰ Timed lock set for \(minutes) minutes")
+    } else if case .infinite = duration {
+      print("♾️ Infinite timed lock started (manual unlock required)")
+    }
+  }
+
+  /// Get the current timed lock duration (if any)
+  public var currentTimedLockDuration: CoreConfiguration.Duration? {
+    timedLockDuration
+  }
+
+  /// Get remaining time for timed lock
+  public func getTimedLockRemainingTime() -> TimeInterval? {
+    guard let duration = timedLockDuration,
+          let lockedAt = _lockedAt,
+          case let .minutes(minutes) = duration,
+          minutes > 0
+    else {
+      return nil
+    }
+
+    let totalDuration = TimeInterval(minutes * 60)
+    let elapsed = Date().timeIntervalSince(lockedAt)
+    let remaining = max(0, totalDuration - elapsed)
+
+    return remaining > 0 ? remaining : nil
   }
 
   // MARK: - Utility Methods

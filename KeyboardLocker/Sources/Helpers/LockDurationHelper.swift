@@ -6,7 +6,7 @@ class LockDurationHelper {
   // MARK: - Preset Collections
 
   /// Preset durations for timed lock UI
-  static let timedLockPresets: [CoreConfiguration.AutoLockDuration] = [
+  static let timedLockPresets: [CoreConfiguration.Duration] = [
     .infinite,
     .minutes(1),
     .minutes(5),
@@ -18,7 +18,7 @@ class LockDurationHelper {
   ]
 
   /// Preset durations for auto-lock UI
-  static let autoLockPresets: [CoreConfiguration.AutoLockDuration] = [
+  static let autoLockPresets: [CoreConfiguration.Duration] = [
     .never,
     .minutes(15),
     .minutes(30),
@@ -26,7 +26,7 @@ class LockDurationHelper {
   ]
 
   /// Quick preset durations for timed lock
-  static let quickTimedPresets: [CoreConfiguration.AutoLockDuration] = [
+  static let quickTimedPresets: [CoreConfiguration.Duration] = [
     .infinite,
     .minutes(1),
     .minutes(5),
@@ -37,7 +37,7 @@ class LockDurationHelper {
   // MARK: - Display Logic
 
   /// Get localized display string for UI
-  static func localizedDisplayString(for duration: CoreConfiguration.AutoLockDuration) -> String {
+  static func localizedDisplayString(for duration: CoreConfiguration.Duration) -> String {
     switch duration {
     case .never:
       LocalizationKey.durationNever.localized
@@ -49,7 +49,7 @@ class LockDurationHelper {
   }
 
   /// Get description text for duration settings
-  static func localizedDescriptionString(for duration: CoreConfiguration.AutoLockDuration) -> String {
+  static func localizedDescriptionString(for duration: CoreConfiguration.Duration) -> String {
     switch duration {
     case .never:
       return LocalizationKey.durationNeverDescription.localized
@@ -89,7 +89,7 @@ class LockDurationHelper {
   // MARK: - Factory Methods
 
   /// Create duration from seconds with smart conversion
-  static func durationFromSeconds(_ seconds: TimeInterval) -> CoreConfiguration.AutoLockDuration {
+  static func durationFromSeconds(_ seconds: TimeInterval) -> CoreConfiguration.Duration {
     let totalSeconds = Int(seconds)
 
     if totalSeconds == 0 {
@@ -104,9 +104,7 @@ class LockDurationHelper {
   }
 
   /// Create duration from total seconds (exact)
-  static func durationFromSecondsExact(_ seconds: TimeInterval)
-    -> CoreConfiguration.AutoLockDuration
-  {
+  static func durationFromSecondsExact(_ seconds: TimeInterval) -> CoreConfiguration.Duration {
     let totalSeconds = Int(seconds)
 
     if totalSeconds == 0 {
@@ -120,7 +118,7 @@ class LockDurationHelper {
   // MARK: - Validation
 
   /// Check if this duration is valid for timed lock
-  static func isValidForTimedLock(_ duration: CoreConfiguration.AutoLockDuration) -> Bool {
+  static func isValidForTimedLock(_ duration: CoreConfiguration.Duration) -> Bool {
     switch duration {
     case .never:
       false // Never is not valid for timed lock
@@ -130,7 +128,7 @@ class LockDurationHelper {
   }
 
   /// Check if this duration is valid for auto-lock
-  static func isValidForAutoLock(_ duration: CoreConfiguration.AutoLockDuration) -> Bool {
+  static func isValidForAutoLock(_ duration: CoreConfiguration.Duration) -> Bool {
     switch duration {
     case .never, .minutes:
       true
@@ -142,7 +140,7 @@ class LockDurationHelper {
   // MARK: - Comparison Helpers
 
   /// Get sort order for duration comparison
-  static func sortOrder(for duration: CoreConfiguration.AutoLockDuration) -> Int {
+  static func sortOrder(for duration: CoreConfiguration.Duration) -> Int {
     switch duration {
     case .never:
       0

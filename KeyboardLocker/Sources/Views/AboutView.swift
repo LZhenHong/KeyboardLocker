@@ -40,9 +40,9 @@ struct AboutView: View {
     }) {
       HStack {
         Image(systemName: "link.circle.fill")
-          .foregroundColor(.blue)
+          .foregroundColor(.accentColor)
         Text(LocalizationKey.aboutGitHub.localized)
-          .foregroundColor(.blue)
+          .foregroundColor(.accentColor)
       }
       .font(.body)
     }
@@ -78,7 +78,7 @@ struct FeatureRow: View {
   var body: some View {
     HStack(spacing: 6) {
       Image(systemName: icon)
-        .foregroundColor(.blue)
+        .foregroundColor(.accentColor)
         .frame(width: 16)
 
       Text(text)

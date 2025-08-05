@@ -28,11 +28,8 @@ class DependencyFactory {
   }
 
   /// Create a URL command handler instance
-  /// - Parameter notificationManager: Optional notification manager, uses default if nil
   /// - Returns: URLCommandHandler instance
-  func makeURLCommandHandler(
-    notificationManager _: NotificationManaging? = nil
-  ) -> URLCommandHandler {
+  func makeURLCommandHandler() -> URLCommandHandler {
     // Since URLCommandHandler uses a singleton pattern, we return the shared instance
     // In a more sophisticated dependency injection system, we might create new instances
     URLCommandHandler.shared
@@ -44,14 +41,15 @@ class DependencyFactory {
   func makePermissionManager(
     notificationManager: NotificationManager? = nil
   ) -> PermissionManager {
-    let notificationMgr: NotificationManager = if let providedManager = notificationManager {
-      providedManager
-    } else if let defaultManager = makeNotificationManager() as? NotificationManager {
-      defaultManager
-    } else {
-      // Fallback: create a new instance directly
-      NotificationManager.shared
-    }
+    let notificationMgr: NotificationManager =
+      if let providedManager = notificationManager {
+        providedManager
+      } else if let defaultManager = makeNotificationManager() as? NotificationManager {
+        defaultManager
+      } else {
+        // Fallback: create a new instance directly
+        NotificationManager.shared
+      }
     return PermissionManager(notificationManager: notificationMgr)
   }
 }

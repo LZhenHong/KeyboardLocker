@@ -1,7 +1,7 @@
 import Core
 import Foundation
 
-class CountdownFormatter {
+enum CountdownFormatter {
   /// Format remaining time as countdown string
   static func countdownString(from timeInterval: TimeInterval) -> String {
     let totalSeconds = Int(timeInterval)

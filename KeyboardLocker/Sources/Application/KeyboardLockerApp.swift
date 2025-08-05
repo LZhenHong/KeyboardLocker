@@ -11,21 +11,25 @@ struct KeyboardLockerApp: App {
   // Use AppDelegate for URL handling
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-  init() {
-    // Create keyboard lock manager safely without force casting
+  // Create keyboard lock manager safely without force casting
+  private static func makeKeyboardLockManager() -> KeyboardLockManager {
     let manager = DependencyFactory.shared.makeKeyboardLockManager()
     if let concreteManager = manager as? KeyboardLockManager {
-      _keyboardLockManager = StateObject(wrappedValue: concreteManager)
+      return concreteManager
     } else {
       // Fallback: create a new instance directly
-      _keyboardLockManager = StateObject(wrappedValue: KeyboardLockManager())
+      return KeyboardLockManager()
     }
+  }
 
-    // Setup global exception handling for stability
-    setupExceptionHandling()
+  init() {
+    _keyboardLockManager = StateObject(wrappedValue: Self.makeKeyboardLockManager())
 
     // Initialize IPC server for external communication
     IPCManager.shared.startServer()
+
+    // Setup global exception handling for stability
+    setupExceptionHandling()
   }
 
   var body: some Scene {
@@ -35,10 +39,7 @@ struct KeyboardLockerApp: App {
         .environmentObject(keyboardLockManager)
         .environmentObject(permissionManager)
         .onAppear {
-          // Set up URL handler with keyboard lock manager reference
-          URLCommandHandler.shared.setKeyboardLockManager(keyboardLockManager)
-          // Inject dependencies into AppDelegate
-          appDelegate.keyboardLockManager = keyboardLockManager
+          appDelegate.configure(keyboardLockManager)
         }
     }
     .menuBarExtraStyle(.window)

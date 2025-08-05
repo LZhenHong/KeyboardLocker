@@ -23,7 +23,6 @@ public class KeyboardLockerAPI: ObservableObject {
   private init() {
     setupActivityMonitor()
     setupConfigurationObserver()
-    print("🚀 KeyboardLockerAPI initialized")
   }
 
   // MARK: - Lock/Unlock Operations
@@ -31,18 +30,21 @@ public class KeyboardLockerAPI: ObservableObject {
   /// Lock the keyboard
   public func lockKeyboard() throws {
     try core.lockKeyboard()
-    print("🔒 Keyboard locked via API")
   }
 
   /// Unlock the keyboard
   public func unlockKeyboard() {
     core.unlockKeyboard()
-    print("🔓 Keyboard unlocked via API")
   }
 
   /// Toggle keyboard lock state
   public func toggleKeyboardLock() {
     core.toggleLock()
+  }
+
+  /// Lock keyboard with specified duration (timed lock)
+  public func lockKeyboardWithDuration(_ duration: CoreConfiguration.Duration) throws {
+    try core.lockKeyboardWithDuration(duration)
   }
 
   /// Get current lock status
@@ -58,6 +60,24 @@ public class KeyboardLockerAPI: ObservableObject {
   /// Get lock duration string
   public func getLockDurationString() -> String? {
     guard let lockedAt else { return nil }
+
+    // Check if this is a timed lock
+    if let timedDuration = core.currentTimedLockDuration {
+      if case .infinite = timedDuration {
+        // For infinite timed lock, show elapsed time
+        let duration = Date().timeIntervalSince(lockedAt)
+        let minutes = Int(duration / 60)
+        let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
+        return String(format: "%02d:%02d", minutes, seconds)
+      } else if let remainingTime = core.getTimedLockRemainingTime() {
+        // For finite timed lock, show remaining time
+        let minutes = Int(remainingTime / 60)
+        let seconds = Int(remainingTime.truncatingRemainder(dividingBy: 60))
+        return String(format: "%02d:%02d", minutes, seconds)
+      }
+    }
+
+    // For regular lock, show elapsed time
     let duration = Date().timeIntervalSince(lockedAt)
     let minutes = Int(duration / 60)
     let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
@@ -68,7 +88,7 @@ public class KeyboardLockerAPI: ObservableObject {
 
   /// Enable auto-lock with specified duration in minutes
   public func enableAutoLock(minutes: Int) {
-    let autoLockSetting: CoreConfiguration.AutoLockDuration = minutes == 0 ? .never : .minutes(minutes)
+    let autoLockSetting: CoreConfiguration.Duration = minutes == 0 ? .never : .minutes(minutes)
 
     configuration.autoLockDuration = autoLockSetting
     activityMonitor.enableAutoLock(seconds: autoLockSetting.seconds)
@@ -76,10 +96,8 @@ public class KeyboardLockerAPI: ObservableObject {
     // Start activity monitoring if enabled
     if autoLockSetting.isEnabled {
       activityMonitor.startMonitoring()
-      print("✅ Auto-lock enabled: \(minutes)")
     } else {
       activityMonitor.stopMonitoring()
-      print("❌ Auto-lock disabled")
     }
   }
 
@@ -94,7 +112,6 @@ public class KeyboardLockerAPI: ObservableObject {
     configuration.autoLockDuration = .never
     activityMonitor.enableAutoLock(seconds: 0)
     activityMonitor.stopMonitoring()
-    print("❌ Auto-lock disabled")
   }
 
   /// Get current auto-lock status
@@ -149,6 +166,20 @@ public class KeyboardLockerAPI: ObservableObject {
     configuration.showNotifications
   }
 
+  // MARK: - State Change Callbacks
+
+  /// Set callback for lock state changes
+  /// - Parameter callback: Called when lock state changes with (isLocked, lockedAt)
+  public func setLockStateChangeCallback(_ callback: @escaping (Bool, Date?) -> Void) {
+    core.onLockStateChanged = callback
+  }
+
+  /// Set callback for unlock hotkey detection
+  /// - Parameter callback: Called when unlock hotkey is detected
+  public func setUnlockHotkeyCallback(_ callback: @escaping () -> Void) {
+    core.onUnlockHotkeyDetected = callback
+  }
+
   // MARK: - Permission Management
 
   /// Check if accessibility permission is granted
@@ -159,7 +190,7 @@ public class KeyboardLockerAPI: ObservableObject {
 
   /// Request accessibility permission
   public func requestAccessibilityPermission() {
-    print("⚠️ Accessibility permission required")
+    PermissionHelper.requestAccessibilityPermission()
   }
 
   // MARK: - Private Setup Methods
@@ -169,7 +200,6 @@ public class KeyboardLockerAPI: ObservableObject {
     activityMonitor.onAutoLockTriggered = { [weak self] in
       do {
         try self?.lockKeyboard()
-        print("🔒 Auto-lock triggered - keyboard locked")
       } catch {
         print("❌ Auto-lock failed: \(error.localizedDescription)")
       }

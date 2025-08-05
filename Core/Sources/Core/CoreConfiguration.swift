@@ -55,12 +55,8 @@ public class CoreConfiguration: ObservableObject {
     /// Convert to seconds
     public var seconds: TimeInterval {
       switch self {
-      case .never:
+      case .never, .infinite:
         0
-
-      case .infinite:
-        0
-
       case let .minutes(minutes):
         TimeInterval(minutes * 60)
       }
@@ -72,18 +68,14 @@ public class CoreConfiguration: ObservableObject {
     }
   }
 
-  /// Backward compatibility alias
-  public typealias AutoLockDuration = Duration
-
   // MARK: - Published Properties with AppStorage
 
   /// Auto-lock configuration using enum instead of raw values
   @AppStorage("autoLockDuration") private var storedAutoLockMinutes: Int = 0
 
-  @Published public var autoLockDuration: AutoLockDuration = .never {
+  @Published public var autoLockDuration: Duration = .never {
     didSet {
       storedAutoLockMinutes = autoLockDuration.minutes
-      print("📝 Auto-lock duration updated: \(autoLockDuration.minutes)")
     }
   }
 
@@ -98,7 +90,6 @@ public class CoreConfiguration: ObservableObject {
     didSet {
       if let data = try? JSONEncoder().encode(hotkey) {
         UserDefaults.standard.set(data, forKey: ConfigKeys.hotkey.rawValue)
-        print("📝 Hotkey configuration updated: \(hotkey)")
       }
     }
   }
@@ -127,7 +118,6 @@ public class CoreConfiguration: ObservableObject {
 
   private init() {
     loadConfiguration()
-    print("🚀 CoreConfiguration initialized")
   }
 
   // MARK: - Configuration Management
@@ -145,8 +135,6 @@ public class CoreConfiguration: ObservableObject {
     } else {
       hotkey = HotkeyConfiguration.defaultHotkey()
     }
-
-    print("📁 Configuration loaded from UserDefaults")
   }
 
   /// Reset configuration to default values
@@ -156,8 +144,6 @@ public class CoreConfiguration: ObservableObject {
     launchAtLogin = false
     hotkey = HotkeyConfiguration.defaultHotkey()
     isFirstLaunch = false
-
-    print("🔄 Configuration reset to defaults")
   }
 
   /// Export configuration as dictionary
@@ -199,8 +185,6 @@ public class CoreConfiguration: ObservableObject {
     if let version = config[ConfigKeys.appVersion.rawValue] as? String {
       appVersion = version
     }
-
-    print("📥 Configuration imported from dictionary")
   }
 }
 
@@ -221,7 +205,7 @@ public struct HotkeyConfiguration: Codable, CustomStringConvertible {
   /// Default hotkey: Command+Shift+L
   public static func defaultHotkey() -> HotkeyConfiguration {
     HotkeyConfiguration(
-      keyCode: 37, // 'L' key
+      keyCode: CoreConstants.defaultUnlockKeyCode,
       modifierFlags: UInt32(cmdKey | shiftKey),
       displayString: "⌘⇧L"
     )

@@ -121,6 +121,11 @@ enum LocalizationKey {
   static let countdownMinutesFormat = "countdown.minutes.format"
   static let countdownSecondsFormat = "countdown.seconds.format"
 
+  // Timed Lock
+  static let timedLockTitle = "timed.lock.title"
+  static let timedLockStart = "timed.lock.start"
+  static let timedLockCustom = "timed.lock.custom"
+
   // About
   static let aboutVersionFormat = "about.version.format"
   static let aboutFeatures = "about.features"
@@ -140,6 +145,7 @@ enum LocalizationKey {
 
   // Lock Duration
   static let lockDurationFormat = "lock.duration.format"
+  static let timedLockRemaining = "timed.lock.remaining"
 
   // Permissions
   static let permissionRequired = "permission.required"

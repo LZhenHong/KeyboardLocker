@@ -48,19 +48,16 @@ class URLCommandHandler {
     }
   }
 
-  static let shared = URLCommandHandler()
+  private weak var keyboardLockManager: KeyboardLockManager?
+  private let notificationManager: NotificationManager
 
-  private weak var keyboardLockManager: KeyboardLockManaging?
-  private let notificationManager: NotificationManaging
-
-  private init(notificationManager: NotificationManaging = NotificationManager.shared) {
+  /// Create URLCommandHandler with dependencies
+  /// - Parameters:
+  ///   - keyboardLockManager: Manager for keyboard operations
+  ///   - notificationManager: Manager for notifications
+  init(keyboardLockManager: KeyboardLockManager, notificationManager: NotificationManager) {
+    self.keyboardLockManager = keyboardLockManager
     self.notificationManager = notificationManager
-  }
-
-  /// Set the keyboard lock manager reference
-  /// - Parameter manager: The keyboard lock manager instance
-  func setKeyboardLockManager(_ manager: KeyboardLockManaging) {
-    keyboardLockManager = manager
   }
 
   /// Process incoming URL and execute the appropriate command
@@ -120,7 +117,7 @@ class URLCommandHandler {
   }
 
   /// Execute lock command
-  private func executeLockCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
+  private func executeLockCommand(_ manager: KeyboardLockManager) -> CommandResponse {
     if manager.isLocked {
       let message = LocalizationKey.statusLocked.localized
       print("ℹ️ Keyboard already locked")
@@ -142,7 +139,7 @@ class URLCommandHandler {
   }
 
   /// Execute unlock command
-  private func executeUnlockCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
+  private func executeUnlockCommand(_ manager: KeyboardLockManager) -> CommandResponse {
     if !manager.isLocked {
       let message = LocalizationKey.statusUnlocked.localized
       print("ℹ️ Keyboard already unlocked")
@@ -164,7 +161,7 @@ class URLCommandHandler {
   }
 
   /// Execute toggle command
-  private func executeToggleCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
+  private func executeToggleCommand(_ manager: KeyboardLockManager) -> CommandResponse {
     let wasLocked = manager.isLocked
 
     if wasLocked {
@@ -175,7 +172,7 @@ class URLCommandHandler {
   }
 
   /// Execute status command
-  private func executeStatusCommand(_ manager: KeyboardLockManaging) -> CommandResponse {
+  private func executeStatusCommand(_ manager: KeyboardLockManager) -> CommandResponse {
     let statusText =
       manager.isLocked
         ? LocalizationKey.statusLocked.localized

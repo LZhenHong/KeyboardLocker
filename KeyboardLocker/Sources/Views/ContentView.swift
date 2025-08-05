@@ -17,13 +17,12 @@ struct ContentView: View {
     .frame(width: .viewWidth)
     .background(Color(NSColor.windowBackgroundColor))
     .onAppear(perform: setupInitialState)
-    .onReceive(keyboardManager.$isLocked, perform: viewState.handleLockStateChange)
     .onDisappear(perform: viewState.cleanup)
   }
 
   private func setupInitialState() {
     permissionManager.checkAllPermissions()
-    viewState.configure(with: keyboardManager)
+    viewState.setup(with: keyboardManager)
   }
 }
 

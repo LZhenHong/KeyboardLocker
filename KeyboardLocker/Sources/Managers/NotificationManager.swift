@@ -2,11 +2,7 @@ import Foundation
 import UserNotifications
 
 /// Centralized notification management for the app
-class NotificationManager: ObservableObject, NotificationManaging {
-  // MARK: - Singleton
-
-  static let shared = NotificationManager()
-
+class NotificationManager: ObservableObject {
   // MARK: - Published Properties
 
   @Published var isAuthorized = false
@@ -115,7 +111,8 @@ class NotificationManager: ObservableObject, NotificationManaging {
 
   // MARK: - Initialization
 
-  private init() {
+  /// Create a new NotificationManager instance
+  init() {
     setupNotificationCategories()
     checkAuthorizationStatus()
   }

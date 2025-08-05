@@ -14,11 +14,11 @@ class PermissionManager: ObservableObject {
 
   // MARK: - Private Properties
 
-  private let notificationManager: NotificationManaging
+  let notificationManager: NotificationManager
 
   // MARK: - Initialization
 
-  init(notificationManager: NotificationManaging = NotificationManager.shared) {
+  init(notificationManager: NotificationManager) {
     self.notificationManager = notificationManager
     checkAllPermissions()
     setupApplicationFocusMonitoring()

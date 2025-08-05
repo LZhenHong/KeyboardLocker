@@ -4,27 +4,13 @@ import SwiftUI
 /// Main app entry point using modern SwiftUI App protocol with AppDelegate
 @main
 struct KeyboardLockerApp: App {
-  // Use dependency factory to create managers with proper dependency injection
-  @StateObject private var keyboardLockManager: KeyboardLockManager
-  @StateObject private var permissionManager = DependencyFactory.shared.makePermissionManager()
+  // Application dependencies container
+  private let dependencies = appDependencies
 
   // Use AppDelegate for URL handling
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-  // Create keyboard lock manager safely without force casting
-  private static func makeKeyboardLockManager() -> KeyboardLockManager {
-    let manager = DependencyFactory.shared.makeKeyboardLockManager()
-    if let concreteManager = manager as? KeyboardLockManager {
-      return concreteManager
-    } else {
-      // Fallback: create a new instance directly
-      return KeyboardLockManager()
-    }
-  }
-
   init() {
-    _keyboardLockManager = StateObject(wrappedValue: Self.makeKeyboardLockManager())
-
     // Initialize IPC server for external communication
     IPCManager.shared.startServer()
 
@@ -36,10 +22,10 @@ struct KeyboardLockerApp: App {
     // Modern MenuBarExtra for native menu bar integration
     MenuBarExtra(LocalizationKey.appMenuTitle.localized, systemImage: "lock.shield") {
       ContentView()
-        .environmentObject(keyboardLockManager)
-        .environmentObject(permissionManager)
+        .environmentObject(dependencies.keyboardLockManager)
+        .environmentObject(dependencies.permissionManager)
         .onAppear {
-          appDelegate.configure(keyboardLockManager)
+          appDelegate.configure(dependencies.keyboardLockManager, dependencies.urlHandler)
         }
     }
     .menuBarExtraStyle(.window)
@@ -56,9 +42,8 @@ struct KeyboardLockerApp: App {
 
       // Attempt to unlock keyboard before crash - safety measure
       DispatchQueue.main.async {
-        // Force unlock by creating a temporary manager
-        let tempManager = KeyboardLockManager()
-        tempManager.unlockKeyboard()
+        // Force unlock using Core directly (emergency safety)
+        KeyboardLockCore.shared.unlockKeyboard()
 
         // Give time for cleanup before exit
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

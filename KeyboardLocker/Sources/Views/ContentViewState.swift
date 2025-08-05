@@ -1,3 +1,4 @@
+import Combine
 import Core
 import SwiftUI
 
@@ -10,10 +11,14 @@ class ContentViewState: ObservableObject {
   @Published var showTimedLockOptions = false
   @Published var customMinutes: Int = 5
 
-  // MARK: - Private Properties
+  // MARK: - Dependencies
 
-  private var lockDurationTimer: Timer?
   var keyboardManager: KeyboardLockManager?
+  private var cancellables = Set<AnyCancellable>()
+
+  // MARK: - UI State Timer
+
+  private var uiUpdateTimer: Timer?
 
   // MARK: - Computed Properties
 
@@ -24,17 +29,20 @@ class ContentViewState: ObservableObject {
     )
   }
 
-  // MARK: - Public Methods
+  // MARK: - Lifecycle Methods
 
-  func configure(with keyboardManager: KeyboardLockManager) {
+  func setup(with keyboardManager: KeyboardLockManager) {
     self.keyboardManager = keyboardManager
-    isKeyboardLocked = keyboardManager.isLocked
+    setupSubscriptions()
+    syncInitialState()
   }
 
-  func handleLockStateChange(_ locked: Bool) {
-    isKeyboardLocked = locked
-    setupLockDurationTimer()
+  func cleanup() {
+    cancellables.removeAll()
+    stopUIUpdateTimer()
   }
+
+  // MARK: - Public Methods
 
   func startTimedLock() {
     lock(with: selectedTimedLockDuration)
@@ -47,6 +55,8 @@ class ContentViewState: ObservableObject {
     lock(with: customDuration)
   }
 
+  // MARK: - Private Methods
+
   private func lock(with duration: CoreConfiguration.Duration) {
     guard let keyboardManager else { return }
 
@@ -54,22 +64,47 @@ class ContentViewState: ObservableObject {
     keyboardManager.lockKeyboard(with: duration)
   }
 
-  func cleanup() {
-    lockDurationTimer?.invalidate()
-    lockDurationTimer = nil
+  private func setupSubscriptions() {
+    guard let keyboardManager else { return }
+
+    // Subscribe to lock state changes
+    keyboardManager.$isLocked
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] isLocked in
+        self?.handleLockStateChange(isLocked)
+      }
+      .store(in: &cancellables)
   }
 
-  // MARK: - Private Methods
+  private func syncInitialState() {
+    handleLockStateChange(keyboardManager?.isLocked ?? false)
+  }
 
-  private func setupLockDurationTimer() {
-    cleanup()
-    guard isKeyboardLocked else { return }
+  private func handleLockStateChange(_ locked: Bool) {
+    isKeyboardLocked = locked
 
-    lockDurationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) {
-      [weak self] _ in
+    if locked {
+      startUIUpdateTimer()
+    } else {
+      stopUIUpdateTimer()
+    }
+  }
+
+  // MARK: - UI Update Timer
+
+  private func startUIUpdateTimer() {
+    stopUIUpdateTimer()
+
+    // Timer for UI updates (display refresh)
+    uiUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
       Task { @MainActor [weak self] in
         self?.objectWillChange.send()
       }
     }
+  }
+
+  private func stopUIUpdateTimer() {
+    uiUpdateTimer?.invalidate()
+    uiUpdateTimer = nil
   }
 }

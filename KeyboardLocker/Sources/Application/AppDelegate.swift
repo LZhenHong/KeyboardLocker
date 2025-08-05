@@ -4,16 +4,12 @@ import SwiftUI
 
 /// Custom AppDelegate for handling URL schemes and application lifecycle
 class AppDelegate: NSObject, NSApplicationDelegate {
-  var urlHandler: URLCommandHandler = .shared
-  var keyboardLockManager: KeyboardLockManaging?
+  var urlHandler: URLCommandHandler?
+  var keyboardLockManager: KeyboardLockManager?
 
-  func configure(_ manager: KeyboardLockManaging) {
+  func configure(_ manager: KeyboardLockManager, _ handler: URLCommandHandler) {
     keyboardLockManager = manager
-    urlHandler.setKeyboardLockManager(manager)
-  }
-
-  func applicationDidFinishLaunching(_: Notification) {
-    print("Application did finish launching")
+    urlHandler = handler
   }
 
   func applicationWillTerminate(_: Notification) {
@@ -43,6 +39,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   /// - Parameter url: The URL to process
   private func handleIncomingURL(_ url: URL) {
     print("📱 Received URL: \(url)")
+
+    guard let urlHandler else {
+      print("❌ URLHandler not configured")
+      return
+    }
 
     let response = urlHandler.handleURL(url)
     urlHandler.showUserFeedback(for: response)

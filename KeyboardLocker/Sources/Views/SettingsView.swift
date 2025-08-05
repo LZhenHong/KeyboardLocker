@@ -127,6 +127,6 @@ struct SettingsView: View {
 #Preview {
   NavigationStack {
     SettingsView()
-      .environmentObject(KeyboardLockManager())
+      .environmentObject(AppDependencies().keyboardLockManager)
   }
 }

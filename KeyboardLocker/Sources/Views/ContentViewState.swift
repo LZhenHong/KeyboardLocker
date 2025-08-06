@@ -48,6 +48,10 @@ class ContentViewState: ObservableObject {
     lock(with: selectedTimedLockDuration)
   }
 
+  func startTimedLock(with duration: CoreConfiguration.Duration) {
+    lock(with: duration)
+  }
+
   func startCustomTimedLock() {
     guard customMinutes > 0 else { return }
 

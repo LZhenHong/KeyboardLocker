@@ -212,7 +212,8 @@ public class KeyboardLockCore {
       let keycode = SafeEventHandler.getKeycode(from: event)
       let flags = SafeEventHandler.getFlags(from: event)
 
-      if keycode == Int64(unlockKeyCode), flags.contains(.maskCommand),
+      if keycode == Int64(unlockKeyCode),
+         flags.contains(.maskCommand),
          flags.contains(.maskAlternate)
       {
         print("🔑 Unlock hotkey detected: ⌘+⌥+L")

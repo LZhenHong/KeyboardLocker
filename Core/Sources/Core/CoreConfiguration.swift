@@ -202,12 +202,12 @@ public struct HotkeyConfiguration: Codable, CustomStringConvertible {
     self.displayString = displayString
   }
 
-  /// Default hotkey: Command+Shift+L
+  /// Default hotkey: Command+Option+L
   public static func defaultHotkey() -> HotkeyConfiguration {
     HotkeyConfiguration(
       keyCode: CoreConstants.defaultUnlockKeyCode,
-      modifierFlags: UInt32(cmdKey | shiftKey),
-      displayString: "⌘⇧L"
+      modifierFlags: UInt32(cmdKey | optionKey),
+      displayString: "⌘⌥L"
     )
   }
 

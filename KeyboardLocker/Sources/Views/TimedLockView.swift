@@ -33,13 +33,13 @@ private struct PresetButtonsSection: View {
     VStack(spacing: 8) {
       HStack(spacing: 8) {
         ForEach(Array(LockDurationHelper.timedLockPresets.prefix(2)), id: \.self) { duration in
-          PresetButton(duration: duration, action: state.startTimedLock)
+          PresetButton(duration: duration, action: { state.startTimedLock(with: duration) })
         }
       }
 
       HStack(spacing: 8) {
         ForEach(Array(LockDurationHelper.timedLockPresets.suffix(2)), id: \.self) { duration in
-          PresetButton(duration: duration, action: state.startTimedLock)
+          PresetButton(duration: duration, action: { state.startTimedLock(with: duration) })
         }
       }
     }

@@ -1,29 +1,6 @@
 import AppKit
 import ApplicationServices
 import Carbon
-import Foundation
-
-// MARK: - Event Handling Helpers
-
-private enum EventTypeFactory {
-  static func createEventMask() -> CGEventMask {
-    (1 << CGEventType.keyDown.rawValue) |
-      (1 << CGEventType.keyUp.rawValue) |
-      (1 << CGEventType.flagsChanged.rawValue) |
-      (1 << CGEventType.otherMouseDown.rawValue) |
-      (1 << CGEventType.otherMouseUp.rawValue)
-  }
-}
-
-private enum SafeEventHandler {
-  static func getFlags(from event: CGEvent) -> CGEventFlags {
-    event.flags
-  }
-
-  static func getKeycode(from event: CGEvent) -> Int64? {
-    event.getIntegerValueField(.keyboardEventKeycode)
-  }
-}
 
 /// Pure core keyboard locking engine - only handles low-level keyboard interception
 /// Business logic and UI concerns are handled by upper layers
@@ -34,19 +11,20 @@ public class KeyboardLockCore {
 
   // MARK: - State Properties (Read-Only)
 
-  private var eventTap: CFMachPort?
+  var eventTap: CFMachPort?
+
   private var runLoopSource: CFRunLoopSource?
-  private var _isLocked = false
-  private var _lockedAt: Date?
 
-  // Internal access for callback
-  var internalEventTap: CFMachPort? {
-    eventTap
-  }
+  /// Current keyboard lock state
+  public private(set) var isLocked = false
 
-  // Constants for hotkey detection
-  private let unlockKeyCode: UInt16 = CoreConstants.defaultUnlockKeyCode
-  private let unlockModifiers: UInt32 = .init(cmdKey | optionKey) // Cmd+Option
+  /// When keyboard was locked
+  public private(set) var lockedAt: Date?
+
+  // MARK: - Hotkey Configuration
+
+  /// Unlock hotkey configuration
+  public var unlockHotkey: HotkeyConfiguration = .defaultHotkey()
 
   // MARK: - Callbacks for UI Layer
 
@@ -56,22 +34,12 @@ public class KeyboardLockCore {
   /// Callback triggered when unlock hotkey is detected
   public var onUnlockHotkeyDetected: (() -> Void)?
 
-  // MARK: - Public Read-Only Properties
-
-  /// Current keyboard lock state
-  public var isKeyboardLocked: Bool {
-    _isLocked
-  }
-
-  /// When keyboard was locked
-  public var keyboardLockedAt: Date? {
-    _lockedAt
-  }
-
-  /// Current lock status for external systems (simplified for Core layer)
-  public var basicLockInfo: (isLocked: Bool, lockedAt: Date?) {
-    (_isLocked, _lockedAt)
-  }
+  static let eventMasks: CGEventMask =
+    (1 << CGEventType.keyDown.rawValue) |
+    (1 << CGEventType.keyUp.rawValue) |
+    (1 << CGEventType.flagsChanged.rawValue) |
+    (1 << CGEventType.otherMouseDown.rawValue) |
+    (1 << CGEventType.otherMouseUp.rawValue)
 
   // MARK: - Initialization
 
@@ -81,54 +49,74 @@ public class KeyboardLockCore {
     forceCleanup()
   }
 
-  // MARK: - Core Locking Methods
+  // MARK: - Hotkey Configuration Methods
+
+  /// Configure unlock hotkey combination
+  /// - Parameter hotkey: The hotkey configuration
+  public func configureUnlockHotkey(_ hotkey: HotkeyConfiguration) {
+    guard !isLocked else {
+      print("⚠️ Cannot change hotkey while keyboard is locked")
+      return
+    }
+
+    unlockHotkey = hotkey
+    print("🔧 Unlock hotkey configured: \(hotkey.description)")
+  }
+
+  /// Configure unlock hotkey combination (convenience method)
+  /// - Parameters:
+  ///   - keyCode: The key code for the unlock key
+  ///   - modifiers: The modifier flags (Command, Option, etc.)
+  ///   - displayString: The display string for the hotkey
+  public func configureUnlockHotkey(keyCode: UInt16, modifiers: UInt32, displayString: String) {
+    let hotkey = HotkeyConfiguration(keyCode: keyCode, modifierFlags: modifiers, displayString: displayString)
+    configureUnlockHotkey(hotkey)
+  }
+
+  /// Reset unlock hotkey to default (Cmd+Option+L)
+  public func resetUnlockHotkeyToDefault() {
+    configureUnlockHotkey(.defaultHotkey())
+  } // MARK: - Core Locking Methods
 
   /// Lock keyboard input
   /// - Throws: KeyboardLockError if locking fails
   public func lockKeyboard() throws {
-    guard !_isLocked else {
+    guard !isLocked else {
       throw KeyboardLockError.alreadyLocked
     }
 
-    // Use AX API directly.
-    let axOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): false]
-    guard AXIsProcessTrustedWithOptions(axOptions as CFDictionary) else {
+    // Check accessibility permission using PermissionHelper
+    guard PermissionHelper.checkAccessibilityPermission(promptUser: true) else {
       throw KeyboardLockError.permissionDenied
     }
 
     try createEventTap()
 
-    _isLocked = true
-    _lockedAt = Date()
+    isLocked = true
+    lockedAt = Date()
 
     // Notify business layer
-    onLockStateChanged?(_isLocked, _lockedAt)
+    onLockStateChanged?(isLocked, lockedAt)
   }
 
   /// Unlock keyboard input
   public func unlockKeyboard() {
-    guard _isLocked else {
+    guard isLocked else {
       return
     }
 
     destroyEventTap()
 
-    _isLocked = false
-    let wasLockedAt = _lockedAt
-    _lockedAt = nil
+    isLocked = false
+    lockedAt = nil
 
     // Notify business layer
-    onLockStateChanged?(_isLocked, nil)
-
-    if let lockedAt = wasLockedAt {
-      let duration = Date().timeIntervalSince(lockedAt)
-      print("🔓 Keyboard unlocked after \(formatDuration(duration))")
-    }
+    onLockStateChanged?(isLocked, nil)
   }
 
   /// Toggle lock state
   public func toggleLock() {
-    if _isLocked {
+    if isLocked {
       unlockKeyboard()
     } else {
       do {
@@ -139,23 +127,11 @@ public class KeyboardLockCore {
     }
   }
 
-  // MARK: - Utility Methods
-
-  /// Get lock duration string
-  public func getLockDurationString() -> String? {
-    guard let lockedAt = _lockedAt else { return nil }
-    let duration = Date().timeIntervalSince(lockedAt)
-    return formatDuration(duration)
-  }
-
   /// Force cleanup all resources
   public func forceCleanup() {
     print("🧹 KeyboardLockCore: Force cleanup initiated")
 
-    if _isLocked {
-      unlockKeyboard()
-    }
-
+    unlockKeyboard()
     destroyEventTap()
   }
 
@@ -163,13 +139,11 @@ public class KeyboardLockCore {
 
   /// Create event tap for keyboard monitoring
   private func createEventTap() throws {
-    let eventMask = EventTypeFactory.createEventMask()
-
     eventTap = CGEvent.tapCreate(
       tap: .cgSessionEventTap,
       place: .headInsertEventTap,
       options: .defaultTap,
-      eventsOfInterest: eventMask,
+      eventsOfInterest: Self.eventMasks,
       callback: globalEventCallback,
       userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
     )
@@ -205,45 +179,44 @@ public class KeyboardLockCore {
     }
   }
 
-  /// Handle keyboard events (internal for callback)
-  func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-    // Check for unlock hotkey combination
-    if type == .keyDown {
-      let keycode = SafeEventHandler.getKeycode(from: event)
-      let flags = SafeEventHandler.getFlags(from: event)
+  /// Check if the given flags match the required unlock modifiers
+  private func matchesUnlockModifiers(_ flags: CGEventFlags) -> Bool {
+    // Extract modifier flags from the event
+    let eventModifiers = flags.rawValue & (
+      CGEventFlags.maskCommand.rawValue |
+        CGEventFlags.maskAlternate.rawValue |
+        CGEventFlags.maskShift.rawValue |
+        CGEventFlags.maskControl.rawValue
+    )
 
-      if keycode == Int64(unlockKeyCode),
-         flags.contains(.maskCommand),
-         flags.contains(.maskAlternate)
-      {
-        print("🔑 Unlock hotkey detected: ⌘+⌥+L")
-
-        // Notify business layer through callback
-        DispatchQueue.main.async {
-          self.onUnlockHotkeyDetected?()
-        }
-
-        // Don't pass through this event
-        return nil
-      }
-    }
-
-    // Block all keyboard events when locked
-    return nil
+    // Compare with configured unlock modifiers
+    return eventModifiers == UInt64(unlockHotkey.modifierFlags)
   }
 
-  // MARK: - Helper Methods
-
-  /// Format duration for display
-  private func formatDuration(_ duration: TimeInterval) -> String {
-    let minutes = Int(duration) / 60
-    let seconds = Int(duration) % 60
-
-    if minutes > 0 {
-      return String(format: "%d:%02d", minutes, seconds)
-    } else {
-      return String(format: "%ds", seconds)
+  /// Handle keyboard events (internal for callback)
+  func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    // Only process keyDown events for unlock hotkey detection
+    guard type == .keyDown else {
+      return nil // Block all other events when locked
     }
+
+    let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+    let flags = event.flags
+
+    // Check for unlock hotkey combination
+    guard keycode == Int64(unlockHotkey.keyCode), matchesUnlockModifiers(flags) else {
+      return nil // Block this event, not the unlock hotkey
+    }
+
+    print("🔑 Unlock hotkey pressed: \(unlockHotkey.displayString)")
+
+    // Notify business layer through callback
+    DispatchQueue.main.async {
+      self.onUnlockHotkeyDetected?()
+    }
+
+    // Don't pass through this event
+    return nil
   }
 }
 
@@ -265,7 +238,7 @@ private func globalEventCallback(
   if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
     print("⚠️ Event tap disabled by system, attempting to re-enable...")
 
-    if let eventTap = core.internalEventTap {
+    if let eventTap = core.eventTap {
       CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
@@ -273,7 +246,7 @@ private func globalEventCallback(
   }
 
   // Only process events when locked
-  guard core.isKeyboardLocked else {
+  guard core.isLocked else {
     return Unmanaged.passUnretained(event)
   }
 

@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import Carbon
-import Foundation
 
 /// User activity monitor for tracking keyboard and mouse activity
 /// Used to implement proper auto-lock behavior that only starts counting when user stops activity
@@ -21,11 +20,7 @@ public class UserActivityMonitor {
   public var onAutoLockTriggered: (() -> Void)?
 
   /// Current auto-lock duration in seconds (0 = disabled)
-  public var autoLockDuration: TimeInterval = 0 {
-    didSet {
-      updateAutoLockTimer()
-    }
-  }
+  private var autoLockDuration: TimeInterval = 0
 
   /// Whether auto-lock is currently enabled
   public var isAutoLockEnabled: Bool {
@@ -39,13 +34,10 @@ public class UserActivityMonitor {
 
   // MARK: - Initialization
 
-  private init() {
-    print("🔍 UserActivityMonitor initialized")
-  }
+  private init() {}
 
   deinit {
     stopMonitoring()
-    print("🔍 UserActivityMonitor deallocated")
   }
 
   // MARK: - Public Methods
@@ -83,25 +75,28 @@ public class UserActivityMonitor {
   /// Enable auto-lock with specified duration
   /// - Parameter seconds: Duration in seconds (0 to disable)
   public func enableAutoLock(seconds: TimeInterval) {
-    autoLockDuration = seconds
     if seconds > 0 {
-      print("✅ Auto-lock enabled: \(Int(seconds / 60)) minutes")
+      print("✅ Auto-lock enabled: \(seconds) seconds")
+
+      autoLockDuration = seconds
+      updateAutoLockTimer()
     } else {
       print("❌ Auto-lock disabled")
+      stopAutoLockTimer()
     }
   }
 
   /// Disable auto-lock
   public func disableAutoLock() {
     autoLockDuration = 0
+    stopAutoLockTimer()
   }
 
   // MARK: - Private Methods
 
   private func createActivityEventTap() throws {
-    // Check accessibility permission
-    let axOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): false]
-    guard AXIsProcessTrustedWithOptions(axOptions as CFDictionary) else {
+    // Check accessibility permission using PermissionHelper
+    guard PermissionHelper.hasAccessibilityPermission() else {
       throw UserActivityError.permissionDenied
     }
 
@@ -127,9 +122,12 @@ public class UserActivityMonitor {
       options: .listenOnly, // Only listen, don't block events
       eventsOfInterest: CGEventMask(eventMask),
       callback: { _, _, event, refcon in
-        let monitor = Unmanaged<UserActivityMonitor>.fromOpaque(refcon!).takeUnretainedValue()
+        guard let refcon else {
+          return Unmanaged.passUnretained(event)
+        }
+        let monitor = Unmanaged<UserActivityMonitor>.fromOpaque(refcon).takeUnretainedValue()
         monitor.handleActivityEvent(event)
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
       },
       userInfo: Unmanaged.passUnretained(self).toOpaque()
     )
@@ -172,7 +170,9 @@ public class UserActivityMonitor {
   private func updateAutoLockTimer() {
     stopAutoLockTimer()
 
-    guard autoLockDuration > 0 else { return }
+    guard autoLockDuration > 0 else {
+      return
+    }
 
     // Start new timer
     autoLockTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -186,7 +186,10 @@ public class UserActivityMonitor {
   }
 
   private func checkAutoLock() {
-    guard autoLockDuration > 0 else { return }
+    guard autoLockDuration > 0 else {
+      stopAutoLockTimer()
+      return
+    }
 
     let timeSinceActivity = Date().timeIntervalSince(lastActivityTime)
 
@@ -194,7 +197,7 @@ public class UserActivityMonitor {
       // Trigger auto-lock
       stopAutoLockTimer()
       onAutoLockTriggered?()
-      print("🔒 Auto-lock triggered after \(Int(autoLockDuration / 60)) minutes of inactivity")
+      print("🔒 Auto-lock triggered after \(autoLockDuration) seconds of inactivity")
     }
   }
 }

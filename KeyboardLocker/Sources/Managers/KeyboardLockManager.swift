@@ -1,4 +1,3 @@
-import Combine
 import Core
 import SwiftUI
 
@@ -159,13 +158,7 @@ class KeyboardLockManager: ObservableObject {
 
   /// Check if auto-lock is enabled
   var isAutoLockEnabled: Bool {
-    config.autoLockDuration.isEnabled
-  }
-
-  /// Get/set notification preference
-  var showNotifications: Bool {
-    get { config.showNotifications }
-    set { config.showNotifications = newValue }
+    config.isAutoLockEnabled
   }
 
   // MARK: - Utility Methods
@@ -194,6 +187,13 @@ class KeyboardLockManager: ObservableObject {
       }
     }
 
+    // Setup unlock hotkey callback
+    core.onUnlockHotkeyDetected = { [weak self] in
+      DispatchQueue.main.async {
+        self?.unlockKeyboard()
+      }
+    }
+
     // Subscribe to configuration changes for auto-lock state
     config.$autoLockDuration
       .receive(on: DispatchQueue.main)
@@ -219,7 +219,7 @@ class KeyboardLockManager: ObservableObject {
   /// Enable auto-lock monitoring with current configuration
   private func enableAutoLockMonitoring() {
     let duration = config.autoLockDuration
-    if duration.isEnabled {
+    if isAutoLockEnabled {
       activityMonitor.enableAutoLock(seconds: duration.seconds)
       activityMonitor.onAutoLockTriggered = { [weak self] in
         self?.lockKeyboard()

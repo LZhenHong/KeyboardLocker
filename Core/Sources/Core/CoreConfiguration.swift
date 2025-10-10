@@ -1,6 +1,4 @@
 import Carbon
-import Combine
-import Foundation
 import SwiftUI
 
 /// Core configuration management for KeyboardLocker
@@ -15,21 +13,18 @@ public class CoreConfiguration: ObservableObject {
   private enum ConfigKeys: String, CaseIterable {
     case autoLockDuration
     case showNotifications
-    case launchAtLogin
-    case enableSounds
     case hotkey
-    case isFirstLaunch
     case appVersion
   }
 
-  public enum Duration: Codable, Equatable, Hashable, Identifiable {
+  public enum Duration: Codable, Equatable, Hashable, Identifiable, RawRepresentable {
     case never
     case infinite
     case minutes(Int) // Duration in minutes
 
-    // MARK: - Identifiable
+    // MARK: - RawRepresentable
 
-    public var id: String {
+    public var rawValue: String {
       switch self {
       case .never:
         "never"
@@ -38,6 +33,27 @@ public class CoreConfiguration: ObservableObject {
       case let .minutes(minutes):
         "minutes_\(minutes)"
       }
+    }
+
+    public init?(rawValue: String) {
+      if rawValue == "never" {
+        self = .never
+      } else if rawValue == "infinite" {
+        self = .infinite
+      } else if rawValue.hasPrefix("minutes_"),
+                let minutesString = rawValue.components(separatedBy: "_").last,
+                let minutes = Int(minutesString)
+      {
+        self = .minutes(minutes)
+      } else {
+        return nil
+      }
+    }
+
+    // MARK: - Identifiable
+
+    public var id: String {
+      rawValue
     }
 
     /// Convert to minutes
@@ -61,44 +77,27 @@ public class CoreConfiguration: ObservableObject {
         TimeInterval(minutes * 60)
       }
     }
-
-    /// Whether auto-lock is enabled
-    public var isEnabled: Bool {
-      self != .never
-    }
   }
 
   // MARK: - Published Properties with AppStorage
 
-  /// Auto-lock configuration using enum instead of raw values
-  @AppStorage("autoLockDuration") private var storedAutoLockMinutes: Int = 0
-
-  @Published public var autoLockDuration: Duration = .never {
-    didSet {
-      storedAutoLockMinutes = autoLockDuration.minutes
-    }
-  }
+  /// Auto-lock configuration using enum with RawRepresentable
+  @AppStorage("io.lzhlovesjyq.keyboardlocker.autolockduration")
+  public var autoLockDuration: Duration = .never
 
   /// Whether to show system notifications
-  @AppStorage("showNotifications") public var showNotifications: Bool = true
+  @AppStorage("io.lzhlovesjyq.keyboardlocker.shownotifications")
+  public var showNotifications: Bool = true
 
-  /// Whether to launch app at login
-  @AppStorage("launchAtLogin") public var launchAtLogin: Bool = false
-
-  /// Hotkey configuration (using Carbon key codes)
-  @Published public var hotkey: HotkeyConfiguration = .defaultHotkey() {
-    didSet {
-      if let data = try? JSONEncoder().encode(hotkey) {
-        UserDefaults.standard.set(data, forKey: ConfigKeys.hotkey.rawValue)
-      }
-    }
-  }
+  /// Hotkey configuration using RawRepresentable
+  @AppStorage("io.lzhlovesjyq.keyboardlocker.hotkey")
+  public var hotkey: HotkeyConfiguration = .defaultHotkey()
 
   // MARK: - Computed Properties
 
   /// Check if auto-lock is enabled
   public var isAutoLockEnabled: Bool {
-    autoLockDuration.isEnabled
+    autoLockDuration != .never && autoLockDuration != .infinite
   }
 
   /// Auto-lock duration in seconds
@@ -106,84 +105,49 @@ public class CoreConfiguration: ObservableObject {
     autoLockDuration.seconds
   }
 
-  // MARK: - Non-Published Properties with AppStorage
-
-  /// Whether this is the first app launch
-  @AppStorage("isFirstLaunch") public var isFirstLaunch: Bool = true
-
-  /// Current app version
-  @AppStorage("appVersion") public var appVersion: String = "1.0.0"
-
   // MARK: - Initialization
 
-  private init() {
-    loadConfiguration()
-  }
+  private init() {}
 
   // MARK: - Configuration Management
-
-  /// Load configuration from UserDefaults
-  public func loadConfiguration() {
-    // Load auto-lock duration from stored minutes
-    autoLockDuration = storedAutoLockMinutes == 0 ? .never : .minutes(storedAutoLockMinutes)
-
-    // Load hotkey configuration
-    if let data = UserDefaults.standard.data(forKey: ConfigKeys.hotkey.rawValue),
-       let decodedHotkey = try? JSONDecoder().decode(HotkeyConfiguration.self, from: data)
-    {
-      hotkey = decodedHotkey
-    } else {
-      hotkey = HotkeyConfiguration.defaultHotkey()
-    }
-  }
 
   /// Reset configuration to default values
   public func resetToDefaults() {
     autoLockDuration = .never
     showNotifications = true
-    launchAtLogin = false
     hotkey = HotkeyConfiguration.defaultHotkey()
-    isFirstLaunch = false
   }
 
   /// Export configuration as dictionary
-  public func exportConfiguration() -> [String: Any] {
+  public func export(with appVersion: String) -> [String: Any] {
     [
-      ConfigKeys.autoLockDuration.rawValue: autoLockDuration.minutes,
+      ConfigKeys.autoLockDuration.rawValue: autoLockDuration.rawValue,
       ConfigKeys.showNotifications.rawValue: showNotifications,
-      ConfigKeys.launchAtLogin.rawValue: launchAtLogin,
-      ConfigKeys.hotkey.rawValue: (try? JSONEncoder().encode(hotkey)) ?? Data(),
-      ConfigKeys.isFirstLaunch.rawValue: isFirstLaunch,
+      ConfigKeys.hotkey.rawValue: hotkey.rawValue,
       ConfigKeys.appVersion.rawValue: appVersion,
     ]
   }
 
   /// Import configuration from dictionary
   public func importConfiguration(_ config: [String: Any]) {
-    if let duration = config[ConfigKeys.autoLockDuration.rawValue] as? Int {
-      autoLockDuration = duration == 0 ? .never : .minutes(duration)
+    if let rawValue = config[ConfigKeys.autoLockDuration.rawValue] as? String,
+       let duration = Duration(rawValue: rawValue)
+    {
+      autoLockDuration = duration
     }
 
     if let notifications = config[ConfigKeys.showNotifications.rawValue] as? Bool {
       showNotifications = notifications
     }
 
-    if let login = config[ConfigKeys.launchAtLogin.rawValue] as? Bool {
-      launchAtLogin = login
-    }
-
-    if let hotkeyData = config[ConfigKeys.hotkey.rawValue] as? Data,
-       let decodedHotkey = try? JSONDecoder().decode(HotkeyConfiguration.self, from: hotkeyData)
+    if let rawValue = config[ConfigKeys.hotkey.rawValue] as? String,
+       let hotkeyConfig = HotkeyConfiguration(rawValue: rawValue)
     {
-      hotkey = decodedHotkey
+      hotkey = hotkeyConfig
     }
 
-    if let firstLaunch = config[ConfigKeys.isFirstLaunch.rawValue] as? Bool {
-      isFirstLaunch = firstLaunch
-    }
-
-    if let version = config[ConfigKeys.appVersion.rawValue] as? String {
-      appVersion = version
+    if let _ = config[ConfigKeys.appVersion.rawValue] as? String {
+      /// Store app version for compatibility checks
     }
   }
 }
@@ -191,7 +155,7 @@ public class CoreConfiguration: ObservableObject {
 // MARK: - Hotkey Configuration
 
 /// Hotkey configuration structure
-public struct HotkeyConfiguration: Codable, CustomStringConvertible {
+public struct HotkeyConfiguration: Codable, CustomStringConvertible, RawRepresentable {
   public let keyCode: UInt16
   public let modifierFlags: UInt32
   public let displayString: String
@@ -200,6 +164,26 @@ public struct HotkeyConfiguration: Codable, CustomStringConvertible {
     self.keyCode = keyCode
     self.modifierFlags = modifierFlags
     self.displayString = displayString
+  }
+
+  // MARK: - RawRepresentable
+
+  public var rawValue: String {
+    "\(keyCode):\(modifierFlags):\(displayString)"
+  }
+
+  public init?(rawValue: String) {
+    let components = rawValue.components(separatedBy: ":")
+    guard components.count == 3,
+          let keyCode = UInt16(components[0]),
+          let modifierFlags = UInt32(components[1])
+    else {
+      return nil
+    }
+
+    self.keyCode = keyCode
+    self.modifierFlags = modifierFlags
+    displayString = components[2]
   }
 
   /// Default hotkey: Command+Option+L

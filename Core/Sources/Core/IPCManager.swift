@@ -1,5 +1,4 @@
 import AppKit
-import Foundation
 
 // MARK: - XPC Service Protocol
 
@@ -18,7 +17,10 @@ public class IPCManager: NSObject {
 
   private let serviceName = CoreConstants.ipcServiceName
   private var listener: NSXPCListener?
-  private var isServerRunning = false
+
+  private var isServerRunning: Bool {
+    listener != nil
+  }
 
   // MARK: - Initialization
 
@@ -38,7 +40,6 @@ public class IPCManager: NSObject {
     listener = NSXPCListener(machServiceName: serviceName)
     listener?.delegate = self
     listener?.resume()
-    isServerRunning = true
 
     print("🚀 IPC Server started on service: \(serviceName)")
   }
@@ -47,7 +48,6 @@ public class IPCManager: NSObject {
   public func stopServer() {
     listener?.invalidate()
     listener = nil
-    isServerRunning = false
     print("🛑 IPC Server stopped")
   }
 
@@ -57,61 +57,53 @@ public class IPCManager: NSObject {
   /// - Parameters:
   ///   - command: The command to execute
   ///   - timeout: Timeout in seconds
-  ///   - completion: Completion handler with response
+  /// - Returns: Response from the main app
   public func sendCommand(
     _ command: IPCCommand,
-    timeout _: TimeInterval = CoreConstants.ipcTimeout,
-    completion: @escaping (Result<IPCResponse, Error>) -> Void
-  ) {
-    // Check if main app is running first
-    guard isMainAppRunning() else {
-      completion(.failure(CoreError.mainAppNotRunning))
-      return
-    }
-
-    let connection = NSXPCConnection(machServiceName: serviceName, options: [])
-    connection.remoteObjectInterface = NSXPCInterface(with: IPCServiceProtocol.self)
-
-    connection.interruptionHandler = {
-      completion(.failure(CoreError.ipcConnectionFailed))
-    }
-
-    connection.invalidationHandler = {
-      // Connection will be cleaned up automatically
-    }
-
-    connection.resume()
-
-    guard let service = connection.remoteObjectProxy as? IPCServiceProtocol else {
-      connection.invalidate()
-      completion(.failure(CoreError.ipcConnectionFailed))
-      return
-    }
-
-    service.executeCommand(command.rawValue) { responseDict in
-      DispatchQueue.main.async {
-        connection.invalidate()
-
-        let response = self.parseResponse(from: responseDict)
-        completion(.success(response))
-      }
-    }
-  }
-
-  /// Simplified async/await version for modern Swift
-  @available(macOS 10.15, *)
-  public func sendCommand(_ command: IPCCommand, timeout: TimeInterval = CoreConstants.ipcTimeout)
-    async throws -> IPCResponse
-  {
+    timeout _: TimeInterval = CoreConstants.ipcTimeout
+  ) async throws -> IPCResponse {
     try await withCheckedThrowingContinuation { continuation in
-      sendCommand(command, timeout: timeout) { result in
-        continuation.resume(with: result)
+      // Check if main app is running first
+      guard isMainAppRunning() else {
+        continuation.resume(throwing: CoreError.mainAppNotRunning)
+        return
+      }
+
+      let connection = NSXPCConnection(machServiceName: serviceName)
+      connection.remoteObjectInterface = NSXPCInterface(with: IPCServiceProtocol.self)
+
+      connection.interruptionHandler = {
+        continuation.resume(throwing: CoreError.ipcConnectionFailed)
+      }
+
+      connection.invalidationHandler = {
+        // Connection will be cleaned up automatically
+      }
+
+      connection.resume()
+
+      guard let service = connection.remoteObjectProxy as? IPCServiceProtocol else {
+        connection.invalidate()
+        continuation.resume(throwing: CoreError.ipcConnectionFailed)
+        return
+      }
+
+      service.executeCommand(command.rawValue) { [weak self] responseDict in
+        defer { connection.invalidate() }
+
+        guard let self else {
+          continuation.resume(throwing: CoreError.ipcConnectionFailed)
+          return
+        }
+
+        let response = parseResponse(from: responseDict)
+        continuation.resume(returning: response)
       }
     }
   }
 
   /// Check if main app is running
-  public func isMainAppRunning() -> Bool {
+  private func isMainAppRunning() -> Bool {
     let runningApps = NSWorkspace.shared.runningApplications
     return runningApps.contains { app in
       app.bundleIdentifier == CoreConstants.mainAppBundleID
@@ -130,27 +122,25 @@ public class IPCManager: NSObject {
   }
 
   /// Convert IPCResponse to dictionary for XPC
-  func responseToDict(_ response: IPCResponse) -> [String: Any] {
-    var dict: [String: Any] = [
+  func responseToObject(_ response: IPCResponse) -> [String: Any] {
+    var obj: [String: Any] = [
       "success": response.success,
       "message": response.message,
       "timestamp": response.timestamp.timeIntervalSince1970,
     ]
 
     if let data = response.data {
-      dict["data"] = data
+      obj["data"] = data
     }
 
-    return dict
+    return obj
   }
 }
 
 // MARK: - XPC Listener Delegate
 
 extension IPCManager: NSXPCListenerDelegate {
-  public func listener(_: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection)
-    -> Bool
-  {
+  public func listener(_: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
     newConnection.exportedInterface = NSXPCInterface(with: IPCServiceProtocol.self)
     newConnection.exportedObject = IPCServiceHandler()
     newConnection.resume()
@@ -165,14 +155,14 @@ public class IPCServiceHandler: NSObject, IPCServiceProtocol {
   public func executeCommand(_ command: String, withReply reply: @escaping ([String: Any]) -> Void) {
     guard let ipcCommand = IPCCommand(rawValue: command) else {
       let response = IPCResponse.error("Unknown command: \(command)")
-      reply(IPCManager.shared.responseToDict(response))
+      reply(IPCManager.shared.responseToObject(response))
       return
     }
 
     // Execute command on main queue
     DispatchQueue.main.async {
       let response = self.handleCommand(ipcCommand)
-      reply(IPCManager.shared.responseToDict(response))
+      reply(IPCManager.shared.responseToObject(response))
     }
   }
 
@@ -192,72 +182,23 @@ public class IPCServiceHandler: NSObject, IPCServiceProtocol {
 
       case .toggle:
         lockCore.toggleLock()
-        let coreInfo = lockCore.basicLockInfo
-        let statusMessage = coreInfo.isLocked ? "locked" : "unlocked"
+        let statusMessage = lockCore.isLocked ? "locked" : "unlocked"
         return IPCResponse.success("Keyboard \(statusMessage) successfully")
 
       case .status:
-        let coreInfo = lockCore.basicLockInfo
         let status = LockStatus(
-          isLocked: coreInfo.isLocked,
-          lockedAt: coreInfo.lockedAt,
-          autoLockEnabled: false, // Auto-lock is now in business layer
-          autoLockInterval: 0 // Auto-lock is now in business layer
+          isLocked: lockCore.isLocked,
+          lockedAt: lockCore.lockedAt
         )
         return IPCResponse.success(
           "Keyboard is currently \(status.isLocked ? "locked" : "unlocked")",
           data: status.toDictionary()
         )
-
-      case .quit:
-        // Schedule app termination after sending response
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-          NSApplication.shared.terminate(nil)
-        }
-        return IPCResponse.success("Quitting application")
       }
-
     } catch let error as CoreError {
       return IPCResponse.error(error.localizedDescription)
     } catch {
       return IPCResponse.error("Unexpected error: \(error.localizedDescription)")
-    }
-  }
-}
-
-// MARK: - Extensions
-
-public extension IPCManager {
-  /// Convenience method to get status
-  func getStatus(completion: @escaping (Result<LockStatus, Error>) -> Void) {
-    sendCommand(.status) { result in
-      switch result {
-      case let .success(response):
-        if response.success, let data = response.data {
-          let isLocked = data["locked"] == "true"
-          let autoLockEnabled = data["autoLockEnabled"] == "true"
-          let autoLockInterval = Int(data["autoLockInterval"] ?? "0") ?? 0
-
-          var lockedAt: Date?
-          if let lockedAtString = data["lockedAt"] {
-            let formatter = ISO8601DateFormatter()
-            lockedAt = formatter.date(from: lockedAtString)
-          }
-
-          let status = LockStatus(
-            isLocked: isLocked,
-            lockedAt: lockedAt,
-            autoLockEnabled: autoLockEnabled,
-            autoLockInterval: autoLockInterval
-          )
-          completion(.success(status))
-        } else {
-          completion(.failure(CoreError.invalidCommand))
-        }
-
-      case let .failure(error):
-        completion(.failure(error))
-      }
     }
   }
 }

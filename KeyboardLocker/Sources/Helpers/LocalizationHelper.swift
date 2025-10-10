@@ -1,4 +1,3 @@
-import Foundation
 import SwiftUI
 
 // MARK: - Bundle Extensions for App Info
@@ -106,20 +105,6 @@ enum LocalizationKey {
   static let durationMinutes = "duration.minutes" // "%d minute(s)"
   static let durationHours = "duration.hours" // "%d hour(s)"
   static let durationHoursMinutes = "duration.hours.minutes" // "%d hour(s) %d minute(s)"
-
-  // Duration descriptions for settings
-  static let durationNeverDescription = "duration.never.description"
-  static let durationInfiniteDescription = "duration.infinite.description"
-  static let durationMinutesDescription = "duration.minutes.description"
-  static let durationHoursDescription = "duration.hours.description"
-  static let durationHoursMinutesDescription = "duration.hours.minutes.description"
-  static let durationAutoUnlock = "duration.auto.unlock" // "Auto unlock after %@"
-
-  // Countdown formatting
-  static let countdownFinished = "countdown.finished"
-  static let countdownHoursFormat = "countdown.hours.format"
-  static let countdownMinutesFormat = "countdown.minutes.format"
-  static let countdownSecondsFormat = "countdown.seconds.format"
 
   // Timed Lock
   static let timedLockTitle = "timed.lock.title"

@@ -1,4 +1,3 @@
-import Combine
 import Core
 import SwiftUI
 
@@ -15,10 +14,6 @@ class ContentViewState: ObservableObject {
 
   var keyboardManager: KeyboardLockManager?
   private var cancellables = Set<AnyCancellable>()
-
-  // MARK: - UI State Timer
-
-  private var uiUpdateTimer: Timer?
 
   // MARK: - Computed Properties
 
@@ -39,7 +34,6 @@ class ContentViewState: ObservableObject {
 
   func cleanup() {
     cancellables.removeAll()
-    stopUIUpdateTimer()
   }
 
   // MARK: - Public Methods
@@ -86,29 +80,5 @@ class ContentViewState: ObservableObject {
 
   private func handleLockStateChange(_ locked: Bool) {
     isKeyboardLocked = locked
-
-    if locked {
-      startUIUpdateTimer()
-    } else {
-      stopUIUpdateTimer()
-    }
-  }
-
-  // MARK: - UI Update Timer
-
-  private func startUIUpdateTimer() {
-    stopUIUpdateTimer()
-
-    // Timer for UI updates (display refresh)
-    uiUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-      Task { @MainActor [weak self] in
-        self?.objectWillChange.send()
-      }
-    }
-  }
-
-  private func stopUIUpdateTimer() {
-    uiUpdateTimer?.invalidate()
-    uiUpdateTimer = nil
   }
 }

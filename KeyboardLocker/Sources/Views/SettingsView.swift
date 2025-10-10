@@ -32,8 +32,8 @@ struct SettingsView: View {
           Picker(
             LocalizationKey.timeAutoLockDuration.localized, selection: $coreConfig.autoLockDuration
           ) {
-            ForEach(LockDurationHelper.autoLockPresets, id: \.self) { duration in
-              Text(LockDurationHelper.localizedDisplayString(for: duration))
+            ForEach(AutoLockInterval.autoLockPresets, id: \.self) { duration in
+              Text(duration.localized)
                 .tag(duration)
             }
           }
@@ -41,7 +41,7 @@ struct SettingsView: View {
         }
 
         // Show current activity status if auto-lock is enabled
-        if coreConfig.autoLockDuration.isEnabled {
+        if coreConfig.isAutoLockEnabled {
           HStack {
             Image(systemName: "timer")
               .foregroundColor(.secondary)

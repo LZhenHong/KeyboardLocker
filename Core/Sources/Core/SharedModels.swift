@@ -44,7 +44,6 @@ public enum IPCCommand: String, Codable, CaseIterable {
   case unlock
   case toggle
   case status
-  case quit
 
   public var description: String {
     switch self {
@@ -56,8 +55,6 @@ public enum IPCCommand: String, Codable, CaseIterable {
       "Toggle keyboard lock status"
     case .status:
       "Get current keyboard lock status"
-    case .quit:
-      "Quit the main application"
     }
   }
 }
@@ -126,10 +123,10 @@ public enum CoreError: Error, LocalizedError {
 /// Shared constants used across the application
 public enum CoreConstants {
   /// IPC service name for XPC communication
-  public static let ipcServiceName = "com.keyboardlocker.ipc"
+  public static let ipcServiceName = "io.lzhlovesjyq.keyboardlocker.ipc"
 
   /// Main app bundle identifier
-  public static let mainAppBundleID = "com.keyboardlocker.app"
+  public static let mainAppBundleID = "io.lzhlovesjyq.KeyboardLocker"
 
   /// Default unlock key combination (Cmd + Option + L)
   public static let defaultUnlockKeyCode: UInt16 = 37 // 'L' key
@@ -144,28 +141,18 @@ public enum CoreConstants {
 public struct LockStatus: Codable {
   public let isLocked: Bool
   public let lockedAt: Date?
-  public let autoLockEnabled: Bool
-  public let autoLockInterval: Int // minutes, 0 for never
 
   public init(
     isLocked: Bool,
-    lockedAt: Date? = nil,
-    autoLockEnabled: Bool = false,
-    autoLockInterval: Int = 0
+    lockedAt: Date? = nil
   ) {
     self.isLocked = isLocked
     self.lockedAt = lockedAt
-    self.autoLockEnabled = autoLockEnabled
-    self.autoLockInterval = autoLockInterval
   }
 
   /// Convert to dictionary for IPC data
   public func toDictionary() -> [String: String] {
-    var dict: [String: String] = [
-      "locked": isLocked ? "true" : "false",
-      "autoLockEnabled": autoLockEnabled ? "true" : "false",
-      "autoLockInterval": "\(autoLockInterval)",
-    ]
+    var dict: [String: String] = ["locked": isLocked ? "true" : "false"]
 
     if let lockedAt {
       let formatter = ISO8601DateFormatter()

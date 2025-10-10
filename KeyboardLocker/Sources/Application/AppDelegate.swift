@@ -12,6 +12,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     urlHandler = handler
   }
 
+  func applicationWillFinishLaunching(_: Notification) {
+    IPCManager.shared.startServer()
+  }
+
+  func applicationDidFinishLaunching(_: Notification) {
+    setupExceptionHandling()
+  }
+
   func applicationWillTerminate(_: Notification) {
     print("Application will terminate - cleaning up")
     // Stop IPC server
@@ -23,6 +31,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillResignActive(_: Notification) {
     print("Application will resign active - ensuring keyboard is unlocked")
     keyboardLockManager?.unlockKeyboard()
+  }
+
+  // MARK: - Exception Handling
+
+  /// Setup NSException handler for crash recovery
+  private func setupExceptionHandling() {
+    NSSetUncaughtExceptionHandler { exception in
+      print("Uncaught exception: \(exception)")
+      print("Stack trace: \(exception.callStackSymbols)")
+
+      // Attempt to unlock keyboard before crash - safety measure
+      DispatchQueue.main.async {
+        // Force unlock using Core directly (emergency safety)
+        KeyboardLockCore.shared.unlockKeyboard()
+
+        // Give time for cleanup before exit
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+          exit(1) // Graceful exit
+        }
+      }
+    }
   }
 
   // MARK: - URL Handling

@@ -1,5 +1,4 @@
 import AppKit
-import Foundation
 
 /// Handles URL scheme requests for keyboard control operations
 class URLCommandHandler {
@@ -188,34 +187,11 @@ class URLCommandHandler {
     DispatchQueue.main.async {
       print("💬 User feedback: \(response.message)")
 
-      // Send notification to user about the URL command result
-      self.sendNotification(
+      self.notificationManager.sendNotification(
         title: LocalizationKey.appTitle.localized,
         body: response.message,
         isError: !response.isSuccess
       )
     }
-  }
-
-  /// Send notification to user using NotificationManager
-  /// - Parameters:
-  ///   - title: Notification title
-  ///   - body: Notification body message
-  ///   - isError: Whether this is an error notification
-  private func sendNotification(title: String, body: String, isError: Bool = false) {
-    notificationManager.sendNotification(title: title, body: body, isError: isError)
-  }
-}
-
-/// Extension to provide convenience methods for testing
-extension URLCommandHandler {
-  /// Test URL creation helper
-  static func createTestURL(for command: URLCommand) -> URL? {
-    URL(string: "keyboardlocker://\(command.rawValue)")
-  }
-
-  /// Get all supported commands for documentation
-  static func getSupportedCommands() -> [String] {
-    URLCommand.allCases.map { "keyboardlocker://\($0.rawValue)" }
   }
 }

@@ -33,38 +33,27 @@ struct QuickActionsView: View {
         .foregroundColor(.secondary)
 
       VStack(spacing: 6) {
-        SettingsNavigation(keyboardManager: keyboardManager)
-        AboutNavigation()
+        NavigationLink(
+          destination: SettingsView().environmentObject(keyboardManager)
+        ) {
+          SettingRow(
+            icon: "gear",
+            title: LocalizationKey.settingsTitle.localized,
+            subtitle: LocalizationKey.settingsSubtitle.localized
+          )
+        }
+        .buttonStyle(PlainButtonStyle())
+
+        NavigationLink(destination: AboutView()) {
+          SettingRow(
+            icon: "info.circle",
+            title: LocalizationKey.aboutTitle.localized,
+            subtitle: LocalizationKey.aboutSubtitle.localized
+          )
+        }
+        .buttonStyle(PlainButtonStyle())
       }
     }
-  }
-}
-
-private struct SettingsNavigation: View {
-  let keyboardManager: KeyboardLockManager
-
-  var body: some View {
-    NavigationLink(destination: SettingsView().environmentObject(keyboardManager)) {
-      SettingRow(
-        icon: "gear",
-        title: LocalizationKey.settingsTitle.localized,
-        subtitle: LocalizationKey.settingsSubtitle.localized
-      )
-    }
-    .buttonStyle(PlainButtonStyle())
-  }
-}
-
-private struct AboutNavigation: View {
-  var body: some View {
-    NavigationLink(destination: AboutView()) {
-      SettingRow(
-        icon: "info.circle",
-        title: LocalizationKey.aboutTitle.localized,
-        subtitle: LocalizationKey.aboutSubtitle.localized
-      )
-    }
-    .buttonStyle(PlainButtonStyle())
   }
 }
 

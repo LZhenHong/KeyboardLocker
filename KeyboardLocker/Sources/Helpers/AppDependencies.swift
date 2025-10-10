@@ -1,5 +1,4 @@
 import Core
-import Foundation
 
 /// Application dependency container
 /// Responsible for creating and managing all dependencies, ensuring single responsibility and clear dependency flow

@@ -1,27 +1,23 @@
 import Core
 import SwiftUI
 
+private typealias LockInterval = CoreConfiguration.Duration
+
 struct TimedLockControlsView: View {
   @ObservedObject var state: ContentViewState
 
   var body: some View {
     VStack(spacing: 12) {
-      TimedLockHeader()
+      HStack {
+        Text(LocalizationKey.timedLockTitle.localized)
+          .font(.subheadline)
+          .fontWeight(.medium)
+          .foregroundColor(.primary)
+        Spacer()
+      }
       PresetButtonsSection(state: state)
       Divider()
       CustomDurationSection(state: state)
-    }
-  }
-}
-
-private struct TimedLockHeader: View {
-  var body: some View {
-    HStack {
-      Text(LocalizationKey.timedLockTitle.localized)
-        .font(.subheadline)
-        .fontWeight(.medium)
-        .foregroundColor(.primary)
-      Spacer()
     }
   }
 }
@@ -30,17 +26,17 @@ private struct PresetButtonsSection: View {
   @ObservedObject var state: ContentViewState
 
   var body: some View {
-    VStack(spacing: 8) {
-      HStack(spacing: 8) {
-        ForEach(Array(LockDurationHelper.timedLockPresets.prefix(2)), id: \.self) { duration in
-          PresetButton(duration: duration, action: { state.startTimedLock(with: duration) })
-        }
-      }
+    let presets = LockInterval.timedLockPresets
+    let columns = [
+      GridItem(.flexible()),
+      GridItem(.flexible()),
+      GridItem(.flexible()),
+      GridItem(.flexible()),
+    ]
 
-      HStack(spacing: 8) {
-        ForEach(Array(LockDurationHelper.timedLockPresets.suffix(2)), id: \.self) { duration in
-          PresetButton(duration: duration, action: { state.startTimedLock(with: duration) })
-        }
+    LazyVGrid(columns: columns, spacing: 8) {
+      ForEach(presets, id: \.self) { duration in
+        PresetButton(duration: duration, action: { state.startTimedLock(with: duration) })
       }
     }
   }
@@ -51,19 +47,13 @@ private struct CustomDurationSection: View {
 
   var body: some View {
     VStack(spacing: 8) {
-      CustomDurationHeader()
+      HStack {
+        Text(LocalizationKey.timedLockCustom.localized)
+          .font(.caption)
+          .foregroundColor(.secondary)
+        Spacer()
+      }
       CustomDurationControls(state: state)
-    }
-  }
-}
-
-private struct CustomDurationHeader: View {
-  var body: some View {
-    HStack {
-      Text(LocalizationKey.timedLockCustom.localized)
-        .font(.caption)
-        .foregroundColor(.secondary)
-      Spacer()
     }
   }
 }
@@ -84,28 +74,20 @@ private struct CustomDurationControls: View {
 
       Spacer()
 
-      CustomLockButton(action: state.startCustomTimedLock)
-    }
-  }
-}
-
-private struct CustomLockButton: View {
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack {
-        Image(systemName: "timer")
-        Text(LocalizationKey.timedLockStart.localized)
+      Button(action: state.startCustomTimedLock) {
+        HStack {
+          Image(systemName: "timer")
+          Text(LocalizationKey.timedLockStart.localized)
+        }
+        .font(.caption)
+        .foregroundColor(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
       }
-      .font(.caption)
-      .padding(.horizontal, 12)
-      .padding(.vertical, 6)
       .background(Color.orange)
-      .foregroundColor(.white)
       .cornerRadius(8)
+      .buttonStyle(PlainButtonStyle())
     }
-    .buttonStyle(PlainButtonStyle())
   }
 }
 
@@ -115,14 +97,14 @@ struct PresetButton: View {
 
   var body: some View {
     Button(action: action) {
-      Text(LockDurationHelper.localizedDisplayString(for: duration))
+      Text(duration.localized)
         .font(.caption)
+        .foregroundColor(.white)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange)
-        .foregroundColor(.white)
-        .cornerRadius(16)
     }
+    .background(Color.orange)
+    .cornerRadius(16)
     .buttonStyle(PlainButtonStyle())
   }
 }

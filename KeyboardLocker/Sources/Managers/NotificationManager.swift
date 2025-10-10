@@ -169,6 +169,14 @@ class NotificationManager: ObservableObject {
       return
     }
 
+    // Remove previous keyboard status notifications to keep only one
+    switch type {
+    case .keyboardLocked, .keyboardUnlocked:
+      removePreviousKeyboardNotifications()
+    default:
+      break
+    }
+
     let content = UNMutableNotificationContent()
     content.title = type.title
     content.body = type.body
@@ -215,28 +223,21 @@ class NotificationManager: ObservableObject {
   /// - Parameter category: The category to remove
   func removeNotifications(for category: NotificationCategory) {
     notificationCenter.getPendingNotificationRequests { [weak self] requests in
-      let identifiersToRemove =
-        requests
-          .filter { $0.content.categoryIdentifier == category.identifier }
-          .map(\.identifier)
+      let identifiersToRemove = requests
+        .filter { $0.content.categoryIdentifier == category.identifier }
+        .map(\.identifier)
 
-      self?.notificationCenter.removePendingNotificationRequests(
-        withIdentifiers: identifiersToRemove)
-      print(
-        "🗑️ Removed \(identifiersToRemove.count) pending notifications for category: \(category.identifier)"
-      )
+      self?.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+      print("🗑️ Removed \(identifiersToRemove.count) pending notifications for category: \(category.identifier)")
     }
 
     notificationCenter.getDeliveredNotifications { [weak self] notifications in
-      let identifiersToRemove =
-        notifications
-          .filter { $0.request.content.categoryIdentifier == category.identifier }
-          .map(\.request.identifier)
+      let identifiersToRemove = notifications
+        .filter { $0.request.content.categoryIdentifier == category.identifier }
+        .map(\.request.identifier)
 
       self?.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
-      print(
-        "🗑️ Removed \(identifiersToRemove.count) delivered notifications for category: \(category.identifier)"
-      )
+      print("🗑️ Removed \(identifiersToRemove.count) delivered notifications for category: \(category.identifier)")
     }
   }
 
@@ -281,19 +282,35 @@ class NotificationManager: ObservableObject {
   }
 
   private func generateNotificationIdentifier(for type: NotificationType) -> String {
-    let timestamp = Date().timeIntervalSince1970
+    // Use fixed identifiers for keyboard status to replace old notifications
     switch type {
     case .keyboardLocked:
-      return "keyboard_locked_\(timestamp)"
+      return "keyboard_status_locked"
+
     case .keyboardUnlocked:
-      return "keyboard_unlocked_\(timestamp)"
+      return "keyboard_status_unlocked"
+
     case .urlCommandSuccess:
+      let timestamp = Date().timeIntervalSince1970
       return "url_success_\(timestamp)"
+
     case .urlCommandError:
+      let timestamp = Date().timeIntervalSince1970
       return "url_error_\(timestamp)"
+
     case .general:
+      let timestamp = Date().timeIntervalSince1970
       return "general_\(timestamp)"
     }
+  }
+
+  /// Remove previous keyboard status notifications to keep only one in notification center
+  private func removePreviousKeyboardNotifications() {
+    let identifiersToRemove = ["keyboard_status_locked", "keyboard_status_unlocked"]
+
+    // Remove both pending and delivered notifications
+    notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+    notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
   }
 }
 

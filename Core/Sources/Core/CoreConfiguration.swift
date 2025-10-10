@@ -1,5 +1,6 @@
 import Carbon
-import SwiftUI
+import Combine
+import Foundation
 
 /// Core configuration management for KeyboardLocker
 /// Handles persistent settings and configuration synchronization across all targets
@@ -79,19 +80,32 @@ public class CoreConfiguration: ObservableObject {
     }
   }
 
-  // MARK: - Published Properties with AppStorage
+  // MARK: - UserDefaults
+
+  private let userDefaults = UserDefaults.standard
+
+  // MARK: - Published Properties
 
   /// Auto-lock configuration using enum with RawRepresentable
-  @AppStorage("io.lzhlovesjyq.keyboardlocker.autolockduration")
-  public var autoLockDuration: Duration = .never
+  @Published public var autoLockDuration: Duration = .never {
+    didSet {
+      userDefaults.set(autoLockDuration.rawValue, forKey: "io.lzhlovesjyq.keyboardlocker.autolockduration")
+    }
+  }
 
   /// Whether to show system notifications
-  @AppStorage("io.lzhlovesjyq.keyboardlocker.shownotifications")
-  public var showNotifications: Bool = true
+  @Published public var showNotifications: Bool = true {
+    didSet {
+      userDefaults.set(showNotifications, forKey: "io.lzhlovesjyq.keyboardlocker.shownotifications")
+    }
+  }
 
   /// Hotkey configuration using RawRepresentable
-  @AppStorage("io.lzhlovesjyq.keyboardlocker.hotkey")
-  public var hotkey: HotkeyConfiguration = .defaultHotkey()
+  @Published public var hotkey: HotkeyConfiguration = .defaultHotkey() {
+    didSet {
+      userDefaults.set(hotkey.rawValue, forKey: "io.lzhlovesjyq.keyboardlocker.hotkey")
+    }
+  }
 
   // MARK: - Computed Properties
 
@@ -107,7 +121,22 @@ public class CoreConfiguration: ObservableObject {
 
   // MARK: - Initialization
 
-  private init() {}
+  private init() {
+    // Load values from UserDefaults
+    if let durationString = userDefaults.string(forKey: "io.lzhlovesjyq.keyboardlocker.autolockduration"),
+       let duration = Duration(rawValue: durationString)
+    {
+      autoLockDuration = duration
+    }
+
+    showNotifications = userDefaults.object(forKey: "io.lzhlovesjyq.keyboardlocker.shownotifications") as? Bool ?? true
+
+    if let hotkeyString = userDefaults.string(forKey: "io.lzhlovesjyq.keyboardlocker.hotkey"),
+       let hotkey = HotkeyConfiguration(rawValue: hotkeyString)
+    {
+      self.hotkey = hotkey
+    }
+  }
 
   // MARK: - Configuration Management
 

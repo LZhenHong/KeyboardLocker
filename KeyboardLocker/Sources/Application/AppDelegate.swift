@@ -12,18 +12,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     urlHandler = handler
   }
 
-  func applicationWillFinishLaunching(_: Notification) {
-    IPCManager.shared.startServer()
-  }
-
   func applicationDidFinishLaunching(_: Notification) {
     setupExceptionHandling()
   }
 
   func applicationWillTerminate(_: Notification) {
     print("Application will terminate - cleaning up")
-    // Stop IPC server
-    IPCManager.shared.stopServer()
     // Ensure keyboard is unlocked before termination
     keyboardLockManager?.unlockKeyboard()
   }

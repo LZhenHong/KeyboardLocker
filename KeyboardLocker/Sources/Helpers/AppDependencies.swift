@@ -45,7 +45,3 @@ final class AppDependencies {
     )
   }
 }
-
-/// Global application dependency instance
-/// Created once at app startup and passed to components that need dependencies
-let appDependencies = AppDependencies()

@@ -5,7 +5,7 @@ import SwiftUI
 @main
 struct KeyboardLockerApp: App {
   // Application dependencies container
-  private let dependencies = appDependencies
+  private let dependencies = AppDependencies()
 
   // Use AppDelegate for URL handling
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate

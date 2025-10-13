@@ -97,10 +97,6 @@ enum LocalizationKey {
   static let durationNever = "duration.never"
   static let durationInfinite = "duration.infinite"
 
-  // Backward compatibility aliases
-  static let timeNever = durationNever
-  static let timeInfinite = durationInfinite
-
   // Duration display - parameterized forms
   static let durationMinutes = "duration.minutes" // "%d minute(s)"
   static let durationHours = "duration.hours" // "%d hour(s)"

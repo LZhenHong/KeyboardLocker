@@ -86,8 +86,6 @@ class NotificationManager: ObservableObject {
     }
   }
 
-  // MARK: - NotificationManaging Protocol Conformance
-
   /// Send a notification of the specified type if enabled
   /// - Parameters:
   ///   - type: The type of notification to send
@@ -146,9 +144,7 @@ class NotificationManager: ObservableObject {
         // Only update if status changed to avoid unnecessary UI updates
         if self?.isAuthorized != isAuthorized {
           self?.isAuthorized = isAuthorized
-          print(
-            "📱 Notification authorization status: \(isAuthorized ? "authorized" : "not authorized")"
-          )
+          print("📱 Notification authorization status: \(isAuthorized ? "authorized" : "not authorized")")
         }
       }
     }

@@ -30,10 +30,9 @@ class PermissionManager: ObservableObject {
 
   // MARK: - Public Methods
 
-  /// Check all permission statuses and update published properties
+  /// Check accessibility permission status (required permission)
   func checkAllPermissions() {
     checkAccessibilityPermission()
-    checkNotificationPermission()
   }
 
   /// Request accessibility permission by opening system settings
@@ -52,9 +51,9 @@ class PermissionManager: ObservableObject {
   }
 
   /// Request notification permission using NotificationManager
+  /// Should only be called when user enables notifications in settings
   func requestNotificationPermission() {
     notificationManager.requestAuthorization { [weak self] (_: Bool, error: Error?) in
-      // The NotificationManager handles state updates
       if let error {
         print("Failed to request notification permission: \(error)")
       }
@@ -84,13 +83,10 @@ class PermissionManager: ObservableObject {
       name: NSWindow.didBecomeKeyNotification,
       object: nil
     )
-
-    print("Application focus monitoring setup completed")
   }
 
   /// Handle application becoming active - check permissions
   @objc private func applicationDidBecomeActive() {
-    print("Application became active - checking permissions")
     checkAllPermissions()
   }
 
@@ -103,16 +99,6 @@ class PermissionManager: ObservableObject {
         self.hasAccessibilityPermission = currentPermission
         print("Accessibility permission changed to: \(currentPermission)")
       }
-    }
-  }
-
-  private func checkNotificationPermission() {
-    // Delegate to NotificationManager to check permission status
-    notificationManager.checkAuthorizationStatus()
-
-    // Trigger objectWillChange to update any UI that depends on hasNotificationPermission
-    DispatchQueue.main.async {
-      self.objectWillChange.send()
     }
   }
 

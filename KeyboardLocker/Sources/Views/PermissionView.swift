@@ -2,12 +2,10 @@ import Core
 import SwiftUI
 
 struct PermissionRequiredView: View {
-  let permissionManager: PermissionManager
-
   var body: some View {
     VStack(spacing: 20) {
       AppTitleHeaderView()
-      PermissionContent(permissionManager: permissionManager)
+      PermissionContent()
       Spacer()
 
       HStack {
@@ -25,7 +23,7 @@ struct PermissionRequiredView: View {
 }
 
 private struct PermissionContent: View {
-  let permissionManager: PermissionManager
+  @EnvironmentObject private var permissionManager: PermissionManager
 
   var body: some View {
     VStack(spacing: 16) {

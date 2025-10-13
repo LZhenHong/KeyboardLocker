@@ -3,7 +3,7 @@ import SwiftUI
 
 struct StatusSectionView: View {
   let isKeyboardLocked: Bool
-  @ObservedObject var keyboardManager: KeyboardLockManager
+  @EnvironmentObject private var keyboardManager: KeyboardLockManager
 
   private var statusText: String {
     isKeyboardLocked
@@ -43,7 +43,7 @@ struct StatusSectionView: View {
       mainStatusView
 
       if isKeyboardLocked {
-        LockDurationRow(keyboardManager: keyboardManager)
+        LockDurationRow()
       }
 
       if !isKeyboardLocked, keyboardManager.isAutoLockEnabled {
@@ -54,7 +54,7 @@ struct StatusSectionView: View {
 }
 
 private struct LockDurationRow: View {
-  @ObservedObject var keyboardManager: KeyboardLockManager
+  @EnvironmentObject private var keyboardManager: KeyboardLockManager
 
   var body: some View {
     if let durationText = keyboardManager.lockDurationText {

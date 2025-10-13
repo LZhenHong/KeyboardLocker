@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject private var coreConfig = CoreConfiguration.shared
+  @EnvironmentObject private var permissionManager: PermissionManager
 
   private typealias AutoLockInterval = CoreConfiguration.Duration
 
@@ -71,7 +72,16 @@ struct SettingsView: View {
       VStack(alignment: .leading, spacing: 12) {
         Toggle(
           LocalizationKey.settingsShowNotifications.localized,
-          isOn: $coreConfig.showNotifications
+          isOn: Binding(
+            get: { coreConfig.showNotifications },
+            set: { newValue in
+              coreConfig.showNotifications = newValue
+              // Request notification permission when user enables notifications
+              if newValue && !permissionManager.hasNotificationPermission {
+                permissionManager.requestNotificationPermission()
+              }
+            }
+          )
         )
 
         Text(LocalizationKey.settingsNotificationsDescription.localized)

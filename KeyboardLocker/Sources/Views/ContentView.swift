@@ -11,7 +11,7 @@ struct ContentView: View {
       if permissionManager.hasAccessibilityPermission {
         MainContentView(state: viewState)
       } else {
-        PermissionRequiredView(permissionManager: permissionManager)
+        PermissionRequiredView()
       }
     }
     .frame(width: .viewWidth)
@@ -35,19 +35,11 @@ private struct MainContentView: View {
       AppTitleHeaderView()
 
       VStack(spacing: 16) {
-        if let keyboardManager = state.keyboardManager {
-          StatusSectionView(
-            isKeyboardLocked: state.isKeyboardLocked,
-            keyboardManager: keyboardManager
-          )
+        StatusSectionView(isKeyboardLocked: state.isKeyboardLocked)
 
-          LockControlButtonView(
-            state: state,
-            keyboardManager: keyboardManager
-          )
+        LockControlButtonView(state: state)
 
-          QuickActionsView(keyboardManager: keyboardManager)
-        }
+        QuickActionsView()
       }
       .padding(.horizontal, 16)
 

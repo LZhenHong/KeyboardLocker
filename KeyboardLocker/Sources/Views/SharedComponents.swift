@@ -24,8 +24,6 @@ struct AppTitleHeaderView: View {
 // MARK: - Quick Actions Components
 
 struct QuickActionsView: View {
-  let keyboardManager: KeyboardLockManager
-
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       Text(LocalizationKey.quickActions.localized)
@@ -33,9 +31,7 @@ struct QuickActionsView: View {
         .foregroundColor(.secondary)
 
       VStack(spacing: 6) {
-        NavigationLink(
-          destination: SettingsView().environmentObject(keyboardManager)
-        ) {
+        NavigationLink(destination: SettingsView()) {
           SettingRow(
             icon: "gear",
             title: LocalizationKey.settingsTitle.localized,

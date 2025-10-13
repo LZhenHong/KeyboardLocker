@@ -3,11 +3,10 @@ import SwiftUI
 
 struct LockControlButtonView: View {
   @ObservedObject var state: ContentViewState
-  let keyboardManager: KeyboardLockManager
 
   var body: some View {
     HStack(spacing: 8) {
-      MainLockButton(state: state, keyboardManager: keyboardManager)
+      MainLockButton(state: state)
 
       if !state.isKeyboardLocked {
         TimedLockOptionsButton(state: state)
@@ -18,7 +17,7 @@ struct LockControlButtonView: View {
 
 private struct MainLockButton: View {
   @ObservedObject var state: ContentViewState
-  let keyboardManager: KeyboardLockManager
+  @EnvironmentObject private var keyboardManager: KeyboardLockManager
 
   var body: some View {
     Button(action: toggleLock) {

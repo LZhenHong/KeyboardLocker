@@ -276,6 +276,23 @@
         }
       }
     },
+    "auto.lock.countdown.format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard will auto lock in %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剩余%@会自动锁定键盘"
+          }
+        }
+      }
+    },
     "auto.lock.status" : {
       "extractionState" : "manual",
       "localizations" : {

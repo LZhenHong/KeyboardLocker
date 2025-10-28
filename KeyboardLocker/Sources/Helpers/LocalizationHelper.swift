@@ -92,6 +92,7 @@ enum LocalizationKey {
   static let autoLockStatus = "auto.lock.status"
   static let autoLockDisabled = "auto.lock.disabled"
   static let autoLockReadyToLock = "auto.lock.ready.to.lock"
+  static let autoLockCountdownFormat = "auto.lock.countdown.format"
 
   // Duration basic values (shared between time and duration contexts)
   static let durationNever = "duration.never"

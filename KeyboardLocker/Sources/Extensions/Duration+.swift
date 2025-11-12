@@ -4,18 +4,6 @@ import Core
 extension CoreConfiguration.Duration {
   // MARK: - Preset Collections
 
-  /// Preset durations for timed lock UI
-  static let timedLockPresets: [Self] = [
-    .infinite,
-    .minutes(1),
-    .minutes(5),
-    .minutes(15),
-    .minutes(30),
-    .minutes(60), // 1 hour
-    .minutes(120), // 2 hours
-    .minutes(240), // 4 hours
-  ]
-
   /// Preset durations for auto-lock UI
   static let autoLockPresets: [Self] = [
     .never,

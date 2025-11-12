@@ -96,6 +96,9 @@ iOSInjectionProject/
 # macOS
 .DS_Store
 
+# xcode-build-server files
 buildServer.json
+.compile
+
 [Ff]eatures.md
 [Tt]asks.md

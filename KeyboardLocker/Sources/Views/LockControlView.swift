@@ -7,10 +7,6 @@ struct LockControlButtonView: View {
   var body: some View {
     HStack(spacing: 8) {
       MainLockButton(state: state)
-
-      if !state.isKeyboardLocked {
-        TimedLockOptionsButton(state: state)
-      }
     }
   }
 }
@@ -49,23 +45,3 @@ private struct MainLockButton: View {
   }
 }
 
-private struct TimedLockOptionsButton: View {
-  @ObservedObject var state: ContentViewState
-
-  var body: some View {
-    Button(action: { state.showTimedLockOptions.toggle() }) {
-      Image(systemName: "info.circle")
-        .font(.system(size: 16, weight: .medium))
-        .foregroundColor(.accentColor)
-        .frame(width: 44, height: 44)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(22)
-    }
-    .buttonStyle(PlainButtonStyle())
-    .popover(isPresented: $state.showTimedLockOptions, arrowEdge: .bottom) {
-      TimedLockControlsView(state: state)
-        .frame(width: 280)
-        .padding()
-    }
-  }
-}

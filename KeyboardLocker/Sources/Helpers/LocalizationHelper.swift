@@ -86,7 +86,6 @@ enum LocalizationKey {
   static let settingsReset = "settings.reset"
 
   // Time durations and duration display
-  static let timeMinutes = "time.minutes"
   static let timeActivityText = "time.activity.text"
   static let timeAutoLockDuration = "time.auto.lock.duration"
   static let autoLockStatus = "auto.lock.status"
@@ -102,11 +101,6 @@ enum LocalizationKey {
   static let durationMinutes = "duration.minutes" // "%d minute(s)"
   static let durationHours = "duration.hours" // "%d hour(s)"
   static let durationHoursMinutes = "duration.hours.minutes" // "%d hour(s) %d minute(s)"
-
-  // Timed Lock
-  static let timedLockTitle = "timed.lock.title"
-  static let timedLockStart = "timed.lock.start"
-  static let timedLockCustom = "timed.lock.custom"
 
   // About
   static let aboutVersionFormat = "about.version.format"

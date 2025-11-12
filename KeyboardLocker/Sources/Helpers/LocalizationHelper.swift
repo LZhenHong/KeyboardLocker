@@ -1,4 +1,3 @@
-import Foundation
 import SwiftUI
 
 // MARK: - Bundle Extensions for App Info
@@ -7,17 +6,17 @@ import SwiftUI
 extension Bundle {
   /// Get app version number from Info.plist
   var appVersion: String {
-    return infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
   }
 
   /// Get build version number from Info.plist
   var buildVersion: String {
-    return infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    infoDictionary?["CFBundleVersion"] as? String ?? "1"
   }
 
   /// Human readable copyright information from Info.plist
   var copyright: String {
-    return object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? ""
+    object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? ""
   }
 
   /// Formatted version string using localized format
@@ -33,7 +32,7 @@ extension Bundle {
 extension String {
   /// Returns a localized string for the given key using the modern .xcstrings format
   var localized: String {
-    return String(localized: String.LocalizationValue(self))
+    String(localized: String.LocalizationValue(self))
   }
 
   /// Returns a localized string with format arguments using .xcstrings
@@ -57,6 +56,7 @@ extension Text {
 enum LocalizationKey {
   // App
   static let appTitle = "app.title"
+  static let appMenuTitle = "app.menu.title"
 
   // Main Interface
   static let statusLocked = "status.locked"
@@ -77,7 +77,6 @@ enum LocalizationKey {
 
   // Settings
   static let settingsAutoLock = "settings.auto.lock"
-  static let settingsAutoLockTime = "settings.auto.lock.time"
   static let settingsAutoLockDescription = "settings.auto.lock.description"
   static let settingsNotifications = "settings.notifications"
   static let settingsShowNotifications = "settings.show.notifications"
@@ -86,11 +85,22 @@ enum LocalizationKey {
   static let settingsKeyboardDescription = "settings.keyboard.description"
   static let settingsReset = "settings.reset"
 
-  // Time durations
-  static let time15Minutes = "time.15.minutes"
-  static let time30Minutes = "time.30.minutes"
-  static let time60Minutes = "time.60.minutes"
-  static let timeNever = "time.never"
+  // Time durations and duration display
+  static let timeActivityText = "time.activity.text"
+  static let timeAutoLockDuration = "time.auto.lock.duration"
+  static let autoLockStatus = "auto.lock.status"
+  static let autoLockDisabled = "auto.lock.disabled"
+  static let autoLockReadyToLock = "auto.lock.ready.to.lock"
+  static let autoLockCountdownFormat = "auto.lock.countdown.format"
+
+  // Duration basic values (shared between time and duration contexts)
+  static let durationNever = "duration.never"
+  static let durationInfinite = "duration.infinite"
+
+  // Duration display - parameterized forms
+  static let durationMinutes = "duration.minutes" // "%d minute(s)"
+  static let durationHours = "duration.hours" // "%d hour(s)"
+  static let durationHoursMinutes = "duration.hours.minutes" // "%d hour(s) %d minute(s)"
 
   // About
   static let aboutVersionFormat = "about.version.format"
@@ -99,8 +109,6 @@ enum LocalizationKey {
   static let aboutFeatureShortcut = "about.feature.shortcut"
   static let aboutFeatureNotifications = "about.feature.notifications"
   static let aboutFeatureAutoLock = "about.feature.auto.lock"
-  static let aboutFeedback = "about.feedback"
-  static let aboutHelp = "about.help"
   static let aboutGitHub = "about.github"
 
   // Notifications
@@ -108,19 +116,16 @@ enum LocalizationKey {
   static let notificationKeyboardUnlocked = "notification.keyboard.unlocked"
   static let notificationLockedMessage = "notification.locked.message"
   static let notificationUnlockedMessage = "notification.unlocked.message"
+  static let notificationUrlCommand = "notification.url.command"
+  static let notificationError = "notification.error"
+
+  // Lock Duration
+  static let lockDurationFormat = "lock.duration.format"
 
   // Permissions
-  static let permissionAccessibilityTitle = "permission.accessibility.title"
-  static let permissionAccessibilityMessage = "permission.accessibility.message"
   static let permissionRequired = "permission.required"
   static let permissionDescription = "permission.description"
   static let openSystemPreferences = "open.system.preferences"
-  static let refreshPermission = "refresh.permission"
-  static let autoDetectionEnabled = "auto.detection.enabled"
-
-  // Error Recovery
-  static let errorRecoveryTitle = "error.recovery.title"
-  static let errorRecoveryMessage = "error.recovery.message"
 
   // URL Schemes - User facing messages only
   static let urlErrorInvalidScheme = "url.error.invalid.scheme"

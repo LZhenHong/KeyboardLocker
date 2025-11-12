@@ -1,8 +1,7 @@
 import AppKit
-import Foundation
 
 /// Handles URL scheme requests for keyboard control operations
-class URLCommandHandler: ObservableObject {
+class URLCommandHandler {
   /// Supported URL commands
   enum URLCommand: String, CaseIterable {
     case lock
@@ -13,13 +12,13 @@ class URLCommandHandler: ObservableObject {
     var localizedDescription: String {
       switch self {
       case .lock:
-        return LocalizationKey.actionLock.localized
+        LocalizationKey.actionLock.localized
       case .unlock:
-        return LocalizationKey.actionUnlock.localized
+        LocalizationKey.actionUnlock.localized
       case .toggle:
-        return "Toggle keyboard lock state" // No UI display, no need for i18n
+        "Toggle keyboard lock state" // No UI display, no need for i18n
       case .status:
-        return "Get keyboard lock status" // No UI display, no need for i18n
+        "Get keyboard lock status" // No UI display, no need for i18n
       }
     }
   }
@@ -32,35 +31,32 @@ class URLCommandHandler: ObservableObject {
     var message: String {
       switch self {
       case let .success(message):
-        return message
+        message
       case let .error(error):
-        return error
+        error
       }
     }
 
     var isSuccess: Bool {
       switch self {
       case .success:
-        return true
+        true
       case .error:
-        return false
+        false
       }
     }
   }
 
   private weak var keyboardLockManager: KeyboardLockManager?
-  private let notificationManager = NotificationManager.shared
+  private let notificationManager: NotificationManager
 
-  /// Initialize URL handler with optional keyboard lock manager reference
-  /// - Parameter keyboardLockManager: The keyboard lock manager instance (can be set later)
-  init(keyboardLockManager: KeyboardLockManager? = nil) {
+  /// Create URLCommandHandler with dependencies
+  /// - Parameters:
+  ///   - keyboardLockManager: Manager for keyboard operations
+  ///   - notificationManager: Manager for notifications
+  init(keyboardLockManager: KeyboardLockManager, notificationManager: NotificationManager) {
     self.keyboardLockManager = keyboardLockManager
-  }
-
-  /// Set the keyboard lock manager reference
-  /// - Parameter manager: The keyboard lock manager instance
-  func setKeyboardLockManager(_ manager: KeyboardLockManager) {
-    keyboardLockManager = manager
+    self.notificationManager = notificationManager
   }
 
   /// Process incoming URL and execute the appropriate command
@@ -85,7 +81,7 @@ class URLCommandHandler: ObservableObject {
 
     // Parse command
     guard let command = URLCommand(rawValue: host.lowercased()) else {
-      let supportedCommands = URLCommand.allCases.map { $0.rawValue }.joined(separator: ", ")
+      let supportedCommands = URLCommand.allCases.map(\.rawValue).joined(separator: ", ")
       let error = LocalizationKey.urlErrorUnknownCommand.localized(host, supportedCommands)
       print("❌ Unknown command: \(host)")
       return .error(error)
@@ -178,7 +174,8 @@ class URLCommandHandler: ObservableObject {
   private func executeStatusCommand(_ manager: KeyboardLockManager) -> CommandResponse {
     let statusText =
       manager.isLocked
-        ? LocalizationKey.statusLocked.localized : LocalizationKey.statusUnlocked.localized
+        ? LocalizationKey.statusLocked.localized
+        : LocalizationKey.statusUnlocked.localized
 
     print("📊 Current status: \(manager.isLocked ? "locked" : "unlocked")")
     return .success(statusText)
@@ -190,38 +187,11 @@ class URLCommandHandler: ObservableObject {
     DispatchQueue.main.async {
       print("💬 User feedback: \(response.message)")
 
-      // Send notification to user about the URL command result
-      self.sendNotification(
-        title: "KeyboardLocker",
+      self.notificationManager.sendNotification(
+        title: LocalizationKey.appTitle.localized,
         body: response.message,
         isError: !response.isSuccess
       )
     }
-  }
-
-  /// Send notification to user using NotificationManager
-  /// - Parameters:
-  ///   - title: Notification title
-  ///   - body: Notification body message
-  ///   - isError: Whether this is an error notification
-  private func sendNotification(title _: String, body: String, isError: Bool = false) {
-    if isError {
-      notificationManager.notifyURLCommandError(body)
-    } else {
-      notificationManager.notifyURLCommandSuccess(body)
-    }
-  }
-}
-
-/// Extension to provide convenience methods for testing
-extension URLCommandHandler {
-  /// Test URL creation helper
-  static func createTestURL(for command: URLCommand) -> URL? {
-    return URL(string: "keyboardlocker://\(command.rawValue)")
-  }
-
-  /// Get all supported commands for documentation
-  static func getSupportedCommands() -> [String] {
-    return URLCommand.allCases.map { "keyboardlocker://\($0.rawValue)" }
   }
 }

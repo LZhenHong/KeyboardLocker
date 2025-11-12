@@ -1,25 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "" : {
-      "shouldTranslate" : false
-    },
-    "⌘ + ⌥ + L" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌘ + ⌥ + L"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌘ + ⌥ + L"
-          }
-        }
-      }
-    },
     "about.feature.auto.lock" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -101,40 +82,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "功能特性"
-          }
-        }
-      }
-    },
-    "about.feedback" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Report Issue"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反馈问题"
-          }
-        }
-      }
-    },
-    "about.help" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Help"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用帮助"
           }
         }
       }
@@ -258,6 +205,23 @@
         }
       }
     },
+    "app.menu.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard Locker"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘锁"
+          }
+        }
+      }
+    },
     "app.title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -275,8 +239,192 @@
         }
       }
     },
-    "Keyboard Locker" : {
-      "shouldTranslate" : false
+    "auto.lock.countdown.format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard will auto lock in %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剩余%@会自动锁定键盘"
+          }
+        }
+      }
+    },
+    "auto.lock.disabled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disabled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已禁用"
+          }
+        }
+      }
+    },
+    "auto.lock.ready.to.lock" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ready to lock"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "准备锁定"
+          }
+        }
+      }
+    },
+    "auto.lock.status" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-lock: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动锁定: %@"
+          }
+        }
+      }
+    },
+    "duration.hours" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d hour(s)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d小时"
+          }
+        }
+      }
+    },
+    "duration.hours.minutes" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d hour(s) %d minute(s)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d小时%d分钟"
+          }
+        }
+      }
+    },
+    "duration.infinite" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Infinite"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无限期"
+          }
+        }
+      }
+    },
+    "duration.minutes" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d minute(s)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d分钟"
+          }
+        }
+      }
+    },
+    "duration.never" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Never"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从不"
+          }
+        }
+      }
+    },
+    "lock.duration.format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locked for %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已锁定 %@"
+          }
+        }
+      }
+    },
+    "notification.error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "错误"
+          }
+        }
+      }
     },
     "notification.keyboard.locked" : {
       "extractionState" : "manual",
@@ -346,6 +494,23 @@
         }
       }
     },
+    "notification.url.command" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL Command"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL 命令"
+          }
+        }
+      }
+    },
     "open.system.preferences" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -359,40 +524,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开系统设置"
-          }
-        }
-      }
-    },
-    "permission.accessibility.message" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Please grant Keyboard Locker accessibility permission in System Settings > Privacy & Security > Accessibility to enable keyboard locking functionality."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在系统设置 > 隐私与安全性 > 辅助功能中，允许 Keyboard Locker 控制您的电脑以启用键盘锁定功能。"
-          }
-        }
-      }
-    },
-    "permission.accessibility.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Accessibility Permission Required"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要辅助功能权限"
           }
         }
       }
@@ -448,40 +579,6 @@
         }
       }
     },
-    "auto.detection.enabled" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto-detection enabled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已启用自动检测"
-          }
-        }
-      }
-    },
-    "refresh.permission" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Check Permission Status"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检查权限状态"
-          }
-        }
-      }
-    },
     "settings.auto.lock" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -512,23 +609,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置无操作后自动锁定键盘的时间"
-          }
-        }
-      }
-    },
-    "settings.auto.lock.time" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto Lock Duration:"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动锁定时间:"
           }
         }
       }
@@ -720,104 +800,36 @@
         }
       }
     },
-    "time.15.minutes" : {
+    "time.activity.text" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "15 Minutes"
+            "value" : "Starts counting when you stop typing or using the mouse"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "15分钟"
+            "value" : "当您停止输入或使用鼠标时开始计时"
           }
         }
       }
     },
-    "time.30.minutes" : {
+    "time.auto.lock.duration" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "30 Minutes"
+            "value" : "Auto-lock Duration"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "30分钟"
-          }
-        }
-      }
-    },
-    "time.60.minutes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "60 Minutes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "60分钟"
-          }
-        }
-      }
-    },
-    "time.never" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Never"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从不"
-          }
-        }
-      }
-    },
-    "error.recovery.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keyboard Locker Recovery"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "键盘锁定器恢复"
-          }
-        }
-      }
-    },
-    "error.recovery.message" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Application recovered from an error. Keyboard has been unlocked."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "应用程序已从错误中恢复。键盘已解锁。"
+            "value" : "自动锁定时长"
           }
         }
       }

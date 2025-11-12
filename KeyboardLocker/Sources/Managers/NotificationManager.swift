@@ -2,11 +2,7 @@ import Foundation
 import UserNotifications
 
 /// Centralized notification management for the app
-class NotificationManager {
-  // MARK: - Singleton
-
-  static let shared = NotificationManager()
-
+class NotificationManager: ObservableObject {
   // MARK: - Published Properties
 
   @Published var isAuthorized = false
@@ -24,7 +20,7 @@ class NotificationManager {
     case general = "GENERAL"
 
     var identifier: String {
-      return rawValue
+      rawValue
     }
   }
 
@@ -40,59 +36,81 @@ class NotificationManager {
     var title: String {
       switch self {
       case .keyboardLocked:
-        return LocalizationKey.notificationKeyboardLocked.localized
+        LocalizationKey.notificationKeyboardLocked.localized
       case .keyboardUnlocked:
-        return LocalizationKey.notificationKeyboardUnlocked.localized
+        LocalizationKey.notificationKeyboardUnlocked.localized
       case .urlCommandSuccess:
-        return "URL Command".localized // Success notification title
+        LocalizationKey.notificationUrlCommand.localized
       case .urlCommandError:
-        return "Error".localized // Error notification title
+        LocalizationKey.notificationError.localized
       case let .general(title, _):
-        return title
+        title
       }
     }
 
     var body: String {
       switch self {
       case .keyboardLocked:
-        return LocalizationKey.notificationLockedMessage.localized
+        LocalizationKey.notificationLockedMessage.localized
       case .keyboardUnlocked:
-        return LocalizationKey.notificationUnlockedMessage.localized
+        LocalizationKey.notificationUnlockedMessage.localized
       case let .urlCommandSuccess(message):
-        return message
+        message
       case let .urlCommandError(message):
-        return message
+        message
       case let .general(_, body):
-        return body
+        body
       }
     }
 
     var category: NotificationCategory {
       switch self {
       case .keyboardLocked, .keyboardUnlocked:
-        return .keyboardStatus
+        .keyboardStatus
       case .urlCommandSuccess:
-        return .urlCommand
+        .urlCommand
       case .urlCommandError:
-        return .urlError
+        .urlError
       case .general:
-        return .general
+        .general
       }
     }
 
     var sound: UNNotificationSound {
       switch self {
       case .urlCommandError:
-        return .defaultCritical
+        .defaultCritical
       default:
-        return .default
+        .default
       }
     }
   }
 
+  /// Send a notification of the specified type if enabled
+  /// - Parameters:
+  ///   - type: The type of notification to send
+  ///   - showNotifications: Whether notifications are enabled
+  func sendNotificationIfEnabled(_ type: NotificationType, showNotifications: Bool) {
+    guard shouldSendNotification(showNotifications: showNotifications) else {
+      print("🔔 Notification skipped - disabled in settings or not authorized")
+      return
+    }
+    sendNotification(type)
+  }
+
+  /// Send a custom notification
+  /// - Parameters:
+  ///   - title: Notification title
+  ///   - body: Notification body
+  ///   - isError: Whether this is an error notification
+  func sendNotification(title: String, body: String, isError _: Bool) {
+    sendNotification(.general(title: title, body: body))
+  }
+
   // MARK: - Initialization
 
-  private init() {
+  /// Create a new NotificationManager instance
+  init() {
     setupNotificationCategories()
     checkAuthorizationStatus()
   }
@@ -102,12 +120,13 @@ class NotificationManager {
   /// Request notification permission from user
   /// - Parameter completion: Completion handler with authorization result
   func requestAuthorization(completion: @escaping (Bool, Error?) -> Void = { _, _ in }) {
-    notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+    notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) {
+      [weak self] granted, error in
       DispatchQueue.main.async {
         self?.isAuthorized = granted
         completion(granted, error)
 
-        if let error = error {
+        if let error {
           print("❌ Failed to request notification permission: \(error.localizedDescription)")
         } else {
           print("✅ Notification permission \(granted ? "granted" : "denied")")
@@ -125,9 +144,7 @@ class NotificationManager {
         // Only update if status changed to avoid unnecessary UI updates
         if self?.isAuthorized != isAuthorized {
           self?.isAuthorized = isAuthorized
-          print(
-            "📱 Notification authorization status: \(isAuthorized ? "authorized" : "not authorized")"
-          )
+          print("📱 Notification authorization status: \(isAuthorized ? "authorized" : "not authorized")")
         }
       }
     }
@@ -146,6 +163,14 @@ class NotificationManager {
       print("🔔 Notification not sent - not authorized")
       completion(NotificationError.notAuthorized)
       return
+    }
+
+    // Remove previous keyboard status notifications to keep only one
+    switch type {
+    case .keyboardLocked, .keyboardUnlocked:
+      removePreviousKeyboardNotifications()
+    default:
+      break
     }
 
     let content = UNMutableNotificationContent()
@@ -168,7 +193,7 @@ class NotificationManager {
 
     notificationCenter.add(request) { error in
       DispatchQueue.main.async {
-        if let error = error {
+        if let error {
           print("❌ Failed to send notification: \(error.localizedDescription)")
         } else {
           print("✅ Notification sent: \(type.title)")
@@ -194,28 +219,21 @@ class NotificationManager {
   /// - Parameter category: The category to remove
   func removeNotifications(for category: NotificationCategory) {
     notificationCenter.getPendingNotificationRequests { [weak self] requests in
-      let identifiersToRemove =
-        requests
-          .filter { $0.content.categoryIdentifier == category.identifier }
-          .map { $0.identifier }
+      let identifiersToRemove = requests
+        .filter { $0.content.categoryIdentifier == category.identifier }
+        .map(\.identifier)
 
-      self?.notificationCenter.removePendingNotificationRequests(
-        withIdentifiers: identifiersToRemove)
-      print(
-        "🗑️ Removed \(identifiersToRemove.count) pending notifications for category: \(category.identifier)"
-      )
+      self?.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+      print("🗑️ Removed \(identifiersToRemove.count) pending notifications for category: \(category.identifier)")
     }
 
     notificationCenter.getDeliveredNotifications { [weak self] notifications in
-      let identifiersToRemove =
-        notifications
-          .filter { $0.request.content.categoryIdentifier == category.identifier }
-          .map { $0.request.identifier }
+      let identifiersToRemove = notifications
+        .filter { $0.request.content.categoryIdentifier == category.identifier }
+        .map(\.request.identifier)
 
       self?.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
-      print(
-        "🗑️ Removed \(identifiersToRemove.count) delivered notifications for category: \(category.identifier)"
-      )
+      print("🗑️ Removed \(identifiersToRemove.count) delivered notifications for category: \(category.identifier)")
     }
   }
 
@@ -256,23 +274,39 @@ class NotificationManager {
     }
 
     notificationCenter.setNotificationCategories(Set(categories))
-    print("📋 Notification categories configured: \(categories.map { $0.identifier })")
+    print("📋 Notification categories configured: \(categories.map(\.identifier))")
   }
 
   private func generateNotificationIdentifier(for type: NotificationType) -> String {
-    let timestamp = Date().timeIntervalSince1970
+    // Use fixed identifiers for keyboard status to replace old notifications
     switch type {
     case .keyboardLocked:
-      return "keyboard_locked_\(timestamp)"
+      return "keyboard_status_locked"
+
     case .keyboardUnlocked:
-      return "keyboard_unlocked_\(timestamp)"
+      return "keyboard_status_unlocked"
+
     case .urlCommandSuccess:
+      let timestamp = Date().timeIntervalSince1970
       return "url_success_\(timestamp)"
+
     case .urlCommandError:
+      let timestamp = Date().timeIntervalSince1970
       return "url_error_\(timestamp)"
+
     case .general:
+      let timestamp = Date().timeIntervalSince1970
       return "general_\(timestamp)"
     }
+  }
+
+  /// Remove previous keyboard status notifications to keep only one in notification center
+  private func removePreviousKeyboardNotifications() {
+    let identifiersToRemove = ["keyboard_status_locked", "keyboard_status_unlocked"]
+
+    // Remove both pending and delivered notifications
+    notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+    notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiersToRemove)
   }
 }
 
@@ -286,11 +320,11 @@ enum NotificationError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .notAuthorized:
-      return "Notifications not authorized".localized
+      "Notifications not authorized"
     case .invalidContent:
-      return "Invalid notification content".localized
+      "Invalid notification content"
     case let .systemError(error):
-      return "System error".localized + ": \(error.localizedDescription)"
+      "System error: \(error.localizedDescription)"
     }
   }
 }
@@ -302,7 +336,7 @@ extension NotificationManager {
   /// - Parameter showNotifications: User's notification preference
   /// - Returns: Whether notifications should be sent
   func shouldSendNotification(showNotifications: Bool) -> Bool {
-    return showNotifications && isAuthorized
+    showNotifications && isAuthorized
   }
 
   /// Send notification conditionally based on user settings

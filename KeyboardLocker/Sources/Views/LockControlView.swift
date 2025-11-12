@@ -44,4 +44,3 @@ private struct MainLockButton: View {
     }
   }
 }
-

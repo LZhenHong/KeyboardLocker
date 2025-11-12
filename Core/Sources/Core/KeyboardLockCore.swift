@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import Carbon
 
 /// Pure core keyboard locking engine - only handles low-level keyboard interception
@@ -33,6 +32,15 @@ public class KeyboardLockCore {
 
   /// Callback triggered when unlock hotkey is detected
   public var onUnlockHotkeyDetected: (() -> Void)?
+
+  // MARK: - Hotkey State Tracking
+
+  private static let relevantModifierMask: CGEventFlags = [
+    .maskCommand,
+    .maskAlternate,
+    .maskShift,
+    .maskControl,
+  ]
 
   static let eventMasks: CGEventMask =
     (1 << CGEventType.keyDown.rawValue) |
@@ -181,44 +189,50 @@ public class KeyboardLockCore {
     }
   }
 
-  /// Check if the given flags match the required unlock modifiers
-  private func matchesUnlockModifiers(_ flags: CGEventFlags) -> Bool {
-    // Extract modifier flags from the event
-    let eventModifiers = flags.rawValue & (
-      CGEventFlags.maskCommand.rawValue |
-        CGEventFlags.maskAlternate.rawValue |
-        CGEventFlags.maskShift.rawValue |
-        CGEventFlags.maskControl.rawValue
-    )
-
-    // Compare with configured unlock modifiers
-    return eventModifiers == UInt64(unlockHotkey.modifierFlags)
-  }
-
   /// Handle keyboard events (internal for callback)
   func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-    // Only process keyDown events for unlock hotkey detection
-    guard type == .keyDown else {
-      return nil // Block all other events when locked
+    if shouldTriggerUnlock(for: type, event: event) {
+      print("🔑 Unlock hotkey pressed: \(unlockHotkey.displayString)")
+
+      DispatchQueue.main.async {
+        self.onUnlockHotkeyDetected?()
+      }
     }
 
-    let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-    let flags = event.flags
-
-    // Check for unlock hotkey combination
-    guard keycode == Int64(unlockHotkey.keyCode), matchesUnlockModifiers(flags) else {
-      return nil // Block this event, not the unlock hotkey
-    }
-
-    print("🔑 Unlock hotkey pressed: \(unlockHotkey.displayString)")
-
-    // Notify business layer through callback
-    DispatchQueue.main.async {
-      self.onUnlockHotkeyDetected?()
-    }
-
-    // Don't pass through this event
+    // Block all events from propagating while locked
     return nil
+  }
+
+  private func shouldTriggerUnlock(for type: CGEventType, event: CGEvent) -> Bool {
+    guard event.flags.intersection(Self.relevantModifierMask) == unlockHotkey.eventModifierFlags else {
+      return false
+    }
+
+    switch type {
+    case .keyDown:
+      let keycodeValue = event.getIntegerValueField(.keyboardEventKeycode)
+      guard keycodeValue >= 0, keycodeValue <= Int64(UInt16.max) else {
+        return false
+      }
+
+      let eventKeyCode = CGKeyCode(UInt16(keycodeValue))
+      guard eventKeyCode == unlockHotkey.keyCode else {
+        return false
+      }
+
+      let isAutoRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) == 1
+      return !isAutoRepeat
+
+    case .flagsChanged:
+      if unlockHotkey.keyCode == 0 {
+        return true
+      }
+
+      return CGEventSource.keyState(.hidSystemState, key: unlockHotkey.keyCode)
+
+    default:
+      return false
+    }
   }
 }
 

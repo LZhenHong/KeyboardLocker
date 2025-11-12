@@ -1,3 +1,4 @@
+import Combine
 import Core
 import SwiftUI
 
@@ -10,38 +11,9 @@ import SwiftUI
 /// - Clear separation between public API and private implementation
 /// - Follows Single Responsibility Principle
 class KeyboardLockManager: ObservableObject {
-  // MARK: - Nested Types
-
-  /// Manages periodic UI state updates
-  private final class UIRefreshScheduler {
-    private var timer: Timer?
-
-    var isActive: Bool {
-      timer != nil
-    }
-
-    func start(interval: TimeInterval = 1.0, onUpdate: @escaping () -> Void) {
-      stop()
-
-      timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-        onUpdate()
-      }
-
-      // Immediate update
-      onUpdate()
-    }
-
-    func stop() {
-      timer?.invalidate()
-      timer = nil
-    }
-  }
-
   // MARK: - Published State
 
   @Published private(set) var isLocked = false
-  @Published private(set) var lockDuration: TimeInterval?
-  @Published private(set) var autoLockRemainingTime: TimeInterval?
 
   // MARK: - Dependencies
 
@@ -50,13 +22,10 @@ class KeyboardLockManager: ObservableObject {
   private let activityMonitor: UserActivityMonitor
   private let notificationManager: NotificationManager
 
-  // MARK: - Coordinators
-
-  private let refreshScheduler = UIRefreshScheduler()
-
   // MARK: - State
 
   private var isUserOperation = false
+  private var cancellables = Set<AnyCancellable>()
 
   // MARK: - Lifecycle
 
@@ -93,6 +62,20 @@ class KeyboardLockManager: ObservableObject {
       }
     }
 
+    config.$autoLockDuration
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.handleAutoLockConfigurationChange()
+      }
+      .store(in: &cancellables)
+
+    config.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.objectWillChange.send()
+      }
+      .store(in: &cancellables)
+
     updateAutoLockState()
   }
 
@@ -100,11 +83,6 @@ class KeyboardLockManager: ObservableObject {
   private func syncInitialState() {
     DispatchQueue.main.async {
       self.isLocked = self.core.isLocked
-      self.updateUIState()
-
-      if self.shouldRunUIUpdater {
-        self.startUIUpdates()
-      }
     }
   }
 
@@ -112,7 +90,6 @@ class KeyboardLockManager: ObservableObject {
   private func handleLockStateChange(_ isLocked: Bool) {
     DispatchQueue.main.async {
       self.isLocked = isLocked
-      self.updateUIUpdater()
       self.notifyIfNeeded(isLocked: isLocked)
     }
   }
@@ -130,7 +107,7 @@ class KeyboardLockManager: ObservableObject {
   }
 
   deinit {
-    refreshScheduler.stop()
+    cancellables.removeAll()
   }
 }
 
@@ -202,7 +179,7 @@ extension KeyboardLockManager {
 
   /// Format lock duration as string for UI display
   var lockDurationText: String? {
-    guard let duration = lockDuration else { return nil }
+    guard let duration = calculateLockDuration() else { return nil }
 
     let minutes = Int(duration / 60)
     let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
@@ -216,7 +193,7 @@ extension KeyboardLockManager {
       return LocalizationKey.autoLockDisabled.localized
     }
 
-    guard let remainingTime = autoLockRemainingTime else {
+    guard let remainingTime = calculateAutoLockRemainingTime() else {
       return LocalizationKey.autoLockReadyToLock.localized
     }
 
@@ -232,6 +209,11 @@ extension KeyboardLockManager {
 // MARK: - Auto-Lock Management
 
 extension KeyboardLockManager {
+  /// Handle updates when auto-lock configuration changes
+  private func handleAutoLockConfigurationChange() {
+    updateAutoLockState()
+  }
+
   /// Update auto-lock state based on current configuration
   private func updateAutoLockState() {
     if isAutoLockEnabled {
@@ -239,8 +221,6 @@ extension KeyboardLockManager {
     } else {
       activityMonitor.stopMonitoring()
     }
-
-    updateUIUpdater()
   }
 
   /// Enable auto-lock monitoring with current configuration
@@ -263,44 +243,6 @@ extension KeyboardLockManager {
     } catch {
       print("❌ Auto-lock failed: \(error.localizedDescription)")
     }
-  }
-}
-
-// MARK: - UI State Management
-
-extension KeyboardLockManager {
-  /// Determine whether UI updater should be running
-  private var shouldRunUIUpdater: Bool {
-    isLocked || isAutoLockEnabled
-  }
-
-  /// Start periodic UI state updates
-  private func startUIUpdates() {
-    refreshScheduler.start { [weak self] in
-      self?.updateUIState()
-    }
-  }
-
-  /// Stop periodic UI state updates
-  private func stopUIUpdates() {
-    refreshScheduler.stop()
-    lockDuration = nil
-    autoLockRemainingTime = nil
-  }
-
-  /// Update UI updater based on current state
-  private func updateUIUpdater() {
-    if shouldRunUIUpdater {
-      startUIUpdates()
-    } else {
-      stopUIUpdates()
-    }
-  }
-
-  /// Update all UI state values
-  private func updateUIState() {
-    lockDuration = calculateLockDuration()
-    autoLockRemainingTime = calculateAutoLockRemainingTime()
   }
 }
 

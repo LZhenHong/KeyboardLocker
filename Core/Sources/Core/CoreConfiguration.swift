@@ -224,6 +224,29 @@ public struct HotkeyConfiguration: Codable, CustomStringConvertible, RawRepresen
     )
   }
 
+  /// Map Carbon modifier flags to `CGEventFlags` for event comparisons
+  public var eventModifierFlags: CGEventFlags {
+    var flags: CGEventFlags = []
+
+    if modifierFlags & UInt32(cmdKey) != 0 {
+      flags.insert(.maskCommand)
+    }
+
+    if modifierFlags & UInt32(optionKey) != 0 {
+      flags.insert(.maskAlternate)
+    }
+
+    if modifierFlags & UInt32(shiftKey) != 0 {
+      flags.insert(.maskShift)
+    }
+
+    if modifierFlags & UInt32(controlKey) != 0 {
+      flags.insert(.maskControl)
+    }
+
+    return flags
+  }
+
   public var description: String {
     displayString
   }

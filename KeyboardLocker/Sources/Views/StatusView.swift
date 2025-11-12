@@ -26,16 +26,18 @@ struct StatusSectionView: View {
   }
 
   private var autoLockStatusView: some View {
-    HStack {
-      Image(systemName: "timer")
-        .foregroundColor(.orange)
-        .font(.caption)
-      Text(LocalizationKey.autoLockStatus.localized(keyboardManager.autoLockStatusText))
-        .font(.caption)
-        .foregroundColor(.secondary)
-      Spacer()
+    TimelineView(.periodic(from: .now, by: 1)) { _ in
+      HStack {
+        Image(systemName: "timer")
+          .foregroundColor(.orange)
+          .font(.caption)
+        Text(LocalizationKey.autoLockStatus.localized(keyboardManager.autoLockStatusText))
+          .font(.caption)
+          .foregroundColor(.secondary)
+        Spacer()
+      }
+      .padding(.leading, 16)
     }
-    .padding(.leading, 16)
   }
 
   var body: some View {
@@ -57,26 +59,27 @@ private struct LockDurationRow: View {
   @EnvironmentObject private var keyboardManager: KeyboardLockManager
 
   var body: some View {
-    if let durationText = keyboardManager.lockDurationText {
-      let displayText = getLockDurationDisplayText(durationText)
-      if !displayText.isEmpty {
-        HStack {
-          Image(systemName: "clock")
-            .foregroundColor(.secondary)
-            .font(.caption)
-          Text(displayText)
-            .font(.caption)
-            .foregroundColor(.secondary)
-          Spacer()
+    TimelineView(.periodic(from: .now, by: 1)) { _ in
+      if let durationText = keyboardManager.lockDurationText {
+        let displayText = getLockDurationDisplayText(durationText)
+        if !displayText.isEmpty {
+          HStack {
+            Image(systemName: "clock")
+              .foregroundColor(.secondary)
+              .font(.caption)
+            Text(displayText)
+              .font(.caption)
+              .foregroundColor(.secondary)
+            Spacer()
+          }
+          .padding(.leading, 16)
         }
-        .padding(.leading, 16)
       }
     }
   }
 
   private func getLockDurationDisplayText(_ durationString: String) -> String {
     if durationString.contains(":") {
-      // Check if it's a timed lock with remaining time
       LocalizationKey.lockDurationFormat.localized(durationString)
     } else {
       // Fallback: show a generic message

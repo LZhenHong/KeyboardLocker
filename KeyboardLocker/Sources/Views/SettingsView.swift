@@ -77,7 +77,7 @@ struct SettingsView: View {
             set: { newValue in
               coreConfig.showNotifications = newValue
               // Request notification permission when user enables notifications
-              if newValue && !permissionManager.hasNotificationPermission {
+              if newValue, !permissionManager.hasNotificationPermission {
                 permissionManager.requestNotificationPermission()
               }
             }

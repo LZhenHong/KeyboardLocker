@@ -77,12 +77,7 @@ private struct LockDurationRow: View {
   private func getLockDurationDisplayText(_ durationString: String) -> String {
     if durationString.contains(":") {
       // Check if it's a timed lock with remaining time
-      if keyboardManager.isTimedLock {
-        LocalizationKey.timedLockRemaining.localized(durationString)
-      } else {
-        // Regular lock showing elapsed time
-        LocalizationKey.lockDurationFormat.localized(durationString)
-      }
+      LocalizationKey.lockDurationFormat.localized(durationString)
     } else {
       // Fallback: show a generic message
       LocalizationKey.statusLocked.localized()

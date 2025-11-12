@@ -3,27 +3,62 @@ import SwiftUI
 
 /// UI-focused keyboard lock manager that bridges Core functionality and UI state
 /// This layer handles UI state management and integrates with the Core library
+///
+/// Design Philosophy:
+/// - Uses nested types to encapsulate related functionality
+/// - Extensions group methods by responsibility
+/// - Clear separation between public API and private implementation
+/// - Follows Single Responsibility Principle
 class KeyboardLockManager: ObservableObject {
-  // MARK: - Published UI State
+  // MARK: - Nested Types
 
-  @Published var isLocked = false
-  @Published var autoLockEnabled = false
+  /// Manages periodic UI state updates
+  private final class UIRefreshScheduler {
+    private var timer: Timer?
+
+    var isActive: Bool {
+      timer != nil
+    }
+
+    func start(interval: TimeInterval = 1.0, onUpdate: @escaping () -> Void) {
+      stop()
+
+      timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+        onUpdate()
+      }
+
+      // Immediate update
+      onUpdate()
+    }
+
+    func stop() {
+      timer?.invalidate()
+      timer = nil
+    }
+  }
+
+  // MARK: - Published State
+
+  @Published private(set) var isLocked = false
+  @Published private(set) var lockDuration: TimeInterval?
+  @Published private(set) var autoLockRemainingTime: TimeInterval?
 
   // MARK: - Dependencies
 
-  // Core functionality - injected dependencies
   private let core: KeyboardLockCore
   private let config: CoreConfiguration
   private let activityMonitor: UserActivityMonitor
-
-  // UI-specific dependencies
   private let notificationManager: NotificationManager
 
-  // MARK: - Combine Subscriptions
+  // MARK: - Coordinators
 
-  private var cancellables = Set<AnyCancellable>()
+  private let refreshScheduler = UIRefreshScheduler()
 
-  // MARK: - Initialization
+  // MARK: - State
+
+  private var isUserOperation = false
+
+  // MARK: - Lifecycle
 
   /// Create KeyboardLockManager with injected dependencies
   /// - Parameters:
@@ -42,81 +77,86 @@ class KeyboardLockManager: ObservableObject {
     self.activityMonitor = activityMonitor
     self.notificationManager = notificationManager
 
-    setupStateSubscriptions()
+    configureSubscriptions()
     syncInitialState()
   }
 
-  deinit {
-    cleanup()
-  }
-
-  /// Clean up resources when object is deallocated
-  private func cleanup() {
-    cancellables.removeAll()
-  }
-
-  // MARK: - Public Interface (UI Actions)
-
-  func lockKeyboard() {
-    do {
-      try core.lockKeyboard()
-    } catch {
-      print("❌ Failed to lock keyboard: \(error.localizedDescription)")
+  /// Configure reactive state subscriptions from Core components
+  private func configureSubscriptions() {
+    core.onLockStateChanged = { [weak self] isLocked, _ in
+      self?.handleLockStateChange(isLocked)
     }
-  }
 
-  func unlockKeyboard() {
-    guard core.isKeyboardLocked else {
-      return
-    }
-    core.unlockKeyboard()
-  }
-
-  func toggleLock() {
-    core.toggleLock()
-  }
-
-  /// Start a timed lock with specified duration
-  func lockKeyboard(with duration: CoreConfiguration.Duration) {
-    do {
-      try core.lockKeyboard()
-      // For timed locks, we implement timer logic in the UI layer
-      // This keeps business logic separate from core functionality
-      if case let .minutes(minutes) = duration, minutes > 0 {
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(minutes * 60)) {
-          self.core.unlockKeyboard()
-          print("⏰ Timed lock completed after \(minutes) minutes")
-        }
-      } else if case .infinite = duration {
-        print("♾️ Infinite timed lock started (manual unlock required)")
+    core.onUnlockHotkeyDetected = { [weak self] in
+      DispatchQueue.main.async {
+        self?.unlockKeyboard()
       }
-    } catch {
-      print("❌ Failed to start timed lock: \(error.localizedDescription)")
+    }
+
+    updateAutoLockState()
+  }
+
+  /// Sync initial state from Core components
+  private func syncInitialState() {
+    DispatchQueue.main.async {
+      self.isLocked = self.core.isLocked
+      self.updateUIState()
+
+      if self.shouldRunUIUpdater {
+        self.startUIUpdates()
+      }
     }
   }
 
-  // MARK: - Auto-Lock Management
-
-  func startAutoLock() {
-    // Use 30 minutes as default when enabling auto-lock if currently disabled
-    if !config.autoLockDuration.isEnabled {
-      config.autoLockDuration = .minutes(30)
+  /// Handle lock state change coming from Core layer
+  private func handleLockStateChange(_ isLocked: Bool) {
+    DispatchQueue.main.async {
+      self.isLocked = isLocked
+      self.updateUIUpdater()
+      self.notifyIfNeeded(isLocked: isLocked)
     }
-    enableAutoLockMonitoring()
   }
 
-  func stopAutoLock() {
-    config.autoLockDuration = .never
-    activityMonitor.stopMonitoring()
+  /// Send notifications for non-user initiated state changes
+  private func notifyIfNeeded(isLocked: Bool) {
+    guard !isUserOperation else { return }
+
+    let notificationType: NotificationManager.NotificationType = isLocked ? .keyboardLocked : .keyboardUnlocked
+
+    notificationManager.sendNotificationIfEnabled(
+      notificationType,
+      showNotifications: config.showNotifications
+    )
   }
 
-  func toggleAutoLock() {
-    if config.autoLockDuration.isEnabled {
-      config.autoLockDuration = .never
-      activityMonitor.stopMonitoring()
-    } else {
-      config.autoLockDuration = .minutes(30)
-      enableAutoLockMonitoring()
+  deinit {
+    refreshScheduler.stop()
+  }
+}
+
+// MARK: - Public API
+
+extension KeyboardLockManager {
+  /// Lock the keyboard (user-initiated, no notification)
+  func lockKeyboard() {
+    performUserOperation {
+      try core.lockKeyboard()
+    }
+  }
+
+  /// Unlock the keyboard (user-initiated, no notification)
+  func unlockKeyboard() {
+    guard core.isLocked else { return }
+
+    performUserOperation {
+      core.unlockKeyboard()
+    }
+  }
+
+  /// Toggle keyboard lock state (user-initiated)
+  func toggleLock() {
+    performUserOperation {
+      core.toggleLock()
     }
   }
 
@@ -130,27 +170,26 @@ class KeyboardLockManager: ObservableObject {
     activityMonitor.resetActivityTimer()
   }
 
-  // MARK: - Status and Information
-
-  func getLockDurationString() -> String? {
-    guard let lockedAt = core.keyboardLockedAt else { return nil }
-
-    let duration = Date().timeIntervalSince(lockedAt)
-    let minutes = Int(duration / 60)
-    let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
-    return String(format: "%02d:%02d", minutes, seconds)
-  }
-
+  /// Check if required permissions are granted
   func checkPermissions() -> Bool {
     PermissionHelper.hasAccessibilityPermission()
   }
 
+  /// Request required permissions from the user
   func requestPermissions() {
     PermissionHelper.requestAccessibilityPermission()
   }
 
-  // MARK: - Configuration Access
+  /// Force cleanup for Core resources and resync state
+  func forceCleanup() {
+    core.forceCleanup()
+    syncInitialState()
+  }
+}
 
+// MARK: - Computed Properties
+
+extension KeyboardLockManager {
   /// Auto-lock duration in minutes for UI display
   var autoLockDuration: Int {
     config.autoLockDuration.minutes
@@ -161,70 +200,144 @@ class KeyboardLockManager: ObservableObject {
     config.isAutoLockEnabled
   }
 
-  // MARK: - Utility Methods
+  /// Format lock duration as string for UI display
+  var lockDurationText: String? {
+    guard let duration = lockDuration else { return nil }
 
-  func forceCleanup() {
-    core.forceCleanup()
-    syncInitialState()
+    let minutes = Int(duration / 60)
+    let seconds = Int(duration.truncatingRemainder(dividingBy: 60))
+    return String(format: "%02d:%02d", minutes, seconds)
   }
 
-  // MARK: - Private Setup Methods
-
-  /// Setup reactive state subscriptions from Core components
-  private func setupStateSubscriptions() {
-    // Setup lock state callback
-    core.onLockStateChanged = { [weak self] isLocked, _ in
-      DispatchQueue.main.async {
-        self?.isLocked = isLocked
-
-        // Send notifications based on state change
-        let notificationType: NotificationManager.NotificationType =
-          isLocked ? .keyboardLocked : .keyboardUnlocked
-        self?.notificationManager.sendNotificationIfEnabled(
-          notificationType,
-          showNotifications: self?.config.showNotifications ?? false
-        )
-      }
+  /// Format auto-lock remaining time as string for UI display
+  var autoLockStatusText: String {
+    let duration = autoLockDuration
+    if duration == 0 {
+      return LocalizationKey.autoLockDisabled.localized
     }
 
-    // Setup unlock hotkey callback
-    core.onUnlockHotkeyDetected = { [weak self] in
-      DispatchQueue.main.async {
-        self?.unlockKeyboard()
-      }
+    guard let remainingTime = autoLockRemainingTime else {
+      return LocalizationKey.autoLockReadyToLock.localized
     }
 
-    // Subscribe to configuration changes for auto-lock state
-    config.$autoLockDuration
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] duration in
-        self?.autoLockEnabled = duration.isEnabled
-        if duration.isEnabled {
-          self?.enableAutoLockMonitoring()
-        } else {
-          self?.activityMonitor.stopMonitoring()
-        }
-      }
-      .store(in: &cancellables)
+    if remainingTime > 0 {
+      let countdownString = remainingTime.formattedCountdown
+      return LocalizationKey.autoLockCountdownFormat.localized(countdownString)
+    } else {
+      return LocalizationKey.autoLockReadyToLock.localized
+    }
   }
+}
 
-  /// Sync initial state from Core components
-  private func syncInitialState() {
-    DispatchQueue.main.async {
-      self.isLocked = self.core.isKeyboardLocked
-      self.autoLockEnabled = self.config.autoLockDuration.isEnabled
+// MARK: - Auto-Lock Management
+
+extension KeyboardLockManager {
+  /// Update auto-lock state based on current configuration
+  private func updateAutoLockState() {
+    if isAutoLockEnabled {
+      enableAutoLockMonitoring()
+    } else {
+      activityMonitor.stopMonitoring()
     }
+
+    updateUIUpdater()
   }
 
   /// Enable auto-lock monitoring with current configuration
   private func enableAutoLockMonitoring() {
     let duration = config.autoLockDuration
-    if isAutoLockEnabled {
-      activityMonitor.enableAutoLock(seconds: duration.seconds)
-      activityMonitor.onAutoLockTriggered = { [weak self] in
-        self?.lockKeyboard()
-      }
-      activityMonitor.startMonitoring()
+    guard isAutoLockEnabled else { return }
+
+    activityMonitor.enableAutoLock(seconds: duration.seconds)
+    activityMonitor.onAutoLockTriggered = { [weak self] in
+      self?.handleAutoLockTrigger()
+    }
+    activityMonitor.startMonitoring()
+  }
+
+  /// Triggered by auto-lock system (sends notification)
+  private func handleAutoLockTrigger() {
+    do {
+      try core.lockKeyboard()
+      print("🤖 Auto-lock activated")
+    } catch {
+      print("❌ Auto-lock failed: \(error.localizedDescription)")
+    }
+  }
+}
+
+// MARK: - UI State Management
+
+extension KeyboardLockManager {
+  /// Determine whether UI updater should be running
+  private var shouldRunUIUpdater: Bool {
+    isLocked || isAutoLockEnabled
+  }
+
+  /// Start periodic UI state updates
+  private func startUIUpdates() {
+    refreshScheduler.start { [weak self] in
+      self?.updateUIState()
+    }
+  }
+
+  /// Stop periodic UI state updates
+  private func stopUIUpdates() {
+    refreshScheduler.stop()
+    lockDuration = nil
+    autoLockRemainingTime = nil
+  }
+
+  /// Update UI updater based on current state
+  private func updateUIUpdater() {
+    if shouldRunUIUpdater {
+      startUIUpdates()
+    } else {
+      stopUIUpdates()
+    }
+  }
+
+  /// Update all UI state values
+  private func updateUIState() {
+    lockDuration = calculateLockDuration()
+    autoLockRemainingTime = calculateAutoLockRemainingTime()
+  }
+}
+
+// MARK: - State Calculation
+
+extension KeyboardLockManager {
+  /// Calculate lock duration in seconds for UI display
+  private func calculateLockDuration() -> TimeInterval? {
+    guard core.isLocked else { return nil }
+
+    // Otherwise show elapsed time since lock started
+    guard let lockedAt = core.lockedAt else { return nil }
+    return Date().timeIntervalSince(lockedAt)
+  }
+
+  /// Calculate auto-lock remaining time in seconds for UI display
+  private func calculateAutoLockRemainingTime() -> TimeInterval? {
+    let duration = autoLockDuration
+    guard duration > 0, isAutoLockEnabled else { return nil }
+
+    let timeSinceActivity = getTimeSinceLastActivity()
+    return max(0, TimeInterval(duration * 60) - timeSinceActivity)
+  }
+}
+
+// MARK: - Helpers
+
+extension KeyboardLockManager {
+  /// Execute a user-initiated operation (no notifications)
+  private func performUserOperation(_ operation: () throws -> Void) {
+    isUserOperation = true
+    defer { isUserOperation = false }
+
+    do {
+      try operation()
+    } catch {
+      print("❌ User operation failed: \(error.localizedDescription)")
     }
   }
 }

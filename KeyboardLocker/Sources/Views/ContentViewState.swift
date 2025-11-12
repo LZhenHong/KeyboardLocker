@@ -12,7 +12,7 @@ class ContentViewState: ObservableObject {
   var keyboardManager: KeyboardLockManager?
   private var cancellables = Set<AnyCancellable>()
 
-  // MARK: - Lifecycle Methods
+  // MARK: - Lifecycle
 
   func setup(with keyboardManager: KeyboardLockManager) {
     self.keyboardManager = keyboardManager
@@ -24,12 +24,11 @@ class ContentViewState: ObservableObject {
     cancellables.removeAll()
   }
 
-  // MARK: - Public Methods
+  // MARK: - Private Methods
 
   private func setupSubscriptions() {
     guard let keyboardManager else { return }
 
-    // Subscribe to lock state changes
     keyboardManager.$isLocked
       .receive(on: DispatchQueue.main)
       .sink { [weak self] isLocked in

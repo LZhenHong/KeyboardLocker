@@ -121,7 +121,6 @@ enum LocalizationKey {
 
   // Lock Duration
   static let lockDurationFormat = "lock.duration.format"
-  static let timedLockRemaining = "timed.lock.remaining"
 
   // Permissions
   static let permissionRequired = "permission.required"

@@ -76,7 +76,9 @@ public class KeyboardLockCore {
   /// Reset unlock hotkey to default (Cmd+Option+L)
   public func resetUnlockHotkeyToDefault() {
     configureUnlockHotkey(.defaultHotkey())
-  } // MARK: - Core Locking Methods
+  }
+
+  // MARK: - Core Locking Methods
 
   /// Lock keyboard input
   /// - Throws: KeyboardLockError if locking fails

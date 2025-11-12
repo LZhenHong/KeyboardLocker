@@ -12,15 +12,33 @@ struct KeyboardLockerApp: App {
 
   var body: some Scene {
     // Modern MenuBarExtra for native menu bar integration
-    MenuBarExtra(LocalizationKey.appMenuTitle.localized, systemImage: "lock.shield") {
+    MenuBarExtra {
       ContentView()
         .environmentObject(dependencies.keyboardLockManager)
         .environmentObject(dependencies.permissionManager)
         .onAppear {
           appDelegate.configure(dependencies.keyboardLockManager, dependencies.urlHandler)
         }
+    } label: {
+      MenuBarLabelView(keyboardLockManager: dependencies.keyboardLockManager)
     }
     .menuBarExtraStyle(.window)
     .handlesExternalEvents(matching: ["keyboardlocker"])
+  }
+}
+
+private struct MenuBarLabelView: View {
+  @ObservedObject var keyboardLockManager: KeyboardLockManager
+
+  private var statusBarIcon: String {
+    keyboardLockManager.isLocked ? "lock.fill" : "lock.open.fill"
+  }
+
+  var body: some View {
+    Label {
+      Text(localized: LocalizationKey.appMenuTitle)
+    } icon: {
+      Image(systemName: statusBarIcon)
+    }
   }
 }

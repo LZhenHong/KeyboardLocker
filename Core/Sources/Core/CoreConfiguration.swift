@@ -185,66 +185,46 @@ public class CoreConfiguration: ObservableObject {
 
 /// Hotkey configuration structure
 public struct HotkeyConfiguration: Codable, CustomStringConvertible, RawRepresentable {
-  public let keyCode: UInt16
-  public let modifierFlags: UInt32
-  public let displayString: String
+  public let keyCode: CGKeyCode
+  public let modifierFlags: CGEventFlags
 
-  public init(keyCode: UInt16, modifierFlags: UInt32, displayString: String) {
+  public init(keyCode: CGKeyCode, modifierFlags: CGEventFlags) {
     self.keyCode = keyCode
     self.modifierFlags = modifierFlags
-    self.displayString = displayString
+  }
+
+  // MARK: - Computed Properties
+
+  /// Display string representation of the hotkey
+  public var displayString: String {
+    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags, separator: "+") ?? ""
   }
 
   // MARK: - RawRepresentable
 
   public var rawValue: String {
-    "\(keyCode):\(modifierFlags):\(displayString)"
+    "\(keyCode):\(modifierFlags.rawValue)"
   }
 
   public init?(rawValue: String) {
     let components = rawValue.components(separatedBy: ":")
-    guard components.count == 3,
-          let keyCode = UInt16(components[0]),
-          let modifierFlags = UInt32(components[1])
+    guard components.count == 2,
+          let keyCode = CGKeyCode(components[0]),
+          let modifierFlagsValue = UInt64(components[1])
     else {
       return nil
     }
 
     self.keyCode = keyCode
-    self.modifierFlags = modifierFlags
-    displayString = components[2]
+    modifierFlags = CGEventFlags(rawValue: modifierFlagsValue)
   }
 
   /// Default hotkey configuration
   public static func defaultHotkey() -> HotkeyConfiguration {
     HotkeyConfiguration(
       keyCode: CoreConstants.defaultUnlockKeyCode,
-      modifierFlags: UInt32(cmdKey | optionKey),
-      displayString: "⌘⌥L"
+      modifierFlags: [CGEventFlags.maskCommand, CGEventFlags.maskAlternate]
     )
-  }
-
-  /// Map Carbon modifier flags to `CGEventFlags` for event comparisons
-  public var eventModifierFlags: CGEventFlags {
-    var flags: CGEventFlags = []
-
-    if modifierFlags & UInt32(cmdKey) != 0 {
-      flags.insert(.maskCommand)
-    }
-
-    if modifierFlags & UInt32(optionKey) != 0 {
-      flags.insert(.maskAlternate)
-    }
-
-    if modifierFlags & UInt32(shiftKey) != 0 {
-      flags.insert(.maskShift)
-    }
-
-    if modifierFlags & UInt32(controlKey) != 0 {
-      flags.insert(.maskControl)
-    }
-
-    return flags
   }
 
   public var description: String {

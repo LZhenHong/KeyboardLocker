@@ -75,9 +75,8 @@ public class KeyboardLockCore {
   /// - Parameters:
   ///   - keyCode: The key code for the unlock key
   ///   - modifiers: The modifier flags (Command, Option, etc.)
-  ///   - displayString: The display string for the hotkey
-  public func configureUnlockHotkey(keyCode: UInt16, modifiers: UInt32, displayString: String) {
-    let hotkey = HotkeyConfiguration(keyCode: keyCode, modifierFlags: modifiers, displayString: displayString)
+  public func configureUnlockHotkey(keyCode: CGKeyCode, modifiers: CGEventFlags) {
+    let hotkey = HotkeyConfiguration(keyCode: keyCode, modifierFlags: modifiers)
     configureUnlockHotkey(hotkey)
   }
 
@@ -204,7 +203,7 @@ public class KeyboardLockCore {
   }
 
   private func shouldTriggerUnlock(for type: CGEventType, event: CGEvent) -> Bool {
-    guard event.flags.intersection(Self.relevantModifierMask) == unlockHotkey.eventModifierFlags else {
+    guard event.flags.intersection(Self.relevantModifierMask) == unlockHotkey.modifierFlags else {
       return false
     }
 

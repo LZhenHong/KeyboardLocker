@@ -215,7 +215,7 @@ public struct HotkeyConfiguration: Codable, CustomStringConvertible, RawRepresen
     displayString = components[2]
   }
 
-  /// Default hotkey: Command+Option+L
+  /// Default hotkey configuration
   public static func defaultHotkey() -> HotkeyConfiguration {
     HotkeyConfiguration(
       keyCode: CoreConstants.defaultUnlockKeyCode,

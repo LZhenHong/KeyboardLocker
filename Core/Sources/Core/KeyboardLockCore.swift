@@ -81,7 +81,7 @@ public class KeyboardLockCore {
     configureUnlockHotkey(hotkey)
   }
 
-  /// Reset unlock hotkey to default (Cmd+Option+L)
+  /// Reset unlock hotkey to default
   public func resetUnlockHotkeyToDefault() {
     configureUnlockHotkey(.defaultHotkey())
   }

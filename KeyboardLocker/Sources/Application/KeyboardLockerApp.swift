@@ -14,6 +14,7 @@ struct KeyboardLockerApp: App {
     // Modern MenuBarExtra for native menu bar integration
     MenuBarExtra {
       ContentView()
+        .environmentObject(dependencies.coreConfiguration)
         .environmentObject(dependencies.keyboardLockManager)
         .environmentObject(dependencies.permissionManager)
         .onAppear {

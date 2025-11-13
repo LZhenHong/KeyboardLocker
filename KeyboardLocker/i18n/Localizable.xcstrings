@@ -466,13 +466,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Use ⌘+⌥+L to unlock keyboard"
+            "value" : "Use hotkey to unlock keyboard"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 ⌘+⌥+L 解锁键盘"
+            "value" : "使用快捷键解锁键盘"
           }
         }
       }
@@ -749,19 +749,19 @@
         }
       }
     },
-    "shortcut.hint" : {
+    "shortcut.label" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shortcut: ⌘+⌥+L"
+            "value" : "Shortcut:"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "快捷键: ⌘+⌥+L"
+            "value" : "快捷键:"
           }
         }
       }

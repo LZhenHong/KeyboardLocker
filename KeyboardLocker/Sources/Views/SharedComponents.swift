@@ -56,9 +56,11 @@ struct QuickActionsView: View {
 // MARK: - Bottom Actions
 
 struct BottomActionsView: View {
+  @EnvironmentObject var configuration: CoreConfiguration
+
   var body: some View {
     HStack {
-      Text(LocalizationKey.shortcutHint.localized)
+      Text(LocalizationKey.shortcutLabel.localized + " \(configuration.hotkey.displayString)")
         .font(.caption)
         .foregroundColor(.secondary)
 

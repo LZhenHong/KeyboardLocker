@@ -43,8 +43,8 @@ public enum CoreConstants {
   /// Main app bundle identifier
   public static let mainAppBundleID = "io.lzhlovesjyq.KeyboardLocker"
 
-  /// Default unlock key combination (Cmd + Option + L)
-  public static let defaultUnlockKeyCode: UInt16 = 37 // 'L' key
+  /// Default unlock key code
+  public static let defaultUnlockKeyCode: UInt16 = 37
 }
 
 // MARK: - Lock Status

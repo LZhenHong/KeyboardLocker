@@ -2,7 +2,7 @@ import Core
 import SwiftUI
 
 struct SettingsView: View {
-  @ObservedObject private var coreConfig = CoreConfiguration.shared
+  @EnvironmentObject private var coreConfig: CoreConfiguration
   @EnvironmentObject private var permissionManager: PermissionManager
 
   private typealias AutoLockInterval = CoreConfiguration.Duration
@@ -104,7 +104,7 @@ struct SettingsView: View {
         HStack {
           Text(LocalizationKey.actionLock.localized + "/" + LocalizationKey.actionUnlock.localized + ":")
           Spacer()
-          Text("⌘ + ⌥ + L".localized)
+          Text(coreConfig.hotkey.displayString)
             .font(.system(.body, design: .monospaced))
             .padding(.horizontal, 8)
             .padding(.vertical, 2)

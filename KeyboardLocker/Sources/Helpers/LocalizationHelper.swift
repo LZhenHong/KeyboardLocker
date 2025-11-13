@@ -72,9 +72,6 @@ enum LocalizationKey {
   static let aboutTitle = "about.title"
   static let aboutSubtitle = "about.subtitle"
 
-  // Shortcuts
-  static let shortcutHint = "shortcut.hint"
-
   // Settings
   static let settingsAutoLock = "settings.auto.lock"
   static let settingsAutoLockDescription = "settings.auto.lock.description"
@@ -84,6 +81,9 @@ enum LocalizationKey {
   static let settingsKeyboard = "settings.keyboard"
   static let settingsKeyboardDescription = "settings.keyboard.description"
   static let settingsReset = "settings.reset"
+
+  // Shortcuts
+  static let shortcutLabel = "shortcut.label"
 
   // Time durations and duration display
   static let timeActivityText = "time.activity.text"

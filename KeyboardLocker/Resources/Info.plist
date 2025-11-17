@@ -48,5 +48,9 @@
 	<string>Copyright © 2025 Eden. All rights reserved.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>KeyboardLocker.sdef</string>
 </dict>
 </plist>

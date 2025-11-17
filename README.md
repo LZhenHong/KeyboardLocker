@@ -12,6 +12,7 @@ A modern macOS menu bar application for quickly locking and unlocking your keybo
 - 🌐 **Multi-language** – English and Simplified Chinese
 - 🖥️ **Command-Line Tool** – Scriptable lock/unlock control
 - 🔗 **URL Schemes** – External control via `keyboardlocker://` URLs
+- 🍎 **AppleScript Support** – Automation via macOS scripting
 - 🛡️ **Privacy First** – Local operation, no data collection
 
 ## Installation
@@ -55,6 +56,37 @@ Available commands:
 - `--help` – print usage text
 
 The CLI uses the same Accessibility permission as the app. If you run it outside the packaged app bundle, macOS may prompt for access the first time.
+
+## AppleScript Integration
+
+KeyboardLocker supports AppleScript commands for automation and integration with other macOS tools.
+
+```applescript
+# Lock the keyboard
+tell application "KeyboardLocker"
+    lock
+end tell
+
+# Unlock the keyboard
+tell application "KeyboardLocker"
+    unlock
+end tell
+
+# Toggle lock state
+tell application "KeyboardLocker"
+    toggle
+end tell
+```
+
+You can also run AppleScript commands from the terminal:
+
+```bash
+osascript -e 'tell application "KeyboardLocker" to lock'
+osascript -e 'tell application "KeyboardLocker" to unlock'
+osascript -e 'tell application "KeyboardLocker" to toggle'
+```
+
+The first time you use AppleScript with KeyboardLocker, macOS will request **Automation permission** for the controlling application.
 
 ## Requirements
 

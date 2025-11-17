@@ -10,6 +10,7 @@ A modern macOS menu bar application for quickly locking and unlocking your keybo
 - 🔔 **Notifications** – Optional lock/unlock alerts
 - 🕒 **Auto-Lock** – Configurable idle timer powered by `UserActivityMonitor`
 - 🌐 **Multi-language** – English and Simplified Chinese
+- 🖥️ **Command-Line Tool** – Scriptable lock/unlock control
 - 🔗 **URL Schemes** – External control via `keyboardlocker://` URLs
 - 🛡️ **Privacy First** – Local operation, no data collection
 
@@ -33,6 +34,27 @@ make build
 - **Quick Toggle**: Press `⌘ + ⌥ + L` anytime
 - **Settings**: Configure notifications, auto-lock, and hotkey
 - **Status**: Icon shows 🔒 when locked, 🔓 when unlocked; status window mirrors details
+
+## Command-Line Interface
+
+The repository ships with a Swift-based CLI (`KeyboardLockerTool`) that mirrors the app’s lock/unlock/toggle behaviour for automation scenarios.
+
+```bash
+# Build the CLI once (Release configuration)
+make cli
+
+# Binary ends up here
+./Build/CLI/KeyboardLockerTool --help
+```
+
+Available commands:
+
+- `lock` – immediately lock the keyboard and wait until it is unlocked (either via hotkey or Ctrl+C)
+- `unlock` – force an unlock and exit
+- `toggle` – switch between lock/unlock depending on the current state
+- `--help` – print usage text
+
+The CLI uses the same Accessibility permission as the app. If you run it outside the packaged app bundle, macOS may prompt for access the first time.
 
 ## Requirements
 

@@ -22,11 +22,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     keyboardLockManager?.unlockKeyboard()
   }
 
-  func applicationWillResignActive(_: Notification) {
-    print("Application will resign active - ensuring keyboard is unlocked")
-    keyboardLockManager?.unlockKeyboard()
-  }
-
   // MARK: - Exception Handling
 
   /// Setup NSException handler for crash recovery

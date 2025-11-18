@@ -62,17 +62,17 @@ The CLI uses the same Accessibility permission as the app. If you run it outside
 KeyboardLocker supports AppleScript commands for automation and integration with other macOS tools.
 
 ```applescript
-# Lock the keyboard
+-- Lock the keyboard
 tell application "KeyboardLocker"
     lock
 end tell
 
-# Unlock the keyboard
+-- Unlock the keyboard
 tell application "KeyboardLocker"
     unlock
 end tell
 
-# Toggle lock state
+-- Toggle lock state
 tell application "KeyboardLocker"
     toggle
 end tell

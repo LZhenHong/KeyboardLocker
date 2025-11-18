@@ -36,7 +36,7 @@ Key UI components:
 
 - Entry point lives in `KeyboardLockerTool/main.swift` and wires `CLICommandRunner` to the shared `Core` package objects.
 - Commands: `lock`, `unlock`, `toggle`, and `--help`. The `lock` command blocks until the core reports `isLocked == false`, pumping the run loop to keep the event tap alive.
-- Output artefact: `make cli` or `scripts/build_cli.sh` produce `Build/CLI/KeyboardLockerTool`, which can be copied into the `.app` bundle or used standalone for automation.
+- Output artifact: `make cli` or `scripts/build_cli.sh` produce `Build/CLI/KeyboardLockerTool`, which can be copied into the `.app` bundle or used standalone for automation.
 
 ## Dependency Injection Pattern
 

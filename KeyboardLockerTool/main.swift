@@ -69,15 +69,15 @@ enum CLICommand: Equatable {
     KeyboardLocker CLI
 
     Usage:
-     KeyboardLockerTool <command>
+      KeyboardLockerTool <command>
 
     Commands:
-    	lock               Lock the keyboard immediately
-    	unlock             Unlock the keyboard
-    	toggle             Toggle lock state
+      lock               Lock the keyboard immediately
+      unlock             Unlock the keyboard
+      toggle             Toggle lock state
 
     Global Options:
-    	-h, --help         Show this help text
+      -h, --help         Show this help text
 
     Examples:
       KeyboardLockerTool lock

@@ -69,15 +69,15 @@ enum CLICommand: Equatable {
     KeyboardLocker CLI
 
     Usage:
-     KeyboardLockerTool <command>
+      KeyboardLockerTool <command>
 
     Commands:
-    	lock               Lock the keyboard immediately
-    	unlock             Unlock the keyboard
-    	toggle             Toggle lock state
+      lock               Lock the keyboard immediately
+      unlock             Unlock the keyboard
+      toggle             Toggle lock state
 
     Global Options:
-    	-h, --help         Show this help text
+      -h, --help         Show this help text
 
     Examples:
       KeyboardLockerTool lock
@@ -166,10 +166,20 @@ final class CLICommandRunner {
   }
 
   private func toggle() throws {
+    let wasLocked = core.isLocked
+    core.toggleLock()
+    
     if core.isLocked {
-      unlock()
+      // Successfully locked - wait until unlocked
+      print("🔒 Keyboard locked. Press \(config.hotkey.displayString) to unlock.")
+      waitUntilUnlocked()
+      print("🔓 Keyboard unlocked")
+    } else if wasLocked {
+      // Was locked, now unlocked
+      print("🔓 Keyboard unlocked")
     } else {
-      try lock()
+      // Was unlocked, tried to lock but failed (toggleLock silently catches errors)
+      throw CLIError.operationFailed("Failed to lock keyboard")
     }
   }
 

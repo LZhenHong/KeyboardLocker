@@ -46,8 +46,20 @@ final class ToggleKeyboardLockCommand: NSScriptCommand {
   override func performDefaultImplementation() -> Any? {
     let core = KeyboardLockCore.shared
 
-    core.toggleLock()
-    print("🍎 AppleScript: toggle keyboard lock -> \(core.isLocked ? "locked" : "unlocked")")
-    return core.isLocked
+    if core.isLocked {
+      core.unlockKeyboard()
+      print("🍎 AppleScript: toggle keyboard lock -> unlocked")
+      return false
+    } else {
+      do {
+        try core.lockKeyboard()
+        print("🍎 AppleScript: toggle keyboard lock -> locked")
+        return true
+      } catch {
+        scriptErrorNumber = errOSAGeneralError
+        scriptErrorString = "Failed to toggle keyboard lock: \(error.localizedDescription)"
+        return false
+      }
+    }
   }
 }

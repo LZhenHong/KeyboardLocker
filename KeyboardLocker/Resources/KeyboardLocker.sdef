@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="KeyboardLocker Terminology">
+  <suite name="KeyboardLocker Suite" code="KBLk" description="Commands for controlling keyboard lock state">
+
+    <command name="lock" code="KBLkLock" description="Lock the keyboard to prevent input">
+      <cocoa class="LockKeyboardCommand"/>
+      <result type="boolean" description="True if keyboard was successfully locked"/>
+    </command>
+
+    <command name="unlock" code="KBLkUnlk" description="Unlock the keyboard to allow input">
+      <cocoa class="UnlockKeyboardCommand"/>
+      <result type="boolean" description="True if keyboard was successfully unlocked"/>
+    </command>
+
+    <command name="toggle" code="KBLkTogl" description="Toggle the keyboard lock state">
+      <cocoa class="ToggleKeyboardLockCommand"/>
+      <result type="boolean" description="True if keyboard is now locked, false if unlocked"/>
+    </command>
+
+  </suite>
+</dictionary>

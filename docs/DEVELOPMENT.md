@@ -6,6 +6,7 @@ KeyboardLocker is split into two primary layers:
 
 - **Core (Swift Package)** – Lives under `Core/` and exposes `KeyboardLockCore`, `PermissionHelper`, and shared models. It is responsible for the CGEvent tap, unlock-hotkey detection, and low-level locking behaviour. The unlocking logic is stateless and reacts directly to each `CGEvent`.
 - **App Target (`KeyboardLocker`)** – SwiftUI Menu Bar app that hosts the UI, notifications, settings, and URL handling. `AppDependencies` wires the Core package into ObservableObject managers that are injected into views via `EnvironmentObject`.
+- **CLI Target (`KeyboardLockerTool`)** – A Swift command-line wrapper around `KeyboardLockCore` for automation and scripting. It shares the same singletons as the app via `CoreConfiguration.shared` and `KeyboardLockCore.shared`.
 
 Key UI components:
 
@@ -21,14 +22,21 @@ Key UI components:
 - CGEvent taps for keyboard interception
 - `.xcstrings` localization resources
 - URL schemes for external automation (`keyboardlocker://`)
+- Command-line automation via the `KeyboardLockerTool` target
 
 ## Local Setup
 
 1. Clone the repository
-2. Run `make quick` for a fast build or open `KeyboardLocker.xcodeproj`
-3. Select the `KeyboardLocker` scheme and build/run (`⌘R`)
-4. Approve Accessibility access when prompted (required for CGEvent taps)
+2. Run `make quick` for the app or `make cli` for the command-line tool (or open `KeyboardLocker.xcodeproj`)
+3. Select the `KeyboardLocker` scheme (app) or `KeyboardLockerTool` scheme (CLI) and build/run (`⌘R`)
+4. Approve Accessibility access when prompted (required for CGEvent taps in both targets)
 5. If scripting Apple Events, macOS will later prompt for Automation permission
+
+## CLI Target Reference
+
+- Entry point lives in `KeyboardLockerTool/main.swift` and wires `CLICommandRunner` to the shared `Core` package objects.
+- Commands: `lock`, `unlock`, `toggle`, and `--help`. The `lock` command blocks until the core reports `isLocked == false`, pumping the run loop to keep the event tap alive.
+- Output artifact: `make cli` or `scripts/build_cli.sh` produce `Build/CLI/KeyboardLockerTool`, which can be copied into the `.app` bundle or used standalone for automation.
 
 ## Dependency Injection Pattern
 

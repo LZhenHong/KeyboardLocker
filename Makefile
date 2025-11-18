@@ -4,11 +4,12 @@
 #   make build      - Build release version to Build directory
 #   make quick      - Quick build without archive
 #   make clean      - Clean build artifacts
+#   make cli        - Build CLI helper binary to Build/CLI
 #   make install    - Install app to /Applications
 #   make open       - Open Build directory in Finder
 #   make info       - Show app information
 
-.PHONY: build quick clean install open info help
+.PHONY: build quick clean install open info cli help
 
 # Default target
 all: build
@@ -22,6 +23,11 @@ build:
 quick:
 	@echo "⚡ Quick building KeyboardLocker..."
 	@./scripts/quick_build.sh
+
+# Build CLI helper
+cli:
+	@echo "🛠 Building KeyboardLocker CLI (Release)..."
+	@./scripts/build_cli.sh
 
 # Clean build artifacts
 clean:
@@ -65,6 +71,7 @@ help:
 	@echo "  make build      Build release version to Build directory (recommended)"
 	@echo "  make quick      Quick build without archive (faster)"
 	@echo "  make clean      Clean build artifacts"
+	@echo "  make cli        Build CLI helper binary (Release)"
 	@echo "  make install    Install app to /Applications"
 	@echo "  make open       Open Build directory in Finder"
 	@echo "  make info       Show app information"

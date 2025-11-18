@@ -24,6 +24,7 @@ make install
 | -------------- | ------------------------------------ | ---------------------------------- | -------------------------- |
 | `make build`   | Optimised release build & archive    | `Build/KeyboardLocker.app`         | `scripts/build_release.sh` |
 | `make quick`   | Fast, un-archived development build  | `Build/KeyboardLocker.app`         | `scripts/quick_build.sh`   |
+| `make cli`     | Release build of the CLI tool        | `Build/CLI/KeyboardLockerTool`     | `scripts/build_cli.sh`     |
 | `make install` | Copy latest build to `/Applications` | `/Applications/KeyboardLocker.app` | -                          |
 | `make clean`   | Clean project and cache              | -                                  | -                          |
 
@@ -47,11 +48,24 @@ This script builds the Release configuration directly without the archive and ex
 - Places the product at `Build/KeyboardLocker.app`.
 - Cleans intermediate `Build/Products` and `.build/` folders afterwards.
 
+### `scripts/build_cli.sh`
+
+This script produces the standalone `KeyboardLockerTool` binary used for automation or embedding inside the packaged app.
+
+- Always builds the `KeyboardLockerTool` scheme in the Release configuration.
+- Copies the resulting binary to `Build/CLI/KeyboardLockerTool` and makes it executable.
+- Removes temporary DerivedData and `Build/Products/CLI` folders to keep the workspace tidy.
+
 ## Manual Builds
 
 For complete control, you can invoke `xcodebuild` directly.
 
 ```bash
+# Build only the CLI target (Release) without the script helper
+xcodebuild -project KeyboardLocker.xcodeproj \
+           -scheme KeyboardLockerTool \
+           -configuration Release build
+
 # Standard Debug/Development build (used during local iteration in Xcode)
 xcodebuild -scheme KeyboardLocker -configuration Debug build
 

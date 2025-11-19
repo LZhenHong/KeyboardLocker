@@ -3,8 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>io.lzhlovesjyq.KeyboardLocker.agent</string>
+	<string>io.lzhlovesjyq.keyboardlocker.agent.service</string>
 	<key>BundleProgram</key>
 	<string>Contents/Library/LoginItems/KeyboardLockerAgent.app</string>
+	<key>MachServices</key>
+	<dict>
+		<key>io.lzhlovesjyq.keyboardlocker.agent.service</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

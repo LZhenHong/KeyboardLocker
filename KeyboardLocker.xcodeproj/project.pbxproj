@@ -86,7 +86,7 @@
 		F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				io.lzhlovesjyq.KeyboardLocker.agent.plist,
+				io.lzhlovesjyq.keyboardlocker.agent.plist,
 			);
 			target = F21304272ECDAD3500735580 /* KeyboardLocker */;
 		};
@@ -96,11 +96,11 @@
 		F213055A2ECE3CC500735580 /* Exceptions for "KeyboardLocker" folder in "Copy Agent Plist" phase from "KeyboardLocker" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
-				io.lzhlovesjyq.KeyboardLocker.agent.plist = (CodeSignOnCopy, );
+				io.lzhlovesjyq.keyboardlocker.agent.plist = (CodeSignOnCopy, );
 			};
 			buildPhase = F21305582ECE3C9B00735580 /* Copy Agent Plist */;
 			membershipExceptions = (
-				io.lzhlovesjyq.KeyboardLocker.agent.plist,
+				io.lzhlovesjyq.keyboardlocker.agent.plist,
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
@@ -492,7 +492,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -526,7 +526,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -562,7 +562,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.Agent;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.agent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -598,7 +598,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.Agent;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.agent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -617,7 +617,7 @@
 				DEVELOPMENT_TEAM = V65YCRQZ2M;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.klock;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.klock;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -632,7 +632,7 @@
 				DEVELOPMENT_TEAM = V65YCRQZ2M;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.KeyboardLocker.klock;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.klock;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;

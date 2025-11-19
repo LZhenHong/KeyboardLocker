@@ -8,5 +8,5 @@
 import Foundation
 
 public enum SharedConstants {
-  public static let machServiceName = "io.lzhlovesjyq.KeyboardLocker.agent.service"
+  public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent.service"
 }

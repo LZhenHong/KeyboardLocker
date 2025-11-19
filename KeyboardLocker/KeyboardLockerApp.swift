@@ -32,7 +32,7 @@ struct KeyboardLockerApp: App {
     // However, for .agent(plistName:), we need the plist file.
     // A simpler way for modern macOS is .mainApp if it was the main app, but here it's a helper.
     // We will assume the user configures the build to copy the agent and plist.
-    let service = SMAppService.agent(plistName: "io.lzhlovesjyq.KeyboardLocker.agent.plist")
+    let service = SMAppService.agent(plistName: "io.lzhlovesjyq.keyboardlocker.agent.plist")
     do {
       try service.register()
     } catch {

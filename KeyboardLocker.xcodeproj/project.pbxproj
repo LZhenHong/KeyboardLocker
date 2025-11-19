@@ -63,6 +63,16 @@
 			name = "Copy CLI";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F21305582ECE3C9B00735580 /* Copy Agent Plist */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchAgents;
+			dstSubfolderSpec = 1;
+			files = (
+			);
+			name = "Copy Agent Plist";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -73,26 +83,40 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F21304AC2ECDC21400735580 /* Exceptions for "KeyboardLockerAgent" folder in "KeyboardLockerAgent" target */ = {
+		F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
+				io.lzhlovesjyq.KeyboardLocker.agent.plist,
 			);
-			target = F213049A2ECDC1AA00735580 /* KeyboardLockerAgent */;
+			target = F21304272ECDAD3500735580 /* KeyboardLocker */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		F213055A2ECE3CC500735580 /* Exceptions for "KeyboardLocker" folder in "Copy Agent Plist" phase from "KeyboardLocker" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				io.lzhlovesjyq.KeyboardLocker.agent.plist = (CodeSignOnCopy, );
+			};
+			buildPhase = F21305582ECE3C9B00735580 /* Copy Agent Plist */;
+			membershipExceptions = (
+				io.lzhlovesjyq.KeyboardLocker.agent.plist,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F213042A2ECDAD3500735580 /* KeyboardLocker */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */,
+				F213055A2ECE3CC500735580 /* Exceptions for "KeyboardLocker" folder in "Copy Agent Plist" phase from "KeyboardLocker" target */,
+			);
 			path = KeyboardLocker;
 			sourceTree = "<group>";
 		};
 		F213049C2ECDC1AA00735580 /* KeyboardLockerAgent */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				F21304AC2ECDC21400735580 /* Exceptions for "KeyboardLockerAgent" folder in "KeyboardLockerAgent" target */,
-			);
 			path = KeyboardLockerAgent;
 			sourceTree = "<group>";
 		};
@@ -162,6 +186,7 @@
 				F21304242ECDAD3500735580 /* Sources */,
 				F21304252ECDAD3500735580 /* Frameworks */,
 				F21304262ECDAD3500735580 /* Resources */,
+				F21305582ECE3C9B00735580 /* Copy Agent Plist */,
 				F21304C02ECDC2A400735580 /* Copy Agent App */,
 				F21304D22ECDC50400735580 /* Copy CLI */,
 			);
@@ -459,6 +484,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -492,6 +518,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -523,7 +550,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = KeyboardLockerAgent/Info.plist;
+				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -559,7 +586,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = KeyboardLockerAgent/Info.plist;
+				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

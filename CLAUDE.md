@@ -88,11 +88,100 @@ swiftformat .
 - Use descriptive constant names that explain the value's purpose
 - Centralize constants in `SharedConstants` or at type level
 
-### Encapsulation
-- Hide implementation details using `private` or `fileprivate`
-- Expose clear, minimal public interfaces
-- Move nested conditionals into well-named methods
-- Use `public` only for APIs consumed by other modules
+### Access Control & Encapsulation
+
+**Critical**: Proper access control is essential for maintainable code. Default to the most restrictive access level and only increase visibility when necessary.
+
+#### Access Level Hierarchy (from most to least restrictive)
+
+1. **`private`** - Only accessible within the declaring scope
+   - Use for implementation details
+   - Helper methods and properties
+   - Internal state management
+
+2. **`fileprivate`** - Accessible within the same file
+   - Use for tightly coupled types in the same file
+   - Required for C callback access (e.g., CGEventTap callbacks)
+   - Extensions accessing private members
+
+3. **`internal`** - Accessible within the same module (default)
+   - Use for module-internal APIs
+   - Types/methods used across files in the module
+   - Testing helpers (when in same module)
+
+4. **`public`** - Accessible from other modules
+   - **Only use for intentional public APIs**
+   - Core Package APIs consumed by App/Agent/CLI
+   - Well-documented with parameter descriptions
+   - Must be stable and backward-compatible
+
+#### Interface Convergence Rules
+
+**Minimize Public Surface Area**: Every public API is a commitment. The more you expose, the harder it is to refactor.
+
+```swift
+// Good: Minimal public interface
+public class XPCClient {
+  public static let shared = XPCClient()
+
+  public func lock(reply: @escaping (Error?) -> Void) { }
+  public func unlock(reply: @escaping (Error?) -> Void) { }
+  public func status(reply: @escaping (Bool, Error?) -> Void) { }
+
+  private init() { }  // Singleton pattern
+  private func createConnection() -> NSXPCConnection { }  // Implementation detail
+  private func executeRemoteCall(...) { }  // Helper method
+}
+
+// Bad: Over-exposed implementation
+public class XPCClient {
+  public init() { }  // Should be private for singleton
+  public func createConnection() -> NSXPCConnection { }  // Should be private
+  public var connectionCache: [String: NSXPCConnection] = [:]  // Should be private
+}
+```
+
+#### Access Control Checklist
+
+Before making something `public`, ask:
+- ✅ Is this intentionally part of the module's public API?
+- ✅ Is it documented with usage examples?
+- ✅ Will other modules genuinely need to call this?
+- ✅ Am I prepared to maintain backward compatibility?
+
+If any answer is "no", use a more restrictive access level.
+
+#### Common Patterns
+
+**Singletons**: `private init()` to prevent instantiation
+```swift
+public class LockEngine {
+  public static let shared = LockEngine()
+  private init() { }
+}
+```
+
+**Read-only public state**: `public private(set)`
+```swift
+public class LockEngine {
+  public private(set) var isLocked = false  // Read publicly, write privately
+}
+```
+
+**Internal helpers**: Keep `private` unless needed across files
+```swift
+private func validateSettings(_ settings: KeyboardLockerSettings) -> Bool {
+  // Implementation detail, not part of public API
+}
+```
+
+**Type-level access**: Mark entire types `private` or `fileprivate` when only used locally
+```swift
+// In main.swift - only used in this file
+private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
+  // ...
+}
+```
 
 ### Code Quality Maintenance
 - Refactor continuously as you work

@@ -32,15 +32,29 @@ public class LockEngine {
   public static let shared = LockEngine()
 
   public enum LockEngineError: Error, LocalizedError {
+    case accessibilityPermissionDenied
     case eventTapCreationFailed
     case runLoopSourceCreationFailed
 
     public var errorDescription: String? {
       switch self {
+      case .accessibilityPermissionDenied:
+        "Accessibility permission is required to lock keyboard and mouse input."
       case .eventTapCreationFailed:
-        "Failed to create event tap. Check Accessibility permissions."
+        "Failed to create event tap. This may indicate a permissions issue or system restriction."
       case .runLoopSourceCreationFailed:
         "Failed to create run loop source for event tap."
+      }
+    }
+
+    public var recoverySuggestion: String? {
+      switch self {
+      case .accessibilityPermissionDenied:
+        "Open System Settings → Privacy & Security → Accessibility and enable access for this application."
+      case .eventTapCreationFailed:
+        "Try restarting the application. If the problem persists, check Accessibility permissions in System Settings."
+      case .runLoopSourceCreationFailed:
+        "This is a system-level error. Please contact support if it persists."
       }
     }
   }
@@ -71,6 +85,11 @@ public class LockEngine {
   public func lock(settings: KeyboardLockerSettings = .default) throws {
     guard !isLocked else {
       return
+    }
+
+    // Verify Accessibility permission before attempting to create event tap
+    guard AccessibilityPermissionManager.hasPermission() else {
+      throw LockEngineError.accessibilityPermissionDenied
     }
 
     activeSettings = settings

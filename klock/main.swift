@@ -8,40 +8,38 @@
 import Core
 import Foundation
 
-let client = XPCClient.shared
-let args = CommandLine.arguments
+let xpcClient = XPCClient.shared
+let commandLineArgs = CommandLine.arguments
 
-guard args.count > 1 else {
+guard commandLineArgs.count > 1 else {
   print("Usage: klock <lock|unlock|status>")
   exit(1)
 }
 
-let command = args[1]
 let semaphore = DispatchSemaphore(value: 0)
 
-switch command {
+func handleResult(_ error: Error?, successMessage: String) {
+  if let error {
+    print("Error: \(error.localizedDescription)")
+    exit(1)
+  }
+  print(successMessage)
+  semaphore.signal()
+}
+
+switch commandLineArgs[1] {
 case "lock":
-  client.lock { error in
-    if let error {
-      print("Error: \(error.localizedDescription)")
-      exit(1)
-    }
-    print("Locked")
-    semaphore.signal()
+  xpcClient.lock { error in
+    handleResult(error, successMessage: "Locked")
   }
 
 case "unlock":
-  client.unlock { error in
-    if let error {
-      print("Error: \(error.localizedDescription)")
-      exit(1)
-    }
-    print("Unlocked")
-    semaphore.signal()
+  xpcClient.unlock { error in
+    handleResult(error, successMessage: "Unlocked")
   }
 
 case "status":
-  client.status { isLocked, error in
+  xpcClient.status { isLocked, error in
     if let error {
       print("Error: \(error.localizedDescription)")
       exit(1)
@@ -51,7 +49,7 @@ case "status":
   }
 
 default:
-  print("Unknown command: \(command)")
+  print("Unknown command: \(commandLineArgs[1])")
   exit(1)
 }
 

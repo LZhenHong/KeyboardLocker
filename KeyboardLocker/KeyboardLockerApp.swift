@@ -26,12 +26,11 @@ struct KeyboardLockerApp: App {
   }
 
   init() {
-    // Register the agent
-    // Note: The agent plist must be named exactly as expected and placed in Contents/Library/LaunchAgents
-    // For SMAppService, we usually rely on the system to find the helper if it's properly embedded.
-    // However, for .agent(plistName:), we need the plist file.
-    // A simpler way for modern macOS is .mainApp if it was the main app, but here it's a helper.
-    // We will assume the user configures the build to copy the agent and plist.
+    registerAgentService()
+  }
+
+  private func registerAgentService() {
+    // Register agent with SMAppService to ensure it's available for XPC communication
     let service = SMAppService.agent(plistName: "io.lzhlovesjyq.keyboardlocker.agent.plist")
     do {
       try service.register()
@@ -40,27 +39,27 @@ struct KeyboardLockerApp: App {
     }
   }
 
+  private func performLockOperation(
+    _ operation: (@escaping (Error?) -> Void) -> Void,
+    newState: Bool,
+    errorContext: String
+  ) {
+    operation { error in
+      if let error {
+        print("Error \(errorContext): \(error)")
+      } else {
+        DispatchQueue.main.async {
+          isLocked = newState
+        }
+      }
+    }
+  }
+
   func toggleLock() {
     if isLocked {
-      XPCClient.shared.unlock { error in
-        if let error {
-          print("Error unlocking: \(error)")
-        } else {
-          DispatchQueue.main.async {
-            isLocked = false
-          }
-        }
-      }
+      performLockOperation(XPCClient.shared.unlock, newState: false, errorContext: "unlocking")
     } else {
-      XPCClient.shared.lock { error in
-        if let error {
-          print("Error locking: \(error)")
-        } else {
-          DispatchQueue.main.async {
-            isLocked = true
-          }
-        }
-      }
+      performLockOperation(XPCClient.shared.lock, newState: true, errorContext: "locking")
     }
   }
 }

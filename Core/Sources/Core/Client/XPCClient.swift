@@ -12,39 +12,49 @@ public class XPCClient {
     return connection
   }
 
+  private func executeRemoteCall(
+    onError: @escaping (Error) -> Void,
+    operation: @escaping (KeyboardLockerServiceProtocol, NSXPCConnection) -> Void
+  ) {
+    let connection = createConnection()
+    guard let service = connection.remoteObjectProxyWithErrorHandler({ error in
+      onError(error)
+    }) as? KeyboardLockerServiceProtocol else {
+      return
+    }
+    operation(service, connection)
+  }
+
+  /// Requests the agent to lock keyboard and mouse input
+  /// - Parameter reply: Completion handler called with nil on success, or error if agent unavailable or permission denied
   public func lock(reply: @escaping (Error?) -> Void) {
-    let connection = createConnection()
-    let service = connection.remoteObjectProxyWithErrorHandler { error in
-      reply(error)
-    } as? KeyboardLockerServiceProtocol
-
-    service?.lockKeyboard(reply: { error in
-      reply(error)
-      connection.invalidate()
-    })
+    executeRemoteCall(onError: reply) { service, connection in
+      service.lockKeyboard { error in
+        reply(error)
+        connection.invalidate()
+      }
+    }
   }
 
+  /// Requests the agent to unlock keyboard and mouse input
+  /// - Parameter reply: Completion handler called with nil on success, or error if agent unavailable
   public func unlock(reply: @escaping (Error?) -> Void) {
-    let connection = createConnection()
-    let service = connection.remoteObjectProxyWithErrorHandler { error in
-      reply(error)
-    } as? KeyboardLockerServiceProtocol
-
-    service?.unlockKeyboard(reply: { error in
-      reply(error)
-      connection.invalidate()
-    })
+    executeRemoteCall(onError: reply) { service, connection in
+      service.unlockKeyboard { error in
+        reply(error)
+        connection.invalidate()
+      }
+    }
   }
 
+  /// Queries the current lock state from the agent
+  /// - Parameter reply: Completion handler called with (isLocked, error) tuple
   public func status(reply: @escaping (Bool, Error?) -> Void) {
-    let connection = createConnection()
-    let service = connection.remoteObjectProxyWithErrorHandler { error in
-      reply(false, error)
-    } as? KeyboardLockerServiceProtocol
-
-    service?.status(reply: { isLocked, error in
-      reply(isLocked, error)
-      connection.invalidate()
-    })
+    executeRemoteCall(onError: { error in reply(false, error) }) { service, connection in
+      service.status { isLocked, error in
+        reply(isLocked, error)
+        connection.invalidate()
+      }
+    }
   }
 }

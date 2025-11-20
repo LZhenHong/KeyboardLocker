@@ -7,8 +7,14 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     super.init()
   }
 
-  func lockKeyboard(reply: @escaping (Error?) -> Void) {
+  private func executeOnMainThread(_ operation: @escaping () -> Void) {
     DispatchQueue.main.async {
+      operation()
+    }
+  }
+
+  func lockKeyboard(reply: @escaping (Error?) -> Void) {
+    executeOnMainThread {
       do {
         try LockEngine.shared.lock()
         reply(nil)
@@ -19,25 +25,15 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   func unlockKeyboard(reply: @escaping (Error?) -> Void) {
-    DispatchQueue.main.async {
+    executeOnMainThread {
       LockEngine.shared.unlock()
       reply(nil)
     }
   }
 
   func status(reply: @escaping (Bool, Error?) -> Void) {
-    DispatchQueue.main.async {
+    executeOnMainThread {
       reply(LockEngine.shared.isLocked, nil)
     }
-  }
-}
-
-/// Accepts incoming XPC connections and exports the AgentService instance.
-final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
-  nonisolated func listener(_: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
-    newConnection.exportedInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
-    newConnection.exportedObject = AgentService()
-    newConnection.resume()
-    return true
   }
 }

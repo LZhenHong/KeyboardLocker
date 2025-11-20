@@ -57,4 +57,15 @@ public class XPCClient {
       }
     }
   }
+
+  /// Queries whether the agent process is trusted for Accessibility APIs
+  /// - Parameter reply: Completion handler called with Boolean status
+  public func accessibilityStatus(reply: @escaping (Bool) -> Void) {
+    executeRemoteCall(onError: { _ in reply(false) }) { service, connection in
+      service.accessibilityStatus { granted in
+        reply(granted)
+        connection.invalidate()
+      }
+    }
+  }
 }

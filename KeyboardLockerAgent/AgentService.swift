@@ -36,4 +36,10 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       reply(LockEngine.shared.isLocked, nil)
     }
   }
+
+  func accessibilityStatus(reply: @escaping (Bool) -> Void) {
+    executeOnMainThread {
+      reply(AccessibilityPermissionManager.hasPermission())
+    }
+  }
 }

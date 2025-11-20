@@ -8,7 +8,7 @@
 import Foundation
 
 public enum SharedConstants {
-  public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent.service"
+  public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent"
 
   /// Default unlock key code 'L' key
   public static let defaultUnlockKeyCode: UInt16 = 37

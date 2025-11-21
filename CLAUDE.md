@@ -189,6 +189,48 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 - Leave code cleaner than you found it
 - Prefer editing existing code over creating new files
 
+### Resource and Code Cleanup
+
+**Critical**: Unused code and resources create maintenance burden, confusion, and increase codebase complexity.
+
+- **Remove Dead Code**: Delete functions, classes, properties, and variables that are never referenced
+  - Use Xcode's warnings and static analysis to identify unused code
+  - Don't keep code "just in case" — version control preserves history
+  - Remove entire files that no longer serve a purpose
+  - Trust git for historical reference instead of leaving unused code in the codebase
+
+- **Delete Commented-Out Code**: Never commit commented-out code
+  - If code is no longer needed, delete it completely
+  - Version control (git) preserves history if you need to reference old implementations
+  - Exception: Temporary debugging comments during active development (remove before committing)
+  - Commented code creates ambiguity about what's actually in use
+
+- **Clean Up Unused Resources**:
+  - Remove unused assets from Asset Catalogs (images, colors, data)
+  - Delete unreferenced files (images, JSON, plists) from project directories
+  - Use Xcode's "Find Unused Resources" and build warnings to identify orphaned assets
+  - Audit resource bundles periodically to ensure all files are actually used
+
+- **Localization String Cleanup**:
+  - Regularly audit `.xcstrings` files for unused localization keys
+  - Remove strings that are no longer referenced in code
+  - Keep localization files synchronized with actual usage
+  - Use string catalog warnings to identify unreferenced keys
+  - Don't accumulate "just in case" translations that bloat the app
+
+- **Remove Deprecated Code**:
+  - When deprecating APIs, set a clear timeline for removal
+  - Don't accumulate deprecated code indefinitely
+  - Provide migration paths and warnings before removing deprecated APIs
+  - After the deprecation period, delete the old implementation completely
+  - Use `@available` attributes with clear messages when deprecating
+
+**Cleanup Workflow**:
+1. Before each commit: Review your changes for any commented-out code or unused imports
+2. During refactoring: Delete code/resources made obsolete by the refactor
+3. Periodic audits: Use Xcode's analyzer and build warnings to identify cleanup opportunities
+4. When removing features: Delete all associated code, resources, and localization strings
+
 ## Architecture Details
 
 ### XPC Communication Flow

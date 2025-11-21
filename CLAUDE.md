@@ -88,6 +88,67 @@ swiftformat .
 - Use descriptive constant names that explain the value's purpose
 - Centralize constants in `SharedConstants` or at type level
 
+### Swift Best Practices
+
+**Critical**: Use modern Swift idioms. Avoid legacy Objective-C patterns unless required for interoperability.
+
+#### Error Handling
+- **Use Swift `Error` enum** instead of `NSError`:
+  ```swift
+  // Good: Swift Error enum
+  public enum XPCClientError: Error {
+    case serviceUnavailable
+    case connectionFailed(underlying: Error)
+  }
+
+  // Bad: NSError
+  NSError(domain: "XPCClient", code: -1, userInfo: [...])
+  ```
+- Implement `LocalizedError` for user-facing error messages
+- Use `Result<T, Error>` or `throws` for synchronous operations
+
+#### Avoid Singleton Abuse
+- **Use caseless `enum`** for namespaces with only static methods:
+  ```swift
+  // Good: Caseless enum namespace
+  public enum XPCClient {
+    public static func status(reply: @escaping (Bool, Error?) -> Void) { }
+  }
+
+  // Bad: Singleton for stateless operations
+  public class XPCClient {
+    public static let shared = XPCClient()
+    private init() {}
+  }
+  ```
+- Reserve singletons for truly stateful shared resources (e.g., `LockEngine.shared`)
+- Prefer static methods for stateless operations
+
+#### Prefer Swift Types Over Foundation
+- Use `String` over `NSString`
+- Use `Array`/`Dictionary`/`Set` over `NSArray`/`NSDictionary`/`NSSet`
+- Use `Data` over `NSData`
+- Use `URL` over `NSURL`
+- Use `Date` over `NSDate`
+
+#### Type Safety
+- Prefer `enum` with associated values over stringly-typed APIs
+- Use `Codable` for serialization instead of manual dictionary parsing
+- Leverage generics for type-safe abstractions
+- Use `@frozen` for enums when ABI stability is needed
+
+#### Modern Swift Features
+- Use `if let`/`guard let` shorthand: `if let value { }` instead of `if let value = value { }`
+- Use `async/await` for new asynchronous code where possible
+- Prefer `some Protocol` (opaque types) over concrete return types for abstraction
+- Use property wrappers (`@State`, `@Published`) appropriately in SwiftUI
+
+#### Avoid Force Unwrapping
+- Never use `!` except for `@IBOutlet` or truly impossible `nil` cases
+- Use `guard let` for early returns
+- Use `??` with sensible defaults
+- Use `fatalError()` with descriptive message for programmer errors
+
 ### Access Control & Encapsulation
 
 **Critical**: Proper access control is essential for maintainable code. Default to the most restrictive access level and only increase visibility when necessary.

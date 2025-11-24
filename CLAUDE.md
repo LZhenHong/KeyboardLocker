@@ -296,7 +296,7 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 ### XPC Communication Flow
 
-1. **Main App → Agent**: `XPCClient.shared.lock()` creates an `NSXPCConnection` to the Mach service
+1. **Main App → Agent**: `XPCClient.startLockSession()` creates an `NSXPCConnection` to the Mach service
 2. **Agent receives request**: `ServiceDelegate` accepts connection and routes to `AgentService`
 3. **Agent executes**: `AgentService.lockKeyboard()` calls `LockEngine.shared.lock(settings:)`
 4. **Engine runs**: `LockEngine` creates a CGEventTap and optionally schedules auto-unlock timer
@@ -310,6 +310,10 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 - Detects unlock hotkey combinations (default: ⌃⌘L)
 - Thread safety: Assumes main thread usage for XPC handling
 - Requires Accessibility permissions to create event tap
+- **State change callback**: `onStateChange: ((Bool) -> Void)?` called when lock state changes
+  - Invoked on main thread after `isLocked` property is updated
+  - `true` when locked, `false` when unlocked
+  - Used by Agent to notify clients via Darwin notification or XPC callbacks
 
 #### Settings System (Core/Sources/Core/Model/)
 - `KeyboardLockerSettings`: Main settings struct with three components:
@@ -334,20 +338,26 @@ See `Docs/SettingsIntegration.md` for detailed guidance on how each target shoul
 
 ### XPCClient Usage
 
-The `XPCClient` singleton provides async methods with completion handlers:
+The `XPCClient` enum provides static methods for one-off queries and session-based lock management:
 
 ```swift
-XPCClient.shared.lock { error in
-    if let error = error {
-        // Handle error (usually means Agent not running or permission denied)
-    }
-}
-
-XPCClient.shared.unlock { error in /* ... */ }
-
-XPCClient.shared.status { isLocked, error in
+// One-off queries (stateless)
+XPCClient.status { isLocked, error in
     // Check current lock state
 }
+
+XPCClient.accessibilityStatus { granted in
+    // Check if Agent has accessibility permissions
+}
+
+// Force unlock (bypasses session ownership)
+XPCClient.unlock { error in /* ... */ }
+
+// Session-based lock (recommended for lock ownership)
+let session = XPCClient.startLockSession()
+session.lock { error in /* ... */ }
+session.unlock { error in /* ... */ }
+// Connection auto-invalidates when session is deallocated
 ```
 
 ### Hotkey Matching

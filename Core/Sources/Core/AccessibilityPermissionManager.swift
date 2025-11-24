@@ -5,8 +5,6 @@ import ApplicationServices
 public final class AccessibilityPermissionManager {
   private init() {}
 
-  // MARK: - Public API
-
   /// Checks current permission status
   /// - Returns: Whether Accessibility permission is granted
   public static func hasPermission() -> Bool {

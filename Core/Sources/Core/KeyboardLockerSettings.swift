@@ -1,6 +1,8 @@
 import CoreGraphics
 import Foundation
 
+// MARK: - Settings Model
+
 /// Keyboard lock settings shared across App/Agent/CLI
 public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
   /// Defines auto-unlock behavior with type-safe enum

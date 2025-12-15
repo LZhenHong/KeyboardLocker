@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "2610"
+   LastUpgradeVersion = "2620"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -40,6 +40,24 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Kill old agent"
+               scriptText = "# Kill old KeyboardLockerAgent before launching new one&#10;echo &quot;=== KeyboardLocker Pre-action ===&quot;&#10;echo &quot;Timestamp: $(date &apos;+%Y-%m-%d %H:%M:%S&apos;)&quot;&#10;&#10;if pgrep -x &quot;KeyboardLockerAgent&quot; &gt; /dev/null; then&#10;  echo &quot;Found running KeyboardLockerAgent, killing...&quot;&#10;  killall KeyboardLockerAgent 2&gt;/dev/null&#10;  echo &quot;Old Agent killed.&quot;&#10;else&#10;  echo &quot;No running KeyboardLockerAgent found.&quot;&#10;fi&#10;&#10;echo &quot;Pre-action completed.&quot;&#10;echo &quot;&quot;&#10;">
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
+      <PostActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Stop agent"
+               scriptText = "# Post-action: Stop KeyboardLockerAgent after App terminates&#10;echo &quot;=== KeyboardLocker Post-action ===&quot;&#10;echo &quot;Timestamp: $(date &apos;+%Y-%m-%d %H:%M:%S&apos;)&quot;&#10;&#10;if pgrep -x &quot;KeyboardLockerAgent&quot; &gt; /dev/null; then&#10;  echo &quot;Found running KeyboardLockerAgent, stopping...&quot;&#10;  killall KeyboardLockerAgent 2&gt;/dev/null&#10;  echo &quot;Agent process killed.&quot;&#10;else&#10;  echo &quot;No running KeyboardLockerAgent found.&quot;&#10;fi&#10;&#10;echo &quot;Unregistering from launchd...&quot;&#10;launchctl bootout gui/$(id -u)/io.lzhlovesjyq.keyboardlocker.agent 2&gt;/dev/null &amp;&amp; \&#10;  echo &quot;Service unregistered from launchd.&quot; || \&#10;  echo &quot;Service was not registered or already unregistered.&quot;&#10;&#10;echo &quot;Post-action completed.&quot;&#10;echo &quot;&quot;&#10;">
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference

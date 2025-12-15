@@ -1,22 +1,37 @@
-import Core
 import Foundation
+import Service
 
-/// Accepts incoming XPC connections and exports the AgentService instance
-final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
-  nonisolated func listener(
+/// Singleton service instance shared across all XPC connections
+/// Ensures consistent state and avoids per-connection instance issues
+private let sharedService = AgentService()
+
+/// Accepts incoming XPC connections and configures them using the factory
+private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
+  func listener(
     _: NSXPCListener,
     shouldAcceptNewConnection newConnection: NSXPCConnection
   ) -> Bool {
-    newConnection.exportedInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
-    newConnection.exportedObject = AgentService()
-    newConnection.resume()
+    guard XPCAccessControl.isConnectionAuthorized(newConnection) else {
+      print("KeyboardLockerAgent: Rejected unauthorized connection")
+      return false
+    }
+
+    XPCServerConnection.configure(newConnection, exportedService: sharedService)
     return true
   }
 }
 
-let listener = NSXPCListener(machServiceName: SharedConstants.machServiceName)
-let delegate = ServiceDelegate()
-listener.delegate = delegate
-listener.resume()
-print("KeyboardLockerAgent started, listening on \(SharedConstants.machServiceName)")
-RunLoop.main.run()
+@MainActor
+private func startAgent() {
+  let listener = NSXPCListener(machServiceName: SharedConstants.machServiceName)
+  let delegate = ServiceDelegate()
+  listener.delegate = delegate
+  listener.resume()
+
+  print("KeyboardLockerAgent started, listening on \(SharedConstants.machServiceName)")
+  RunLoop.main.run()
+}
+
+MainActor.assumeIsolated {
+  startAgent()
+}

@@ -1,18 +1,8 @@
-import Core
 import Foundation
+import Service
 
-/// Handles keyboard lock/unlock operations.
+/// XPC service implementation for keyboard lock/unlock operations.
 final class AgentService: NSObject, KeyboardLockerServiceProtocol {
-  override nonisolated init() {
-    super.init()
-  }
-
-  private func executeOnMainThread(_ operation: @escaping () -> Void) {
-    DispatchQueue.main.async {
-      operation()
-    }
-  }
-
   func lockKeyboard(reply: @escaping (Error?) -> Void) {
     executeOnMainThread {
       do {
@@ -39,7 +29,15 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   func accessibilityStatus(reply: @escaping (Bool) -> Void) {
     executeOnMainThread {
-      reply(AccessibilityPermissionManager.hasPermission())
+      reply(AccessibilityManager.hasPermission())
+    }
+  }
+
+  private func executeOnMainThread(_ operation: @escaping () -> Void) {
+    if Thread.isMainThread {
+      operation()
+    } else {
+      DispatchQueue.main.async(execute: operation)
     }
   }
 }

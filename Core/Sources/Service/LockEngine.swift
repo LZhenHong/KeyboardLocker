@@ -1,6 +1,8 @@
 import AppKit
+import Common
 import CoreGraphics
 import Foundation
+import os
 
 // Use refcon to bridge C callback to Swift instance since CGEventTap requires C function pointer
 private func eventTapCallback(
@@ -35,6 +37,7 @@ public class LockEngine {
     case accessibilityPermissionDenied
     case eventTapCreationFailed
     case runLoopSourceCreationFailed
+    case alreadyLocked
 
     public var errorDescription: String? {
       switch self {
@@ -44,6 +47,8 @@ public class LockEngine {
         "Failed to create event tap. This may indicate a permissions issue or system restriction."
       case .runLoopSourceCreationFailed:
         "Failed to create run loop source for event tap."
+      case .alreadyLocked:
+        "The keyboard is already locked by another session."
       }
     }
 
@@ -55,6 +60,8 @@ public class LockEngine {
         "Try restarting the application. If the problem persists, check Accessibility permissions in System Settings."
       case .runLoopSourceCreationFailed:
         "This is a system-level error. Please contact support if it persists."
+      case .alreadyLocked:
+        "Wait for the current lock to be released or expire."
       }
     }
   }
@@ -69,30 +76,58 @@ public class LockEngine {
   private static let runLoopSourceOrder: CFIndex = 0
   private static let autoRepeatFlagValue: Int64 = 1
 
+  // Unfair lock for thread-safe state access (higher performance than DispatchQueue)
+  private let stateLock = OSAllocatedUnfairLock()
+
   // fileprivate access required for C callback to re-enable tap on system timeout
   fileprivate var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var autoUnlockTimer: DispatchSourceTimer?
-  private var activeSettings: KeyboardLockerSettings = .default
 
-  // Thread-safe property access could be improved, but for this MVP we assume main thread usage for XPC handling
-  public private(set) var isLocked = false
-  public private(set) var lockStartedAt: Date?
-  public private(set) var autoUnlockTargetDate: Date?
+  // Private state storage protected by stateLock
+  private var _isLocked = false
+  private var _lockStartedAt: Date?
+  private var _autoUnlockTargetDate: Date?
+  private var _activeSettings: KeyboardLockerSettings = .default
+
+  // Thread-safe public accessors
+  public var isLocked: Bool {
+    withLock { _isLocked }
+  }
+
+  public var lockStartedAt: Date? {
+    withLock { _lockStartedAt }
+  }
+
+  public var autoUnlockTargetDate: Date? {
+    withLock { _autoUnlockTargetDate }
+  }
 
   private init() {}
 
+  // Helper method to safely execute critical sections with automatic lock management
+  private func withLock<T>(_ block: () throws -> T) rethrows -> T {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return try block()
+  }
+
   public func lock(settings: KeyboardLockerSettings = .default) throws {
-    guard !isLocked else {
-      return
+    // Check lock status atomically
+    try withLock {
+      guard !_isLocked else {
+        throw LockEngineError.alreadyLocked
+      }
+
+      // Verify Accessibility permission before attempting to create event tap
+      guard AccessibilityManager.hasPermission() else {
+        throw LockEngineError.accessibilityPermissionDenied
+      }
+
+      _activeSettings = settings
     }
 
-    // Verify Accessibility permission before attempting to create event tap
-    guard AccessibilityPermissionManager.hasPermission() else {
-      throw LockEngineError.accessibilityPermissionDenied
-    }
-
-    activeSettings = settings
+    // Event tap creation must happen on main thread
     try startEventTap()
     markLocked()
   }
@@ -120,22 +155,30 @@ public class LockEngine {
   }
 
   private func markLocked() {
-    isLocked = true
-    lockStartedAt = Date()
-    configureAutoUnlockTimerIfNeeded()
+    withLock {
+      _isLocked = true
+      _lockStartedAt = Date()
+    }
 
+    configureAutoUnlockTimerIfNeeded()
+    LockStateBroadcaster.broadcast(isLocked: true)
     print("LockEngine: Locked")
   }
 
   private func configureAutoUnlockTimerIfNeeded() {
     cancelAutoUnlockTimer()
-    guard let timeout = activeSettings.autoUnlockPolicy.timeout, timeout > 0,
-          let startDate = lockStartedAt
-    else {
+
+    let (timeout, startDate) = withLock {
+      (_activeSettings.autoUnlockPolicy.timeout, _lockStartedAt)
+    }
+
+    guard let timeout, timeout > 0, let startDate else {
       return
     }
 
-    autoUnlockTargetDate = startDate.addingTimeInterval(timeout)
+    withLock {
+      _autoUnlockTargetDate = startDate.addingTimeInterval(timeout)
+    }
 
     let timer = DispatchSource.makeTimerSource(queue: .main)
     timer.schedule(deadline: .now() + timeout)
@@ -149,11 +192,16 @@ public class LockEngine {
   private func cancelAutoUnlockTimer() {
     autoUnlockTimer?.cancel()
     autoUnlockTimer = nil
-    autoUnlockTargetDate = nil
+
+    withLock {
+      _autoUnlockTargetDate = nil
+    }
   }
 
   public func unlock() {
-    guard isLocked else {
+    // Check lock status atomically
+    let shouldUnlock = withLock { _isLocked }
+    guard shouldUnlock else {
       return
     }
 
@@ -176,10 +224,13 @@ public class LockEngine {
   }
 
   private func resetLockState() {
-    isLocked = false
-    lockStartedAt = nil
-    autoUnlockTargetDate = nil
+    withLock {
+      _isLocked = false
+      _lockStartedAt = nil
+      _autoUnlockTargetDate = nil
+    }
 
+    LockStateBroadcaster.broadcast(isLocked: false)
     print("LockEngine: Unlocked")
   }
 
@@ -202,10 +253,12 @@ public class LockEngine {
   }
 
   private func shouldTriggerUnlock(for type: CGEventType, event: CGEvent) -> Bool {
+    let hotkey = withLock { _activeSettings.unlockHotkey }
+
     switch type {
     case .keyDown:
       let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-      guard activeSettings.unlockHotkey.matches(keyCode: keyCode, flags: event.flags) else {
+      guard hotkey.matches(keyCode: keyCode, flags: event.flags) else {
         return false
       }
 
@@ -213,7 +266,7 @@ public class LockEngine {
       return !isAutoRepeat
 
     case .flagsChanged:
-      let keyCode = activeSettings.unlockHotkey.keyCode
+      let keyCode = hotkey.keyCode
       return CGEventSource.keyState(.hidSystemState, key: keyCode)
 
     default:
@@ -222,14 +275,16 @@ public class LockEngine {
   }
 
   public func lockDuration(at date: Date = Date()) -> TimeInterval? {
-    guard let start = lockStartedAt else {
+    let start = withLock { _lockStartedAt }
+    guard let start else {
       return nil
     }
     return max(0, date.timeIntervalSince(start))
   }
 
   public func remainingAutoUnlockTime(at date: Date = Date()) -> TimeInterval? {
-    guard let deadline = autoUnlockTargetDate else {
+    let deadline = withLock { _autoUnlockTargetDate }
+    guard let deadline else {
       return nil
     }
     return max(0, deadline.timeIntervalSince(date))

@@ -8,9 +8,13 @@ let package = Package(
     .macOS(.v13),
   ],
   products: [
-    .library(name: "Core", targets: ["Core"]),
+    .library(name: "Common", targets: ["Common"]),
+    .library(name: "Client", targets: ["Client"]),
+    .library(name: "Service", targets: ["Service"]),
   ],
   targets: [
-    .target(name: "Core"),
+    .target(name: "Common"),
+    .target(name: "Client", dependencies: ["Common"]),
+    .target(name: "Service", dependencies: ["Common"]),
   ]
 )

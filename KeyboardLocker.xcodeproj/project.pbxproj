@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F21304AF2ECDC24200735580 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = F21304AE2ECDC24200735580 /* Core */; };
-		F21304BD2ECDC28400735580 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = F21304BC2ECDC28400735580 /* Core */; };
-		F21304BF2ECDC29300735580 /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = F21304BE2ECDC29300735580 /* Core */; };
 		F21304CF2ECDC2E200735580 /* KeyboardLockerAgent.app in Copy Agent App */ = {isa = PBXBuildFile; fileRef = F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F21304D32ECDC51F00735580 /* klock in Copy CLI */ = {isa = PBXBuildFile; fileRef = F21304B42ECDC26400735580 /* klock */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		F2BFFCFF2EEFAF0B0065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFCFE2EEFAF0B0065F041 /* Client */; };
+		F2BFFD012EEFAF1A0065F041 /* Service in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD002EEFAF1A0065F041 /* Service */; };
+		F2BFFD032EEFAF200065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD022EEFAF200065F041 /* Client */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -132,7 +132,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F21304BF2ECDC29300735580 /* Core in Frameworks */,
+				F2BFFCFF2EEFAF0B0065F041 /* Client in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -140,7 +140,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F21304AF2ECDC24200735580 /* Core in Frameworks */,
+				F2BFFD012EEFAF1A0065F041 /* Service in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -148,7 +148,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F21304BD2ECDC28400735580 /* Core in Frameworks */,
+				F2BFFD032EEFAF200065F041 /* Client in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,7 +201,7 @@
 			);
 			name = KeyboardLocker;
 			packageProductDependencies = (
-				F21304BE2ECDC29300735580 /* Core */,
+				F2BFFCFE2EEFAF0B0065F041 /* Client */,
 			);
 			productName = KeyboardLocker;
 			productReference = F21304282ECDAD3500735580 /* KeyboardLocker.app */;
@@ -224,7 +224,7 @@
 			);
 			name = KeyboardLockerAgent;
 			packageProductDependencies = (
-				F21304AE2ECDC24200735580 /* Core */,
+				F2BFFD002EEFAF1A0065F041 /* Service */,
 			);
 			productName = KeyboardLockerAgent;
 			productReference = F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */;
@@ -247,7 +247,7 @@
 			);
 			name = klock;
 			packageProductDependencies = (
-				F21304BC2ECDC28400735580 /* Core */,
+				F2BFFD022EEFAF200065F041 /* Client */,
 			);
 			productName = klock;
 			productReference = F21304B42ECDC26400735580 /* klock */;
@@ -682,17 +682,17 @@
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F21304AE2ECDC24200735580 /* Core */ = {
+		F2BFFCFE2EEFAF0B0065F041 /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Core;
+			productName = Client;
 		};
-		F21304BC2ECDC28400735580 /* Core */ = {
+		F2BFFD002EEFAF1A0065F041 /* Service */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Core;
+			productName = Service;
 		};
-		F21304BE2ECDC29300735580 /* Core */ = {
+		F2BFFD022EEFAF200065F041 /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Core;
+			productName = Client;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

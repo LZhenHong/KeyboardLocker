@@ -9,9 +9,12 @@ KeyboardLocker is a macOS application that locks keyboard and mouse input using 
 1. **KeyboardLocker** (Main App) - SwiftUI-based GUI application
 2. **KeyboardLockerAgent** - XPC service that runs the lock engine (requires Accessibility permissions)
 3. **klock** - CLI tool for lock/unlock operations
-4. **Core** - Swift Package containing shared code and business logic
+4. **Core** - Swift Package with three targets:
+   - **Common** - Shared protocols, constants, and settings
+   - **Client** - XPC client for App/CLI (depends on Common)
+   - **Service** - Lock engine and broadcasting for Agent (depends on Common)
 
-All three targets communicate via XPC using the `KeyboardLockerServiceProtocol` with the Mach service name `io.lzhlovesjyq.keyboardlocker.agent.service`.
+All three targets communicate via XPC using the `KeyboardLockerServiceProtocol` with the Mach service name `io.lzhlovesjyq.keyboardlocker.agent`.
 
 ## Build Commands
 
@@ -303,34 +306,65 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 ### Core Components
 
-#### LockEngine (Core/Sources/Core/Engine/LockEngine.swift)
-- Singleton that manages CGEventTap lifecycle
-- Monitors keyboard/mouse events via `eventTapCallback` C function
-- Supports auto-unlock via `DispatchSourceTimer` based on `AutoUnlockPolicy`
-- Detects unlock hotkey combinations (default: ⌃⌘L)
-- Thread safety: Assumes main thread usage for XPC handling
-- Requires Accessibility permissions to create event tap
-- **State change callback**: `onStateChange: ((Bool) -> Void)?` called when lock state changes
-  - Invoked on main thread after `isLocked` property is updated
-  - `true` when locked, `false` when unlocked
-  - Used by Agent to notify clients via Darwin notification or XPC callbacks
+### Common Target (Core/Sources/Common/)
 
-#### Settings System (Core/Sources/Core/Model/)
+#### Shared.swift
+- `KeyboardLockerServiceProtocol`: XPC protocol for lock/unlock operations
+- `SharedConstants`: Mach service name, default unlock keycode, authorized bundle IDs
+- `NotificationNames.stateChanged`: Shared notification identifier for cross-process state changes
+
+#### Settings System
 - `KeyboardLockerSettings`: Main settings struct with three components:
   - `autoUnlockPolicy`: Enum supporting `.disabled` or `.timed(seconds:)`
   - `unlockHotkey`: Stores `CGKeyCode` + `CGEventFlags` with validation
   - `showsUnlockNotification`: Boolean for UI notification preference
 - `KeyboardLockerSettingsStore`: Persists settings to UserDefaults as JSON
-- Settings are shared across App/Agent/CLI via UserDefaults (can be upgraded to App Group)
-
-#### AutoUnlockPolicy
 - `AutoUnlockPolicy` is `Identifiable` for SwiftUI integration (ForEach, Picker)
-- Provides `.presets` array with common timeout values (disabled, 30s, 60s, 120s)
-- The `timeout` computed property returns `TimeInterval?` for easy consumption
+- Settings are shared across App/Agent/CLI via UserDefaults
+
+#### SystemSettings.swift
+- `SystemSettings.openAccessibilitySettings()`: Opens System Settings to Accessibility pane
+
+### Client Target (Core/Sources/Client/)
+
+#### XPCClient.swift
+- Static methods for one-off XPC queries: `status()`, `accessibilityStatus()`, `unlock()`
+- `startLockSession()`: Creates persistent `LockSessionController` for lock/unlock operations
+- Session-based lock with optional state change notifications
+
+#### LockStateSubscriber.swift
+- `LockStateSubscriber.subscribe(_:)`: Subscribes to DistributedNotification for state changes
+- Returns `ObserverToken` for automatic cleanup on deallocation
+- Used by App/CLI to receive state changes from Agent
+
+### Service Target (Core/Sources/Service/)
+
+#### LockEngine.swift
+- Singleton that manages CGEventTap lifecycle
+- Monitors keyboard/mouse events via `eventTapCallback` C function
+- Supports auto-unlock via `DispatchSourceTimer` based on `AutoUnlockPolicy`
+- Detects unlock hotkey combinations (default: ⌃⌘L)
+- Thread safety: Uses `OSAllocatedUnfairLock` for state protection
+- Calls `LockStateBroadcaster.broadcast()` on state changes
+
+#### LockStateBroadcaster.swift
+- `LockStateBroadcaster.broadcast(isLocked:)`: Posts state to Darwin and Distributed notifications
+- Darwin: Lightweight, no payload (for CLI, scripts, Shortcuts)
+- Distributed: With payload (for widgets, extensions, other apps)
+
+#### AccessibilityManager.swift
+- `hasPermission()`: Checks if Accessibility permission is granted
+- `requestPermission()`: Triggers macOS system prompt
+
+#### XPCAccessControl.swift
+- Validates XPC connections via code signature and bundle identifier
+- **Release**: Full verification (signature + Team ID + bundle ID allowlist)
+- **Debug**: Relaxed verification (bundle ID allowlist only)
+
+#### XPCServerConnection.swift
+- `configure(_:exportedService:)`: Configures incoming Agent connections
 
 ### Settings Integration Pattern
-
-See `Docs/SettingsIntegration.md` for detailed guidance on how each target should use settings:
 
 - **SwiftUI App**: Use `@ObservableObject` ViewModel wrapping `KeyboardLockerSettingsStore`
 - **Agent**: Load settings before calling `LockEngine.shared.lock(settings:)`
@@ -341,6 +375,8 @@ See `Docs/SettingsIntegration.md` for detailed guidance on how each target shoul
 The `XPCClient` enum provides static methods for one-off queries and session-based lock management:
 
 ```swift
+import Client
+
 // One-off queries (stateless)
 XPCClient.status { isLocked, error in
     // Check current lock state
@@ -353,11 +389,17 @@ XPCClient.accessibilityStatus { granted in
 // Force unlock (bypasses session ownership)
 XPCClient.unlock { error in /* ... */ }
 
-// Session-based lock (recommended for lock ownership)
+// Session-based lock without state notifications
 let session = XPCClient.startLockSession()
 session.lock { error in /* ... */ }
 session.unlock { error in /* ... */ }
 // Connection auto-invalidates when session is deallocated
+
+// Session-based lock WITH state notifications via DistributedNotification
+let session = XPCClient.startLockSession { isLocked in
+    print("Lock state changed: \(isLocked)")
+}
+// Automatically subscribes to DistributedNotification for cross-process state updates
 ```
 
 ### Hotkey Matching
@@ -368,45 +410,67 @@ session.unlock { error in /* ... */ }
 
 ```
 KeyboardLocker/
-├── Core/                           # Swift Package (shared logic)
+├── Core/                           # Swift Package (three targets)
 │   ├── Package.swift               # SPM manifest (macOS 13+)
-│   └── Sources/Core/
-│       ├── Engine/
-│       │   └── LockEngine.swift    # CGEventTap singleton
-│       ├── Model/
+│   └── Sources/
+│       ├── Common/                 # Shared code (both targets depend on this)
+│       │   ├── Shared.swift        # KeyboardLockerServiceProtocol, SharedConstants, NotificationNames
 │       │   ├── KeyboardLockerSettings.swift
-│       │   └── KeyboardLockerSettingsStore.swift
-│       ├── Protocol/
-│       │   ├── KeyboardLockerServiceProtocol.swift  # XPC interface
-│       │   └── SharedConstants.swift                # Mach service name
-│       └── Client/
-│           └── XPCClient.swift     # XPC client wrapper
-├── KeyboardLocker/                 # Main SwiftUI app
+│       │   ├── KeyboardLockerSettingsStore.swift
+│       │   └── SystemSettings.swift
+│       ├── Client/                 # App/CLI only (depends on Common)
+│       │   ├── Exports.swift       # @_exported import Common
+│       │   ├── XPCClient.swift     # XPC client + LockSessionController
+│       │   └── LockStateSubscriber.swift
+│       └── Service/                # Agent only (depends on Common)
+│           ├── Exports.swift       # @_exported import Common
+│           ├── LockEngine.swift    # CGEventTap singleton
+│           ├── LockStateBroadcaster.swift
+│           ├── AccessibilityManager.swift
+│           ├── XPCAccessControl.swift
+│           └── XPCServerConnection.swift
+├── KeyboardLocker/                 # Main SwiftUI app (imports Client)
 │   ├── KeyboardLockerApp.swift
 │   └── ContentView.swift
-├── KeyboardLockerAgent/            # XPC service
+├── KeyboardLockerAgent/            # XPC service (imports Service)
 │   ├── main.swift                  # NSXPCListener setup
 │   ├── AgentService.swift          # Implements KeyboardLockerServiceProtocol
 │   └── io.lzhlovesjyq.keyboardlocker.agent.plist
-└── klock/                          # CLI tool
+└── klock/                          # CLI tool (imports Client)
     └── main.swift                  # Argument parsing + XPCClient calls
 ```
+
+### Target Dependencies
+
+| Component | Imports | Purpose |
+|-----------|---------|---------|
+| KeyboardLocker (App) | `Client` | XPC calls, state subscription |
+| KeyboardLockerAgent | `Service` | Lock engine, broadcasting |
+| klock (CLI) | `Client` | XPC calls |
+
+Note: `Client` and `Service` both re-export `Common` via `@_exported import Common`, so importing either gives access to shared types like `SharedConstants` and `KeyboardLockerSettings`.
 
 ## Common Patterns
 
 ### Adding New Settings
 
-1. Add property to `KeyboardLockerSettings` struct (must be `Codable`, `Sendable`)
+1. Add property to `KeyboardLockerSettings` struct in `Common/` (must be `Codable`, `Sendable`)
 2. Update `KeyboardLockerSettings.default` static property
-3. If needed by lock engine, modify `LockEngine.lock(settings:)` to consume it
+3. If needed by lock engine, modify `LockEngine.lock(settings:)` in `Service/` to consume it
 4. SwiftUI views can bind directly to settings properties (use `Identifiable` for enum cases in pickers)
 
 ### Modifying Event Filtering
 
-Event filtering logic is in `LockEngine.handleEvent(proxy:type:event:)`:
+Event filtering logic is in `Service/LockEngine.handleEvent(proxy:type:event:)`:
 - Returns `nil` to block the event (locked state)
 - Returns `Unmanaged.passUnretained(event)` to allow it through
 - Call `unlock()` when unlock conditions are met (hotkey or auto-timeout)
+
+### Adding New XPC Methods
+
+1. Add method signature to `KeyboardLockerServiceProtocol` in `Common/Shared.swift`
+2. Implement method in `KeyboardLockerAgent/AgentService.swift`
+3. Add client wrapper in `Client/XPCClient.swift` if needed
 
 ### Bundle Identifiers
 
@@ -426,3 +490,5 @@ Event filtering logic is in `LockEngine.handleEvent(proxy:type:event:)`:
 - CoreGraphics (CGEventTap, CGEvent)
 - AppKit (NSXPCConnection, NSXPCListener)
 - Foundation (UserDefaults, Codable, DispatchSourceTimer)
+- Security (SecStaticCode, code signature verification for XPC access control)
+- os (OSAllocatedUnfairLock for thread-safe state management)

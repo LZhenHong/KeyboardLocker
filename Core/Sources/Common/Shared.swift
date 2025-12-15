@@ -15,6 +15,14 @@ public enum SharedConstants {
     "io.lzhlovesjyq.keyboardlocker.klock",
     "klock", // CLI tool codesign identifier (no Info.plist = short name only)
   ]
+
+  // MARK: - CLI Constants
+
+  /// CLI executable name
+  public static let cliName = "klock"
+
+  /// CLI installation path
+  public static let cliInstallPath = "/usr/local/bin/klock"
 }
 
 // MARK: - Notification Names

@@ -13,6 +13,7 @@ public enum SharedConstants {
   public static let authorizedClientBundleIdentifiers: Set<String> = [
     "io.lzhlovesjyq.keyboardlocker",
     "io.lzhlovesjyq.keyboardlocker.klock",
+    "klock", // CLI tool codesign identifier (no Info.plist = short name only)
   ]
 }
 

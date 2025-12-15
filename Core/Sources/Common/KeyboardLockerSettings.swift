@@ -123,3 +123,12 @@ extension KeyboardLockerSettings.Hotkey: Codable {
     try container.encode(modifierFlags.rawValue, forKey: .modifierFlags)
   }
 }
+
+// MARK: - Hotkey Display
+
+extension KeyboardLockerSettings.Hotkey {
+  /// Human-readable representation of the hotkey (e.g., "⌃⌘L")
+  public var displayString: String {
+    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "?"
+  }
+}

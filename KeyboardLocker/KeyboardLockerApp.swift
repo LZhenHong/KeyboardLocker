@@ -11,11 +11,8 @@ import SwiftUI
 struct KeyboardLockerApp: App {
   var body: some Scene {
     MenuBarExtra("KeyboardLocker", systemImage: "lock.open.fill") {
-      Text("KeyboardLocker")
-      Divider()
-      Button("Quit") {
-        NSApplication.shared.terminate(nil)
-      }
+      ContentView()
     }
+    .menuBarExtraStyle(.window)
   }
 }

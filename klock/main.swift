@@ -60,6 +60,8 @@ enum KlockCLI {
     stateToken = LockStateSubscriber.subscribe { isLocked in
       if !isLocked {
         print("Unlocked.")
+        stateToken = nil
+        session = nil
         exit(ExitCode.success)
       }
     }

@@ -310,7 +310,7 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 #### Shared.swift
 - `KeyboardLockerServiceProtocol`: XPC protocol for lock/unlock operations
-- `SharedConstants`: Mach service name, default unlock keycode, authorized bundle IDs
+- `SharedConstants`: Mach service name, default unlock keycode, authorized bundle IDs, CLI constants (`cliName`, `cliInstallPath`)
 - `NotificationNames.stateChanged`: Shared notification identifier for cross-process state changes
 
 #### Settings System
@@ -324,6 +324,11 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 #### SystemSettings.swift
 - `SystemSettings.openAccessibilitySettings()`: Opens System Settings to Accessibility pane
+
+#### KeyCodeConverter.swift
+- `KeyCodeConverter.stringFromKeyCode(_:modifiers:separator:)`: Converts CGKeyCode and CGEventFlags to readable shortcut string (e.g., "⌃⌘L")
+- Uses `UCKeyTranslate` for keyboard layout-aware character lookup
+- Outputs modifier symbols in macOS standard order (⌃⌥⇧⌘)
 
 ### Client Target (Core/Sources/Client/)
 
@@ -417,7 +422,8 @@ KeyboardLocker/
 │       │   ├── Shared.swift        # KeyboardLockerServiceProtocol, SharedConstants, NotificationNames
 │       │   ├── KeyboardLockerSettings.swift
 │       │   ├── KeyboardLockerSettingsStore.swift
-│       │   └── SystemSettings.swift
+│       │   ├── SystemSettings.swift
+│       │   └── KeyCodeConverter.swift
 │       ├── Client/                 # App/CLI only (depends on Common)
 │       │   ├── Exports.swift       # @_exported import Common
 │       │   ├── XPCClient.swift     # XPC client + LockSessionController
@@ -431,7 +437,8 @@ KeyboardLocker/
 │           └── XPCServerConnection.swift
 ├── KeyboardLocker/                 # Main SwiftUI app (imports Client)
 │   ├── KeyboardLockerApp.swift
-│   └── ContentView.swift
+│   ├── ContentView.swift
+│   └── CLIInstaller.swift          # CLI installation with admin privileges
 ├── KeyboardLockerAgent/            # XPC service (imports Service)
 │   ├── main.swift                  # NSXPCListener setup
 │   ├── AgentService.swift          # Implements KeyboardLockerServiceProtocol
@@ -472,6 +479,22 @@ Event filtering logic is in `Service/LockEngine.handleEvent(proxy:type:event:)`:
 2. Implement method in `KeyboardLockerAgent/AgentService.swift`
 3. Add client wrapper in `Client/XPCClient.swift` if needed
 
+### CLI Installation
+
+The `CLIInstaller` enum in the main app handles installing the `klock` CLI tool to `/usr/local/bin`:
+
+```swift
+// Check installation status
+if CLIInstaller.isInstalled { /* ... */ }
+if CLIInstaller.isCurrentVersionInstalled { /* ... */ }
+
+// Install/uninstall (prompts for admin password via AppleScript)
+let result = CLIInstaller.install()  // Returns .success, .alreadyInstalled, .cancelled, or .failed(Error)
+let result = CLIInstaller.uninstall()
+```
+
+The installer creates a symlink from `/usr/local/bin/klock` to the CLI binary inside the app bundle, ensuring version consistency.
+
 ### Bundle Identifiers
 
 - Main App: `io.lzhlovesjyq.keyboardlocker`
@@ -492,3 +515,4 @@ Event filtering logic is in `Service/LockEngine.handleEvent(proxy:type:event:)`:
 - Foundation (UserDefaults, Codable, DispatchSourceTimer)
 - Security (SecStaticCode, code signature verification for XPC access control)
 - os (OSAllocatedUnfairLock for thread-safe state management)
+- Carbon (UCKeyTranslate for keyboard layout-aware key code conversion)

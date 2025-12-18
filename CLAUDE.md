@@ -47,6 +47,11 @@ swiftformat .
 
 ## Code Style Guidelines
 
+### UI Copy Language
+- **English First**: All UI text, labels, buttons, and messages must be written in English
+- Localization will be added before release; do not hardcode non-English strings
+- Use clear, concise copy that follows macOS HIG conventions
+
 ### DRY Principle (Don't Repeat Yourself)
 **Critical**: Code duplication is strictly prohibited as it leads to exponential maintenance complexity.
 - Extract repeated code into reusable functions or abstractions

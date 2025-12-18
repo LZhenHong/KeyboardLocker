@@ -22,6 +22,22 @@ public enum XPCClient {
     )
   }
 
+  /// Requests Accessibility permission.
+  /// - Parameters:
+  ///   - showPrompt: Whether to trigger macOS system prompt
+  ///   - reply: Callback with current permission status
+  public static func requestAccessibilityPermission(showPrompt: Bool = true, reply: @escaping (Bool) -> Void) {
+    executeOneOff(
+      onError: { _ in reply(false) },
+      operation: { service, invalidate in
+        service.requestAccessibilityPermission(showPrompt: showPrompt) { granted in
+          reply(granted)
+          invalidate()
+        }
+      }
+    )
+  }
+
   /// Queries whether the agent has Accessibility permission.
   public static func accessibilityStatus(reply: @escaping (Bool) -> Void) {
     executeOneOff(

@@ -27,6 +27,12 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
+  func requestAccessibilityPermission(showPrompt: Bool, reply: @escaping (Bool) -> Void) {
+    executeOnMainThread {
+      reply(AccessibilityManager.requestPermission(showPrompt: showPrompt))
+    }
+  }
+
   func accessibilityStatus(reply: @escaping (Bool) -> Void) {
     executeOnMainThread {
       reply(AccessibilityManager.hasPermission())

@@ -48,5 +48,6 @@ public protocol KeyboardLockerServiceProtocol {
 
   // MARK: Accessibility Permission Methods
 
+  func requestAccessibilityPermission(showPrompt: Bool, reply: @escaping (Bool) -> Void)
   func accessibilityStatus(reply: @escaping (Bool) -> Void)
 }

@@ -28,6 +28,13 @@ final class LockController: ObservableObject {
     }
   }
 
+  /// Reconcile against the Agent's authoritative state. Call when the UI becomes visible:
+  /// a broadcast may have been missed while the app was suspended (distributed notifications
+  /// are best-effort and undelivered to a non-running process).
+  func reconcile() {
+    Task { await refresh() }
+  }
+
   func toggle() {
     Task {
       do {

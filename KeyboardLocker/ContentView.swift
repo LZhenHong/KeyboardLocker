@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct ContentView: View {
+  @EnvironmentObject private var lock: LockController
+
   var body: some View {
     NavigationStack {
       MainView()
@@ -21,6 +23,10 @@ struct ContentView: View {
         }
     }
     .frame(width: 280, height: 320)
+    .onAppear {
+      // The menu window just opened; reconcile in case a broadcast was missed while suspended.
+      lock.reconcile()
+    }
   }
 }
 

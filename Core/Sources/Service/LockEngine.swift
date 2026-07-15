@@ -175,7 +175,7 @@ public class LockEngine {
     }
 
     configureAutoUnlockTimerIfNeeded()
-    LockStateBroadcaster.broadcast(isLocked: true)
+    LockStateBroadcaster.broadcast()
     Self.logger.info("Locked")
   }
 
@@ -244,7 +244,7 @@ public class LockEngine {
       _autoUnlockTargetDate = nil
     }
 
-    LockStateBroadcaster.broadcast(isLocked: false)
+    LockStateBroadcaster.broadcast()
     Self.logger.info("Unlocked")
   }
 

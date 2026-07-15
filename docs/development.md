@@ -9,7 +9,7 @@
 1. wrapper(App/CLI/……)通过异步的 `XPCClient` 发出一次**无状态一次性调用**:`lock` / `unlock` / `status` / `applySettings` / `currentSettings` / `accessibilityStatus` / `requestAccessibilityPermission`。失败会抛错(Agent 挂掉时表现为抛出的错误,绝不挂起)。
 2. Agent 的 `ServiceDelegate` 接受连接(在 `XPCAccessControl` 校验代码签名 + bundle ID 之后),并路由到 `AgentService`。
 3. `AgentService` 拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`),并驱动 `LockEngine.shared.lock(settings:)` / `unlock()`。
-4. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast(isLocked:)`。
+4. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
 5. wrapper 通过 `LockStateSubscriber.subscribe(_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态 —— 绝不从"我这次调用是否成功"推断。
 
 > 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 是**幂等**的(已锁时再锁会重新应用设置并返回成功)。不存在客户端拥有的"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
@@ -30,7 +30,7 @@
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
 - `LockEngine.swift`:CGEventTap 单例、幂等的 `lock(settings:)`、`updateSettings(_:)`、自动解锁定时器、热键检测、`OSAllocatedUnfairLock` 状态、`os.Logger`。
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
-- `LockStateBroadcaster.swift`:发出 Darwin(无载荷)+ Distributed(带载荷)通知。
+- `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `AccessibilityManager.swift`、`XPCAccessControl.swift`(release = 签名 + Team ID + 白名单;debug = 仅白名单)、`XPCServerConnection.swift`。
 
 **App**(`KeyboardLocker/`)—— 薄 SwiftUI wrapper

@@ -40,8 +40,8 @@ Widget ──┘            ├─ Settings ownership (source of truth)
 | 关注点 | 归属 | 规则 |
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
-| 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 只通过 XPC 读写设置,绝不自己持有 `UserDefaults`。 |
-| Accessibility 权限 | **Agent** | Agent 持有权限,并通过 XPC 回答状态查询 / 权限请求。 |
+| 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`currentSettings`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。 |
+| Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。向 wrapper 暴露状态查询 / 权限请求的 XPC 接口尚未接线;加入时只能由 Agent 经 XPC 提供,wrapper 不得自行请求权限。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,但不含任何领域逻辑。 |
 

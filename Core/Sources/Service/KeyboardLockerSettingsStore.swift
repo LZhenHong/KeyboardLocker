@@ -26,12 +26,6 @@ public final class KeyboardLockerSettingsStore {
     return settings
   }
 
-  /// Saves settings to storage, throws error if encoding fails
-  public func save(_ settings: KeyboardLockerSettings) throws {
-    let data = try encoder.encode(settings)
-    userDefaults.set(data, forKey: storageKey)
-  }
-
   private func registerDefaultsIfNeeded() {
     guard userDefaults.object(forKey: storageKey) == nil else {
       return

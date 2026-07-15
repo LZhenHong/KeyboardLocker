@@ -50,33 +50,12 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
-  /// Persists settings in the Agent (source of truth) and applies them to any running lock.
-  public func applySettings(_ settings: KeyboardLockerSettings) async throws {
-    let data = try settings.encodedForXPC()
-    try await withProxy { service, resume in
-      service.applySettings(data) { resume($0) }
-    }
-  }
-
   /// The Agent's current settings, falling back to `.default` if the Agent can't provide them.
   public func currentSettings() async throws -> KeyboardLockerSettings {
     let data: Data? = try await withProxyReturning { service, resume in
       service.currentSettings { resume($0, nil) }
     }
     return KeyboardLockerSettings.decodedFromXPC(data)
-  }
-
-  @discardableResult
-  public func requestAccessibilityPermission(showPrompt: Bool = true) async throws -> Bool {
-    try await withProxyReturning { service, resume in
-      service.requestAccessibilityPermission(showPrompt: showPrompt) { resume($0, nil) }
-    }
-  }
-
-  public func accessibilityStatus() async throws -> Bool {
-    try await withProxyReturning { service, resume in
-      service.accessibilityStatus { resume($0, nil) }
-    }
   }
 
   // MARK: - Connection Management

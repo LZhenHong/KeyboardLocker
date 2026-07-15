@@ -10,8 +10,13 @@ import Common
 import Foundation
 
 enum CLIInstaller {
-  static var cliName: String { SharedConstants.cliName }
-  static var installPath: String { SharedConstants.cliInstallPath }
+  static var cliName: String {
+    SharedConstants.cliName
+  }
+
+  static var installPath: String {
+    SharedConstants.cliInstallPath
+  }
 
   enum InstallResult {
     case success

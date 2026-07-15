@@ -89,7 +89,7 @@ public enum XPCAccessControl {
     {
       let start = name.index(match.lowerBound, offsetBy: 1)
       let end = name.index(match.upperBound, offsetBy: -1)
-      return String(name[start..<end])
+      return String(name[start ..< end])
     }
 
     return nil

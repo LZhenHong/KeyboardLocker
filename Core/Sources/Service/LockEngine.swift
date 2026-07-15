@@ -4,7 +4,7 @@ import CoreGraphics
 import Foundation
 import os
 
-// Use refcon to bridge C callback to Swift instance since CGEventTap requires C function pointer
+/// Use refcon to bridge C callback to Swift instance since CGEventTap requires C function pointer
 private func eventTapCallback(
   proxy: CGEventTapProxy,
   type: CGEventType,
@@ -18,7 +18,7 @@ private func eventTapCallback(
   let engine = Unmanaged<LockEngine>.fromOpaque(refcon).takeUnretainedValue()
 
   if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-    print("Event tap disabled by system, attemping to re-enable...")
+    LockEngine.logger.warning("Event tap disabled by system, attempting to re-enable")
 
     if let eventTap = engine.eventTap {
       CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -33,11 +33,12 @@ private func eventTapCallback(
 public class LockEngine {
   public static let shared = LockEngine()
 
+  static let logger = Logger(subsystem: SharedConstants.machServiceName, category: "LockEngine")
+
   public enum LockEngineError: Error, LocalizedError {
     case accessibilityPermissionDenied
     case eventTapCreationFailed
     case runLoopSourceCreationFailed
-    case alreadyLocked
 
     public var errorDescription: String? {
       switch self {
@@ -47,8 +48,6 @@ public class LockEngine {
         "Failed to create event tap. This may indicate a permissions issue or system restriction."
       case .runLoopSourceCreationFailed:
         "Failed to create run loop source for event tap."
-      case .alreadyLocked:
-        "The keyboard is already locked by another session."
       }
     }
 
@@ -60,8 +59,6 @@ public class LockEngine {
         "Try restarting the application. If the problem persists, check Accessibility permissions in System Settings."
       case .runLoopSourceCreationFailed:
         "This is a system-level error. Please contact support if it persists."
-      case .alreadyLocked:
-        "Wait for the current lock to be released or expire."
       }
     }
   }
@@ -76,7 +73,7 @@ public class LockEngine {
   private static let runLoopSourceOrder: CFIndex = 0
   private static let autoRepeatFlagValue: Int64 = 1
 
-  // Unfair lock for thread-safe state access (higher performance than DispatchQueue)
+  /// Unfair lock for thread-safe state access (higher performance than DispatchQueue)
   private let stateLock = OSAllocatedUnfairLock()
 
   // fileprivate access required for C callback to re-enable tap on system timeout
@@ -90,7 +87,7 @@ public class LockEngine {
   private var _autoUnlockTargetDate: Date?
   private var _activeSettings: KeyboardLockerSettings = .default
 
-  // Thread-safe public accessors
+  /// Thread-safe public accessors
   public var isLocked: Bool {
     withLock { _isLocked }
   }
@@ -105,7 +102,7 @@ public class LockEngine {
 
   private init() {}
 
-  // Helper method to safely execute critical sections with automatic lock management
+  /// Helper method to safely execute critical sections with automatic lock management
   private func withLock<T>(_ block: () throws -> T) rethrows -> T {
     stateLock.lock()
     defer { stateLock.unlock() }
@@ -113,23 +110,40 @@ public class LockEngine {
   }
 
   public func lock(settings: KeyboardLockerSettings = .default) throws {
-    // Check lock status atomically
-    try withLock {
-      guard !_isLocked else {
-        throw LockEngineError.alreadyLocked
-      }
-
-      // Verify Accessibility permission before attempting to create event tap
-      guard AccessibilityManager.hasPermission() else {
-        throw LockEngineError.accessibilityPermissionDenied
-      }
-
+    // The lock is a single global state; locking while already locked is a no-op
+    // success (idempotent), but we still adopt the latest settings.
+    let alreadyLocked: Bool = withLock {
       _activeSettings = settings
+      return _isLocked
+    }
+
+    if alreadyLocked {
+      // Re-arm the auto-unlock timer / hotkey against the new settings.
+      configureAutoUnlockTimerIfNeeded()
+      return
+    }
+
+    // Verify Accessibility permission before attempting to create event tap.
+    guard AccessibilityManager.hasPermission() else {
+      throw LockEngineError.accessibilityPermissionDenied
     }
 
     // Event tap creation must happen on main thread
     try startEventTap()
     markLocked()
+  }
+
+  /// Updates the active settings. If a lock is running, changes take effect immediately
+  /// (e.g. a new auto-unlock timeout re-arms the timer); otherwise they seed the next lock.
+  public func updateSettings(_ settings: KeyboardLockerSettings) {
+    let isLocked: Bool = withLock {
+      _activeSettings = settings
+      return _isLocked
+    }
+
+    if isLocked {
+      configureAutoUnlockTimerIfNeeded()
+    }
   }
 
   private func startEventTap() throws {
@@ -162,7 +176,7 @@ public class LockEngine {
 
     configureAutoUnlockTimerIfNeeded()
     LockStateBroadcaster.broadcast(isLocked: true)
-    print("LockEngine: Locked")
+    Self.logger.info("Locked")
   }
 
   private func configureAutoUnlockTimerIfNeeded() {
@@ -231,7 +245,7 @@ public class LockEngine {
     }
 
     LockStateBroadcaster.broadcast(isLocked: false)
-    print("LockEngine: Unlocked")
+    Self.logger.info("Unlocked")
   }
 
   fileprivate func handleEvent(

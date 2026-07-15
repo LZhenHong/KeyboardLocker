@@ -19,7 +19,7 @@
 只列出不那么显而易见的职责;签名请读源码。
 
 **Common**(`Core/Sources/Common/`)—— 所有 target 共享
-- `Shared.swift`:`KeyboardLockerServiceProtocol`(锁操作 + `currentSettings`)、`SharedConstants`(Mach 名、bundle-ID 白名单、CLI 常量)、`NotificationNames.stateChanged`。
+- `Shared.swift`:`KeyboardLockerServiceProtocol`(锁操作 + `currentSettings`)、`SharedConstants`(Mach 名、bundle-ID 白名单)、`NotificationNames.stateChanged`。
 - `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`)+ `.default` + `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界的 JSON 传输)。
 - `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
@@ -51,9 +51,6 @@
 
 ### 修改事件过滤
 在 `LockEngine.handleEvent(proxy:type:event:)` 中:返回 `nil` 拦截、返回 `Unmanaged.passUnretained(event)` 放行,并在满足解锁条件(热键或超时)时调用 `unlock()`。`Hotkey.matches(keyCode:flags:)` 会通过 `relevantModifierMask` 过滤掉 CapsLock/NumLock。
-
-### CLI 安装
-`CLIInstaller` 把 `/usr/local/bin/klock` 软链到 app bundle 内的 CLI 二进制(保证版本一致),并通过 AppleScript 请求管理员权限。`install()`/`uninstall()` 返回 `InstallResult`(`.success` / `.alreadyInstalled` / `.cancelled` / `.failed(Error)`);用 `isInstalled` / `isCurrentVersionInstalled` 判断状态。
 
 ## 测试须知
 

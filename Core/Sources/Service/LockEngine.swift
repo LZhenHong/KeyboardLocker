@@ -279,10 +279,6 @@ public class LockEngine {
       let isAutoRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) == Self.autoRepeatFlagValue
       return !isAutoRepeat
 
-    case .flagsChanged:
-      let keyCode = hotkey.keyCode
-      return CGEventSource.keyState(.hidSystemState, key: keyCode)
-
     default:
       return false
     }

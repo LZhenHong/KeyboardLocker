@@ -20,7 +20,7 @@
 
 **Common**(`Core/Sources/Common/`)—— 所有 target 共享
 - `Shared.swift`:`KeyboardLockerServiceProtocol`(锁操作 + `currentSettings`)、`SharedConstants`(Mach 名、bundle-ID 白名单、CLI 常量)、`NotificationNames.stateChanged`。
-- `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`、`showsUnlockNotification`)+ `.default` + `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界的 JSON 传输)。
+- `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`)+ `.default` + `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界的 JSON 传输)。
 - `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
 **Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`

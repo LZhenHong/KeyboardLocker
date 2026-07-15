@@ -26,20 +26,6 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
         seconds
       }
     }
-
-    private enum PresetTimeouts {
-      static let short: TimeInterval = 30
-      static let medium: TimeInterval = 60
-      static let long: TimeInterval = 120
-    }
-
-    /// Common presets for UI binding
-    public static let presets: [AutoUnlockPolicy] = [
-      .disabled,
-      .timed(seconds: PresetTimeouts.short),
-      .timed(seconds: PresetTimeouts.medium),
-      .timed(seconds: PresetTimeouts.long),
-    ]
   }
 
   /// Represents unlock hotkey combination
@@ -60,11 +46,6 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
       .maskShift,
     ]
 
-    /// Validates hotkey has at least one modifier key
-    public var isValid: Bool {
-      modifierFlags.intersection(Self.relevantModifierMask).isEmpty == false
-    }
-
     /// Checks if event's keyCode and modifiers match this hotkey
     public func matches(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {
       guard keyCode == self.keyCode else {
@@ -82,22 +63,18 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
 
   public var autoUnlockPolicy: AutoUnlockPolicy
   public var unlockHotkey: Hotkey
-  public var showsUnlockNotification: Bool
 
   public init(
     autoUnlockPolicy: AutoUnlockPolicy,
-    showsUnlockNotification: Bool,
     unlockHotkey: Hotkey
   ) {
     self.autoUnlockPolicy = autoUnlockPolicy
-    self.showsUnlockNotification = showsUnlockNotification
     self.unlockHotkey = unlockHotkey
   }
 
   /// Default settings for initial launch or reset
   public static let `default` = KeyboardLockerSettings(
     autoUnlockPolicy: .timed(seconds: 60),
-    showsUnlockNotification: true,
     unlockHotkey: Hotkey(
       keyCode: SharedConstants.defaultUnlockKeyCode,
       modifierFlags: [.maskControl, .maskCommand]

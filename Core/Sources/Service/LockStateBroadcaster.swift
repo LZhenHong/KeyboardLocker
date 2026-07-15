@@ -5,12 +5,15 @@ import Foundation
 
 /// Broadcasts lock state changes via system notifications.
 ///
-/// Call `broadcast(isLocked:)` from the Agent process after lock state changes.
-/// Clients subscribe using `LockStateSubscriber` in the Client module.
+/// Call `broadcast(isLocked:)` from the Agent process after lock state changes. Only
+/// **long-lived, state-reflecting** surfaces (App menu bar, Widgets) need this — they subscribe
+/// via `LockStateSubscriber`. One-shot surfaces (CLI queries, AppleScript, Shortcuts) read the
+/// authoritative state directly with a `status` XPC call and are synchronized by construction.
 ///
-/// Notification channels:
-/// - **Darwin**: Lightweight system-wide (no payload). For CLI, scripts, Shortcuts.
-/// - **Distributed**: With state payload. For widgets, extensions, other apps.
+/// Both channels carry no meaningful payload for consumers — subscribers fetch the authoritative
+/// state from the Agent on any signal. Two channels are posted for delivery robustness:
+/// - **Darwin**: can wake an App-Napped / suspended process so it learns of changes made while idle.
+/// - **Distributed**: delivered on the main queue; the reliable path for a running CFRunLoop.
 public enum LockStateBroadcaster {
   /// Broadcasts lock state change to all system notification channels.
   public static func broadcast(isLocked: Bool) {

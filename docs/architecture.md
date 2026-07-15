@@ -38,6 +38,15 @@ There is one physical keyboard, so lock state is a **single global boolean owned
 - Lock operations are **stateless one-off XPC calls** (`lock` / `unlock` / `status`), symmetric with each other. Do not model the lock as a "session" a client "owns" — a wrapper's connection lifetime is unrelated to the lock's lifetime.
 - To react to state changes, subscribe to the global broadcast (`LockStateSubscriber`). Never infer state from "did my call succeed".
 
+## State Synchronization
+
+Because state lives in exactly one place (the Agent), wrappers stay in sync by always deferring to it. There are two wrapper shapes, and they read state differently:
+
+- **One-shot surfaces** — CLI `status`/`unlock`, AppleScript, Shortcuts (App Intents), any script. They ask the Agent at the moment they run (`XPCClient.status()`) and act on the answer. They hold no cached state, so they are **synchronized by construction** and need no subscription. Do not add notification handling to a one-shot surface.
+- **Long-lived, state-reflecting surfaces** — the App menu bar, future Widgets. They display state continuously, so they must both **subscribe** (`LockStateSubscriber`) and **reconcile on becoming visible / on launch** (fetch `status()`), because a broadcast can be missed while the process is suspended.
+
+`LockStateSubscriber` treats notifications as *hints*, not truth: on any signal (Darwin or Distributed) it fetches the authoritative state from the Agent and de-duplicates. The Agent broadcasts on both channels only so a suspended App can be woken (Darwin) and a running one updated promptly (Distributed). A notification payload is never the source of truth.
+
 ## Rules for Adding a New Wrapper (Widget, Shortcut, AppleScript, …)
 
 Before writing a wrapper, confirm all of the following:

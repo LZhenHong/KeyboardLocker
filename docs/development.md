@@ -25,7 +25,7 @@ Only the non-obvious responsibilities are listed; read the source for signatures
 
 **Client** (`Core/Sources/Client/`) — App/CLI, never imports `Service`
 - `XPCClient.swift`: async/throwing `XPCClient.shared` with one auto-reconnecting connection; `lock`/`unlock`/`status`/`applySettings`/`currentSettings`/`accessibilityStatus`/`requestAccessibilityPermission`. No "session" type.
-- `LockStateSubscriber.swift`: distributed-notification subscription → `ObserverToken`, plus `stateChanges` (`AsyncStream<Bool>`).
+- `LockStateSubscriber.swift`: subscribes to Darwin + Distributed broadcasts, treats each as a hint and fetches authoritative state via `XPCClient.status()` (retried, de-duplicated) → `ObserverToken`, plus `stateChanges` (`AsyncStream<Bool>`). Only long-lived UI needs this; one-shot surfaces read `status()` directly (see architecture "State Synchronization").
 
 **Service** (`Core/Sources/Service/`) — Agent only
 - `LockEngine.swift`: CGEventTap singleton, idempotent `lock(settings:)`, `updateSettings(_:)`, auto-unlock timer, hotkey detection, `OSAllocatedUnfairLock` state, `os.Logger`.

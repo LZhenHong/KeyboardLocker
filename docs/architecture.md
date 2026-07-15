@@ -56,6 +56,7 @@ Before writing a wrapper, confirm all of the following:
 3. **Holds no independent state.** No private `UserDefaults`, no local lock flag. Read settings and lock state from the core.
 4. **Emits nothing to other processes.** Only the Agent broadcasts state.
 5. **Degrades honestly when the Agent is unavailable.** Every wrapper must handle "core not reachable" (see the Agent lifecycle requirement below) rather than assuming success.
+6. **Reads state the way its shape dictates.** Decide which of the two shapes in "State Synchronization" the wrapper is: a one-shot surface calls `status()` directly and adds **no** notification handling; a long-lived UI subscribes via `LockStateSubscriber` *and* reconciles on becoming visible.
 
 ## Agent Lifecycle Requirement
 
@@ -69,3 +70,5 @@ These are the concrete failure modes this contract exists to prevent:
 - A "session" abstraction implying a client owns the lock → confusing behavior where one surface can't unlock what another locked.
 - Duplicated lock/settings logic across App and CLI → the exact maintenance explosion the DRY rule forbids.
 - A wrapper importing `Service` to "just call the engine directly" → bypasses the single core.
+- A one-shot surface (CLI/AppleScript/Shortcuts) subscribing to broadcasts, or caching lock state between invocations → needless complexity and a new drift source; it should just call `status()` when it runs.
+- Trusting a notification payload as the state instead of fetching `status()` → stale/reordered/dropped notifications silently desync the UI.

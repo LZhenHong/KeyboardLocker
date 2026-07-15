@@ -27,7 +27,7 @@ public final class XPCClient: @unchecked Sendable {
   private let lock = OSAllocatedUnfairLock()
   private var connection: NSXPCConnection?
 
-  public init() {}
+  private init() {}
 
   // MARK: - Operations
 

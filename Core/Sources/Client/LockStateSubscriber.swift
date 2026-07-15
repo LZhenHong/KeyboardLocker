@@ -27,6 +27,18 @@ public enum LockStateSubscriber {
       DistributedNotificationCenter.default().removeObserver(observer)
     }
   }
+
+  /// Lock state changes as an `AsyncStream`. The subscription lives for the stream's lifetime
+  /// and is torn down automatically when the consuming task is cancelled.
+  public static var stateChanges: AsyncStream<Bool> {
+    AsyncStream { continuation in
+      let token = subscribe { continuation.yield($0) }
+      continuation.onTermination = { _ in
+        // Retain the token until termination, then release to unsubscribe.
+        _ = token
+      }
+    }
+  }
 }
 
 // MARK: - Observer Token

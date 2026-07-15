@@ -46,6 +46,16 @@ public protocol KeyboardLockerServiceProtocol {
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 
+  // MARK: Settings Methods
+
+  /// Persists new settings in the Agent (the source of truth) and applies them to a running lock.
+  /// Settings cross the `@objc` XPC boundary as JSON-encoded `KeyboardLockerSettings`.
+  func applySettings(_ data: Data, reply: @escaping (Error?) -> Void)
+
+  /// Returns the Agent's current settings as JSON-encoded `KeyboardLockerSettings`.
+  /// `data` is nil only if the Agent failed to encode; wrappers fall back to `.default`.
+  func currentSettings(reply: @escaping (Data?) -> Void)
+
   // MARK: Accessibility Permission Methods
 
   func requestAccessibilityPermission(showPrompt: Bool, reply: @escaping (Bool) -> Void)

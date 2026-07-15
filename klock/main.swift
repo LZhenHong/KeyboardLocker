@@ -8,17 +8,12 @@
 import Client
 import Foundation
 
-// MARK: - Entry Point
-
-KlockCLI.run()
+await KlockCLI.run()
 
 // MARK: - CLI
 
 enum KlockCLI {
-  private static var session: LockSessionController?
-  private static var stateToken: ObserverToken?
-
-  static func run() {
+  static func run() async {
     guard let command = CommandLine.arguments.dropFirst().first else {
       printUsage()
       exit(ExitCode.error)
@@ -26,11 +21,11 @@ enum KlockCLI {
 
     switch command {
     case "lock":
-      executeLock()
+      await executeLock()
     case "unlock":
-      executeUnlock()
+      await executeUnlock()
     case "status":
-      executeStatus()
+      await executeStatus()
     default:
       printError("Unknown command: \(command)")
       printUsage()
@@ -40,72 +35,55 @@ enum KlockCLI {
 
   // MARK: - Commands
 
-  private static func executeLock() {
-    print("Locking...")
-
-    session = XPCClient.startLockSession()
-    session?.lock { error in
-      if let error {
-        printError(error.localizedDescription)
-        if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
-          print("  \(suggestion)")
-        }
-        exit(ExitCode.error)
-      }
-      let hotkey = KeyboardLockerSettings.default.unlockHotkey.displayString
-      print("Locked. Press \(hotkey) to unlock.")
+  private static func executeLock() async {
+    do {
+      try await XPCClient.shared.lock()
+    } catch {
+      reportFailure(error)
+      exit(ExitCode.error)
     }
 
-    // Listen for external unlock (hotkey pressed)
-    stateToken = LockStateSubscriber.subscribe { isLocked in
-      if !isLocked {
-        print("Unlocked.")
-        stateToken = nil
-        session = nil
-        exit(ExitCode.success)
-      }
-    }
+    let hotkey = await (try? XPCClient.shared.currentSettings())?.unlockHotkey.displayString
+      ?? KeyboardLockerSettings.default.unlockHotkey.displayString
+    print("Locked. Press \(hotkey) to unlock.")
 
-    RunLoop.main.run()
+    // Stay alive to report when the lock is released (hotkey, timeout, or another surface).
+    for await isLocked in LockStateSubscriber.stateChanges where !isLocked {
+      print("Unlocked.")
+      exit(ExitCode.success)
+    }
   }
 
-  private static func executeUnlock() {
-    var exitCode = ExitCode.success
-    let sem = DispatchSemaphore(value: 0)
-
-    XPCClient.unlock { error in
-      if let error {
-        printError(error.localizedDescription)
-        exitCode = ExitCode.error
-      } else {
-        print("Unlocked.")
-      }
-      sem.signal()
+  private static func executeUnlock() async {
+    do {
+      try await XPCClient.shared.unlock()
+      print("Unlocked.")
+      exit(ExitCode.success)
+    } catch {
+      reportFailure(error)
+      exit(ExitCode.error)
     }
-
-    sem.wait()
-    exit(exitCode)
   }
 
-  private static func executeStatus() {
-    var exitCode = ExitCode.success
-    let sem = DispatchSemaphore(value: 0)
-
-    XPCClient.status { isLocked, error in
-      if let error {
-        printError(error.localizedDescription)
-        exitCode = ExitCode.error
-      } else {
-        print(isLocked ? "Locked" : "Unlocked")
-      }
-      sem.signal()
+  private static func executeStatus() async {
+    do {
+      let isLocked = try await XPCClient.shared.status()
+      print(isLocked ? "Locked" : "Unlocked")
+      exit(ExitCode.success)
+    } catch {
+      reportFailure(error)
+      exit(ExitCode.error)
     }
-
-    sem.wait()
-    exit(exitCode)
   }
 
   // MARK: - Helpers
+
+  private static func reportFailure(_ error: Error) {
+    printError(error.localizedDescription)
+    if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
+      print("  \(suggestion)")
+    }
+  }
 
   private static func printUsage() {
     print("Usage: klock <lock|unlock|status>")

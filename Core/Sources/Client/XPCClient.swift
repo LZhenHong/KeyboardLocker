@@ -1,151 +1,186 @@
 import Common
 import Foundation
+import os
 
-public enum XPCClientError: Error {
+public enum XPCClientError: Error, LocalizedError {
   case serviceUnavailable
+
+  public var errorDescription: String? {
+    switch self {
+    case .serviceUnavailable:
+      "The KeyboardLocker agent is not reachable."
+    }
+  }
 }
 
-/// XPC client for communicating with the KeyboardLocker agent service.
-public enum XPCClient {
-  // MARK: - One-off Operations
+/// Async client for the KeyboardLocker Agent.
+///
+/// Every operation is a **stateless one-off call** to the single global lock owned by the Agent —
+/// there is no client-owned "session". State is observed via `LockStateSubscriber`, never inferred
+/// from whether a call succeeded.
+///
+/// A single connection is reused and lazily recreated after invalidation, so callers survive the
+/// Agent being relaunched on demand by `launchd`.
+public final class XPCClient: @unchecked Sendable {
+  public static let shared = XPCClient()
 
-  /// Queries the current lock state from the agent.
-  public static func status(reply: @escaping (Bool, Error?) -> Void) {
-    executeOneOff(
-      onError: { reply(false, $0) },
-      operation: { service, invalidate in
-        service.status { isLocked, error in
-          reply(isLocked, error)
-          invalidate()
-        }
-      }
-    )
+  private let lock = OSAllocatedUnfairLock()
+  private var connection: NSXPCConnection?
+
+  public init() {}
+
+  // MARK: - Operations
+
+  public func lock() async throws {
+    try await withProxy { service, resume in
+      service.lockKeyboard { resume($0) }
+    }
   }
 
-  /// Requests Accessibility permission.
-  /// - Parameters:
-  ///   - showPrompt: Whether to trigger macOS system prompt
-  ///   - reply: Callback with current permission status
-  public static func requestAccessibilityPermission(showPrompt: Bool = true, reply: @escaping (Bool) -> Void) {
-    executeOneOff(
-      onError: { _ in reply(false) },
-      operation: { service, invalidate in
-        service.requestAccessibilityPermission(showPrompt: showPrompt) { granted in
-          reply(granted)
-          invalidate()
-        }
-      }
-    )
+  public func unlock() async throws {
+    try await withProxy { service, resume in
+      service.unlockKeyboard { resume($0) }
+    }
   }
 
-  /// Queries whether the agent has Accessibility permission.
-  public static func accessibilityStatus(reply: @escaping (Bool) -> Void) {
-    executeOneOff(
-      onError: { _ in reply(false) },
-      operation: { service, invalidate in
-        service.accessibilityStatus { granted in
-          reply(granted)
-          invalidate()
-        }
-      }
-    )
+  /// Current global lock state.
+  public func status() async throws -> Bool {
+    try await withProxyReturning { service, resume in
+      service.status { isLocked, error in resume(isLocked, error) }
+    }
   }
 
-  /// Force unlock (one-off operation).
-  public static func unlock(reply: @escaping (Error?) -> Void) {
-    executeOneOff(
-      onError: { reply($0) },
-      operation: { service, invalidate in
-        service.unlockKeyboard { error in
-          reply(error)
-          invalidate()
-        }
-      }
-    )
+  /// Persists settings in the Agent (source of truth) and applies them to any running lock.
+  public func applySettings(_ settings: KeyboardLockerSettings) async throws {
+    let data = try settings.encodedForXPC()
+    try await withProxy { service, resume in
+      service.applySettings(data) { resume($0) }
+    }
   }
 
-  // MARK: - Session Management
-
-  /// Creates a persistent lock session.
-  public static func startLockSession() -> LockSessionController {
-    LockSessionController(onStateChange: nil)
+  /// The Agent's current settings, falling back to `.default` if the Agent can't provide them.
+  public func currentSettings() async throws -> KeyboardLockerSettings {
+    let data: Data? = try await withProxyReturning { service, resume in
+      service.currentSettings { resume($0, nil) }
+    }
+    return KeyboardLockerSettings.decodedFromXPC(data)
   }
 
-  /// Creates a persistent lock session with state change notifications.
-  public static func startLockSession(
-    onStateChange: @escaping (Bool) -> Void
-  ) -> LockSessionController {
-    LockSessionController(onStateChange: onStateChange)
+  @discardableResult
+  public func requestAccessibilityPermission(showPrompt: Bool = true) async throws -> Bool {
+    try await withProxyReturning { service, resume in
+      service.requestAccessibilityPermission(showPrompt: showPrompt) { resume($0, nil) }
+    }
   }
 
-  // MARK: - Private
+  public func accessibilityStatus() async throws -> Bool {
+    try await withProxyReturning { service, resume in
+      service.accessibilityStatus { resume($0, nil) }
+    }
+  }
 
-  private static func executeOneOff(
-    onError: @escaping (Error) -> Void,
-    operation: @escaping (KeyboardLockerServiceProtocol, _ invalidate: @escaping () -> Void) -> Void
-  ) {
-    let connection = makeClientConnection()
-    let service = connection.remoteObjectProxyWithErrorHandler { error in
-      onError(error)
-      connection.invalidate()
-    } as? KeyboardLockerServiceProtocol
+  // MARK: - Connection Management
 
-    guard let service else {
-      onError(XPCClientError.serviceUnavailable)
-      connection.invalidate()
-      return
+  private func currentConnection() -> NSXPCConnection {
+    lock.lock()
+    defer { lock.unlock() }
+
+    if let connection {
+      return connection
     }
 
-    operation(service) { connection.invalidate() }
-  }
-
-  private static func makeClientConnection() -> NSXPCConnection {
     let connection = NSXPCConnection(machServiceName: SharedConstants.machServiceName)
     connection.remoteObjectInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
+
+    // Drop the cached connection on teardown so the next call transparently reconnects.
+    let clear: @Sendable () -> Void = { [weak self] in self?.clearConnection() }
+    connection.invalidationHandler = clear
+    connection.interruptionHandler = clear
+
     connection.resume()
+    self.connection = connection
     return connection
+  }
+
+  private func clearConnection() {
+    lock.lock()
+    connection = nil
+    lock.unlock()
+  }
+
+  /// Bridges a reply-based XPC call returning only an optional `Error` into async/throwing form.
+  /// The continuation is resumed exactly once — whether by the reply, the proxy error handler,
+  /// or a missing proxy — so a dead Agent throws rather than hanging forever.
+  private func withProxy(
+    _ body: @escaping (KeyboardLockerServiceProtocol, _ resume: @escaping (Error?) -> Void) -> Void
+  ) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      let once = ResumeOnce()
+      let connection = currentConnection()
+
+      let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+        once.run { continuation.resume(throwing: error) }
+      }
+
+      guard let service = proxy as? KeyboardLockerServiceProtocol else {
+        once.run { continuation.resume(throwing: XPCClientError.serviceUnavailable) }
+        return
+      }
+
+      body(service) { error in
+        once.run {
+          if let error {
+            continuation.resume(throwing: error)
+          } else {
+            continuation.resume()
+          }
+        }
+      }
+    }
+  }
+
+  /// Same as `withProxy`, for calls that return a value plus an optional `Error`.
+  private func withProxyReturning<T>(
+    _ body: @escaping (KeyboardLockerServiceProtocol, _ resume: @escaping (T, Error?) -> Void) -> Void
+  ) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+      let once = ResumeOnce()
+      let connection = currentConnection()
+
+      let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+        once.run { continuation.resume(throwing: error) }
+      }
+
+      guard let service = proxy as? KeyboardLockerServiceProtocol else {
+        once.run { continuation.resume(throwing: XPCClientError.serviceUnavailable) }
+        return
+      }
+
+      body(service) { value, error in
+        once.run {
+          if let error {
+            continuation.resume(throwing: error)
+          } else {
+            continuation.resume(returning: value)
+          }
+        }
+      }
+    }
   }
 }
 
-// MARK: - Lock Session Controller
+/// Guarantees a continuation is resumed at most once across the reply and error-handler races.
+private final class ResumeOnce: @unchecked Sendable {
+  private let lock = OSAllocatedUnfairLock()
+  private var done = false
 
-/// Manages a persistent XPC connection for lock/unlock operations.
-public final class LockSessionController {
-  private let connection: NSXPCConnection
-  private let service: KeyboardLockerServiceProtocol?
-  private var observerToken: ObserverToken?
-
-  fileprivate init(onStateChange: ((Bool) -> Void)?) {
-    connection = NSXPCConnection(machServiceName: SharedConstants.machServiceName)
-    connection.remoteObjectInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
-    connection.resume()
-    service = connection.remoteObjectProxyWithErrorHandler { _ in } as? KeyboardLockerServiceProtocol
-
-    if let onStateChange {
-      observerToken = LockStateSubscriber.subscribe(onStateChange)
+  func run(_ block: () -> Void) {
+    lock.lock()
+    let shouldRun = !done
+    done = true
+    lock.unlock()
+    if shouldRun {
+      block()
     }
-  }
-
-  deinit {
-    connection.invalidate()
-  }
-
-  public func lock(reply: @escaping (Error?) -> Void) {
-    withService(reply: reply) { $0.lockKeyboard(reply: reply) }
-  }
-
-  public func unlock(reply: @escaping (Error?) -> Void) {
-    withService(reply: reply) { $0.unlockKeyboard(reply: reply) }
-  }
-
-  private func withService(
-    reply: @escaping (Error?) -> Void,
-    operation: (KeyboardLockerServiceProtocol) -> Void
-  ) {
-    guard let service else {
-      reply(XPCClientError.serviceUnavailable)
-      return
-    }
-    operation(service)
   }
 }

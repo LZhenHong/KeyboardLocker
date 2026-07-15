@@ -13,7 +13,9 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
     case timed(seconds: TimeInterval)
 
     /// Identifiable conformance using self as ID
-    public var id: Self { self }
+    public var id: Self {
+      self
+    }
 
     /// Converts policy to timeout in seconds, nil when disabled
     public var timeout: TimeInterval? {
@@ -126,9 +128,27 @@ extension KeyboardLockerSettings.Hotkey: Codable {
 
 // MARK: - Hotkey Display
 
-extension KeyboardLockerSettings.Hotkey {
+public extension KeyboardLockerSettings.Hotkey {
   /// Human-readable representation of the hotkey (e.g., "⌃⌘L")
-  public var displayString: String {
+  var displayString: String {
     KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "?"
+  }
+}
+
+// MARK: - XPC Serialization
+
+public extension KeyboardLockerSettings {
+  /// Encodes settings for transport across the `@objc` XPC boundary as JSON.
+  func encodedForXPC() throws -> Data {
+    try JSONEncoder().encode(self)
+  }
+
+  /// Decodes settings received over XPC, falling back to `.default` on nil/corrupt data
+  /// so a wrapper never operates on an ambiguous state.
+  static func decodedFromXPC(_ data: Data?) -> KeyboardLockerSettings {
+    guard let data, let settings = try? JSONDecoder().decode(KeyboardLockerSettings.self, from: data) else {
+      return .default
+    }
+    return settings
   }
 }

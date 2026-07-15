@@ -92,11 +92,11 @@ public class LockEngine {
     withLock { _isLocked }
   }
 
-  public var lockStartedAt: Date? {
+  var lockStartedAt: Date? {
     withLock { _lockStartedAt }
   }
 
-  public var autoUnlockTargetDate: Date? {
+  var autoUnlockTargetDate: Date? {
     withLock { _autoUnlockTargetDate }
   }
 
@@ -284,7 +284,7 @@ public class LockEngine {
     }
   }
 
-  public func lockDuration(at date: Date = Date()) -> TimeInterval? {
+  func lockDuration(at date: Date = Date()) -> TimeInterval? {
     let start = withLock { _lockStartedAt }
     guard let start else {
       return nil
@@ -292,7 +292,7 @@ public class LockEngine {
     return max(0, date.timeIntervalSince(start))
   }
 
-  public func remainingAutoUnlockTime(at date: Date = Date()) -> TimeInterval? {
+  func remainingAutoUnlockTime(at date: Date = Date()) -> TimeInterval? {
     let deadline = withLock { _autoUnlockTargetDate }
     guard let deadline else {
       return nil

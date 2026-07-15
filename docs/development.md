@@ -1,64 +1,64 @@
-# Development Guide
+# 开发指南
 
-Task-specific workflows and component reference. For the non-negotiable design rules, read [architecture.md](architecture.md) first — it always wins over anything here.
+任务相关的工作流与组件参考。关于不可协商的设计规则,先读 [architecture.md](architecture.md) —— 它始终优先于本文档的任何内容。
 
-## XPC Communication Flow
+## XPC 通信流程
 
-All surfaces talk to the Agent over `KeyboardLockerServiceProtocol` (Mach service `io.lzhlovesjyq.keyboardlocker.agent`).
+所有面都通过 `KeyboardLockerServiceProtocol` 与 Agent 通信(Mach 服务 `io.lzhlovesjyq.keyboardlocker.agent`)。
 
-1. A wrapper (App/CLI/…) sends a **stateless one-off call** via the async `XPCClient`: `lock` / `unlock` / `status` / `applySettings` / `currentSettings` / `accessibilityStatus` / `requestAccessibilityPermission`. Failures throw (a dead Agent surfaces as a thrown error, never a hang).
-2. The Agent's `ServiceDelegate` accepts the connection (after `XPCAccessControl` validates code signature + bundle ID) and routes to `AgentService`.
-3. `AgentService` owns the settings source of truth (`KeyboardLockerSettingsStore`, in `Service`) and drives `LockEngine.shared.lock(settings:)` / `unlock()`.
-4. `LockEngine` creates the CGEventTap and, on any state change, calls `LockStateBroadcaster.broadcast(isLocked:)`.
-5. Wrappers observe state via `LockStateSubscriber.subscribe(_:)` (returns an `ObserverToken`) or `LockStateSubscriber.stateChanges` (`AsyncStream<Bool>`) — never by inferring from "did my call succeed".
+1. wrapper(App/CLI/……)通过异步的 `XPCClient` 发出一次**无状态一次性调用**:`lock` / `unlock` / `status` / `applySettings` / `currentSettings` / `accessibilityStatus` / `requestAccessibilityPermission`。失败会抛错(Agent 挂掉时表现为抛出的错误,绝不挂起)。
+2. Agent 的 `ServiceDelegate` 接受连接(在 `XPCAccessControl` 校验代码签名 + bundle ID 之后),并路由到 `AgentService`。
+3. `AgentService` 拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`),并驱动 `LockEngine.shared.lock(settings:)` / `unlock()`。
+4. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast(isLocked:)`。
+5. wrapper 通过 `LockStateSubscriber.subscribe(_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态 —— 绝不从"我这次调用是否成功"推断。
 
-> The lock is a single global boolean owned by the Agent, and `lock()` is **idempotent** (locking while locked re-applies settings and returns success). There is no client-owned "session"; every call is a one-off. The Agent must be `SMAppService`-registered so `launchd` starts it on demand — the App does this at launch via `AgentRegistrar` (see below).
+> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 是**幂等**的(已锁时再锁会重新应用设置并返回成功)。不存在客户端拥有的"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
 
-## Component Map
+## 组件地图
 
-Only the non-obvious responsibilities are listed; read the source for signatures.
+只列出不那么显而易见的职责;签名请读源码。
 
-**Common** (`Core/Sources/Common/`) — shared by all targets
-- `Shared.swift`: `KeyboardLockerServiceProtocol` (locking + `applySettings(Data)`/`currentSettings` + accessibility), `SharedConstants` (Mach name, bundle-ID allowlist, CLI constants), `NotificationNames.stateChanged`.
-- `KeyboardLockerSettings.swift`: `KeyboardLockerSettings` (`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`, `unlockHotkey`, `showsUnlockNotification`) + `.default` + `encodedForXPC()`/`decodedFromXPC(_:)` (JSON transport across the `@objc` boundary).
-- `KeyCodeConverter.swift`: layout-aware `CGKeyCode` → shortcut string (⌃⌥⇧⌘ order) via `UCKeyTranslate`.
+**Common**(`Core/Sources/Common/`)—— 所有 target 共享
+- `Shared.swift`:`KeyboardLockerServiceProtocol`(锁操作 + `applySettings(Data)`/`currentSettings` + accessibility)、`SharedConstants`(Mach 名、bundle-ID 白名单、CLI 常量)、`NotificationNames.stateChanged`。
+- `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`、`showsUnlockNotification`)+ `.default` + `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界的 JSON 传输)。
+- `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
-**Client** (`Core/Sources/Client/`) — App/CLI, never imports `Service`
-- `XPCClient.swift`: async/throwing `XPCClient.shared` with one auto-reconnecting connection; `lock`/`unlock`/`status`/`applySettings`/`currentSettings`/`accessibilityStatus`/`requestAccessibilityPermission`. No "session" type.
-- `LockStateSubscriber.swift`: subscribes to Darwin + Distributed broadcasts, treats each as a hint and fetches authoritative state via `XPCClient.status()` (retried, de-duplicated) → `ObserverToken`, plus `stateChanges` (`AsyncStream<Bool>`). Only long-lived UI needs this; one-shot surfaces read `status()` directly (see architecture "State Synchronization").
+**Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`
+- `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条自动重连的连接;`lock`/`unlock`/`status`/`applySettings`/`currentSettings`/`accessibilityStatus`/`requestAccessibilityPermission`。没有 "session" 类型。
+- `LockStateSubscriber.swift`:订阅 Darwin + Distributed 广播,把每个信号当作提示,并通过 `XPCClient.status()` 拉取权威状态(带重试、去重)→ `ObserverToken`,另有 `stateChanges`(`AsyncStream<Bool>`)。只有长命 UI 需要它;一次性面直接读 `status()`(见 architecture 的"状态同步")。
 
-**Service** (`Core/Sources/Service/`) — Agent only
-- `LockEngine.swift`: CGEventTap singleton, idempotent `lock(settings:)`, `updateSettings(_:)`, auto-unlock timer, hotkey detection, `OSAllocatedUnfairLock` state, `os.Logger`.
-- `KeyboardLockerSettingsStore.swift`: `UserDefaults`-backed settings persistence — lives in `Service` so no wrapper can own its own store (contract source-of-truth rule).
-- `LockStateBroadcaster.swift`: posts Darwin (payload-free) + Distributed (with payload) notifications.
-- `AccessibilityManager.swift`, `XPCAccessControl.swift` (release = signature + Team ID + allowlist; debug = allowlist only), `XPCServerConnection.swift`.
+**Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
+- `LockEngine.swift`:CGEventTap 单例、幂等的 `lock(settings:)`、`updateSettings(_:)`、自动解锁定时器、热键检测、`OSAllocatedUnfairLock` 状态、`os.Logger`。
+- `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
+- `LockStateBroadcaster.swift`:发出 Darwin(无载荷)+ Distributed(带载荷)通知。
+- `AccessibilityManager.swift`、`XPCAccessControl.swift`(release = 签名 + Team ID + 白名单;debug = 仅白名单)、`XPCServerConnection.swift`。
 
-**App** (`KeyboardLocker/`) — thin SwiftUI wrapper
-- `AgentRegistrar.swift`: `SMAppService.agent(plistName:)` registration at launch (idempotent).
-- `LockController.swift`: `@MainActor ObservableObject` view state — issues async `XPCClient` calls, reflects broadcast state, holds no lock/settings logic.
-- `SystemSettings.swift`: opens the Accessibility pane (UI concern, App-local, not in `Common`).
+**App**(`KeyboardLocker/`)—— 薄 SwiftUI wrapper
+- `AgentRegistrar.swift`:启动时做 `SMAppService.agent(plistName:)` 注册(幂等)。
+- `LockController.swift`:`@MainActor ObservableObject` 视图状态 —— 发出异步 `XPCClient` 调用、反映广播状态,不含任何锁/设置逻辑。
+- `SystemSettings.swift`:打开 Accessibility 面板(UI 关注点,App 本地持有,不放进 `Common`)。
 
-## Common Tasks
+## 常见任务
 
-### Add a setting
-1. Add a `Codable`/`Sendable` property to `KeyboardLockerSettings` and update `.default`.
-2. If the engine consumes it, read it in `LockEngine.lock(settings:)` / `updateSettings(_:)`.
-3. Wrappers read/write settings only through `XPCClient.currentSettings()` / `applySettings(_:)`; the Agent persists via its `KeyboardLockerSettingsStore`. Wrappers must **not** own a store (see architecture contract).
+### 新增一个设置项
+1. 给 `KeyboardLockerSettings` 加一个 `Codable`/`Sendable` 属性,并更新 `.default`。
+2. 如果引擎会消费它,在 `LockEngine.lock(settings:)` / `updateSettings(_:)` 中读取。
+3. wrapper 只通过 `XPCClient.currentSettings()` / `applySettings(_:)` 读写设置;由 Agent 经其 `KeyboardLockerSettingsStore` 持久化。wrapper **不得**拥有 store(见架构契约)。
 
-### Add an XPC method
-1. Add the signature to `KeyboardLockerServiceProtocol` in `Common/Shared.swift`. Values that aren't `@objc`-representable (like `KeyboardLockerSettings`) cross as JSON `Data` — reuse `encodedForXPC()`/`decodedFromXPC(_:)`.
-2. Implement it in `KeyboardLockerAgent/AgentService.swift`.
-3. Add a thin async wrapper on `XPCClient` in `Client/` if a surface needs it.
+### 新增一个 XPC 方法
+1. 在 `Common/Shared.swift` 的 `KeyboardLockerServiceProtocol` 里加签名。无法用 `@objc` 表达的值(如 `KeyboardLockerSettings`)以 JSON `Data` 跨界 —— 复用 `encodedForXPC()`/`decodedFromXPC(_:)`。
+2. 在 `KeyboardLockerAgent/AgentService.swift` 中实现它。
+3. 如果某个面需要,在 `Client/` 的 `XPCClient` 上加一个薄的异步封装。
 
-### Modify event filtering
-In `LockEngine.handleEvent(proxy:type:event:)`: return `nil` to block, `Unmanaged.passUnretained(event)` to allow, and call `unlock()` when unlock conditions (hotkey or timeout) are met. `Hotkey.matches(keyCode:flags:)` filters CapsLock/NumLock via `relevantModifierMask`.
+### 修改事件过滤
+在 `LockEngine.handleEvent(proxy:type:event:)` 中:返回 `nil` 拦截、返回 `Unmanaged.passUnretained(event)` 放行,并在满足解锁条件(热键或超时)时调用 `unlock()`。`Hotkey.matches(keyCode:flags:)` 会通过 `relevantModifierMask` 过滤掉 CapsLock/NumLock。
 
-### CLI installation
-`CLIInstaller` symlinks `/usr/local/bin/klock` → the CLI binary inside the app bundle (version consistency), prompting for admin via AppleScript. `install()`/`uninstall()` return `InstallResult` (`.success` / `.alreadyInstalled` / `.cancelled` / `.failed(Error)`); check `isInstalled` / `isCurrentVersionInstalled`.
+### CLI 安装
+`CLIInstaller` 把 `/usr/local/bin/klock` 软链到 app bundle 内的 CLI 二进制(保证版本一致),并通过 AppleScript 请求管理员权限。`install()`/`uninstall()` 返回 `InstallResult`(`.success` / `.alreadyInstalled` / `.cancelled` / `.failed(Error)`);用 `isInstalled` / `isCurrentVersionInstalled` 判断状态。
 
-## Testing Notes
+## 测试须知
 
-- `LockEngine.lock` throws `.accessibilityPermissionDenied` when Accessibility permission is missing (checked before creating the event tap).
-- The Agent must be running/registered (`SMAppService`) for XPC calls to succeed.
-- Engine operations dispatch to the main thread for CFRunLoop access.
-- The system may disable the event tap (timeout/user input); `LockEngine` attempts re-enable.
+- 缺少 Accessibility 权限时,`LockEngine.lock` 抛出 `.accessibilityPermissionDenied`(在创建 event tap 之前检查)。
+- XPC 调用要成功,Agent 必须正在运行 / 已注册(`SMAppService`)。
+- 引擎操作会派发到主线程,以便访问 CFRunLoop。
+- 系统可能禁用 event tap(超时 / 用户输入);`LockEngine` 会尝试重新启用。

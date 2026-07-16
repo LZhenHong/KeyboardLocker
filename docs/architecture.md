@@ -62,9 +62,11 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 因为状态只存在于唯一一处(Agent),wrapper 保持同步的方式就是始终以它为准。wrapper 有两种形态,读取状态的方式不同:
 
 - **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
-- **长命的状态反映面** —— App 菜单栏、未来的 Widgets。它们持续显示状态,因此必须既**订阅**(`LockStateSubscriber`),又在**变为可见 / 启动时校准**(拉取 `status()`)—— 因为进程被挂起期间可能错过某次广播。
+- **长命的状态反映面** —— App 菜单栏、未来的 Widgets。它们持续显示状态,因此必须既**订阅**(`LockStateSubscriber`),又在**变为可见 / 启动时校准**(拉取 `status()`)—— 因为进程被挂起期间可能错过某次广播。`LockStateSubscriber` 会先安装两个 observer,再立即做一次权威初始查询;只要初始查询成功或后续 signal 到达,snapshot 与 subscription 之间的变化就会被校准。调用方仍需在重新可见时做完整 readiness reconciliation。
 
-`LockStateSubscriber` 把通知当作*提示*而非真相:收到任一信号(Darwin 或 Distributed)后,它都会向 Agent 拉取权威状态并去重。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
+`LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
+
+`klock lock` 是一个会等待并报告后续解锁的长命命令,不是一次性 `status`。它同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 
 ## 新增 wrapper 的规则(Widget、Shortcut、AppleScript……)
 

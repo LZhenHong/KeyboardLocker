@@ -32,5 +32,9 @@ These override the model's defaults — the rest of Swift style is left to stand
 
 ```bash
 xcodebuild -scheme KeyboardLocker -configuration Debug build   # or KeyboardLockerAgent / klock / Core
+swift test --package-path Core
 swiftformat .   # 2-space indent, alpha-sorted imports; run before committing
 ```
+
+`.swift-version` intentionally selects the active Xcode toolchain. `Core/Package.swift`
+and SwiftFormat keep Swift 5.10 source semantics.

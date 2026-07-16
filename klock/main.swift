@@ -47,10 +47,13 @@ enum KlockCLI {
       ?? KeyboardLockerSettings.default.unlockHotkey.displayString
     print("Locked. Press \(hotkey) to unlock.")
 
-    // Stay alive to report when the lock is released (hotkey, timeout, or another surface).
-    for await isLocked in LockStateSubscriber.stateChanges where !isLocked {
+    do {
+      try await XPCClient.shared.waitUntilUnlocked()
       print("Unlocked.")
       exit(ExitCode.success)
+    } catch {
+      reportFailure(error)
+      exit(ExitCode.error)
     }
   }
 

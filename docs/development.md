@@ -13,9 +13,9 @@
 3. Client 与 Listener 都在 activate 前安装同 Team + 精确 signing identifier 的 XPC requirement；系统完成双向认证后，Agent 的 `ServiceDelegate` 才接受连接并路由到 `AgentService`。
 4. `AgentService` 拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`),并驱动 `LockEngine.shared.lock(settings:)` / `unlock()`。
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
-6. wrapper 通过 `LockStateSubscriber.subscribe(_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态 —— 绝不从"我这次调用是否成功"推断。
+6. wrapper 通过 `LockStateSubscriber.subscribe(initialState:_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态。subscriber 会在 observer 安装完成后立即拉取一次权威初始状态,后续信号串行合并并再次查询 —— 绝不从"我这次调用是否成功"或通知 payload 推断。
 
-> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 是**幂等**的(已锁时再锁会重新应用设置并返回成功)。不存在客户端拥有的"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
+> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 是**幂等**的(已锁时再锁会重新应用设置并返回成功)。重复 lock 或锁定期间更新设置会从本次调用重新开始完整的 auto-unlock timeout window,但不会改写整次锁定会话的起点。不存在客户端拥有的"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
 
 ## 组件地图
 
@@ -31,7 +31,8 @@
 **Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`
 - `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条自动重连的连接;所有调用共享有界响应超时,超时只失效对应连接。`lock` / `unlock` 超时后重新查询权威状态,无法确认时明确报告 outcome unknown;optional method 在同一 connection 上完成 descriptor/capability gate；replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。
 - `ServiceCompatibility.swift`:纯值兼容性规则与任意精度 dotted-numeric `ServiceBuildVersion` —— major 必须相等、running minor 不得低于最低版本、required capabilities 必须齐全,且运行中 Agent 的 identifier/version/build 必须与 bundled Agent 一致。
-- `LockStateSubscriber.swift`:订阅 Darwin + Distributed 广播,把每个信号当作提示,并通过 `XPCClient.status()` 拉取权威状态(带重试、去重)→ `ObserverToken`,另有 `stateChanges`(`AsyncStream<Bool>`)。只有长命 UI 需要它;一次性面直接读 `status()`(见 architecture 的"状态同步")。
+- `LockStateSubscriber.swift`:先安装 Darwin + Distributed observer,再立即拉取一次权威状态;后续把每个信号当作提示,通过 `XPCClient.status()` 串行校准(带重试、signal coalescing、去重和 cancellation fence)→ `ObserverToken`,另有会先产出当前权威状态的 `stateChanges`(`AsyncStream<Bool>`)。取消会丢弃尚未进入 handler 的结果,但不会回溯撤销已经开始执行的 handler。长命 UI 使用 snapshot seed 避免重复呈现相同状态;一次性面直接读 `status()`(见 architecture 的"状态同步")。
+- `UnlockStatusPoller.swift`:`XPCClient.waitUntilUnlocked()` 的可测试等待组合。notification stream 提供及时更新,内部 poller 周期性查询权威状态以恢复丢通知和 Agent 重启；transport failure 后 reset connection,连续三次失败则抛错,不把不可达猜成 unlocked。任一路径确认解锁后都会取消另一条路径,取消 polling 时主动失效本轮 connection,避免等待完整 XPC response timeout。
 
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
 - `LockEngine.swift`:CGEventTap 单例、幂等的 `lock(settings:)`、`updateSettings(_:)`、自动解锁定时器、热键检测、`OSAllocatedUnfairLock` 状态、`os.Logger`。

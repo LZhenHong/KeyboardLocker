@@ -624,7 +624,20 @@ final class LockController: ObservableObject {
     guard stateToken == nil else {
       return
     }
-    stateToken = LockStateSubscriber.subscribe { [weak self] isLocked in
+
+    let initialState: Bool? = switch state {
+    case let .checking(lastKnownLock):
+      lastKnownLock
+    case let .agentUpdateRequired(isLocked, _):
+      isLocked
+    case let .accessibilityRequired(isLocked),
+         let .ready(isLocked):
+      isLocked
+    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+      nil
+    }
+
+    stateToken = LockStateSubscriber.subscribe(initialState: initialState) { [weak self] isLocked in
       self?.receiveLockState(isLocked)
     }
   }

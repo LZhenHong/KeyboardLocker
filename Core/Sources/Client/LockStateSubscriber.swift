@@ -18,17 +18,41 @@ import os
 ///   reliably run a CFRunLoop for Darwin callbacks; the distributed center delivers on the
 ///   main queue, which the CLI's async main drains.
 ///
-/// Delivered values are de-duplicated, so redundant signals across the two channels surface
-/// as at most one handler call per actual state change.
+/// Delivered values are de-duplicated, so the initial calibration is emitted at most once and
+/// redundant signals across the two channels surface as at most one handler call per actual
+/// state change.
 public enum LockStateSubscriber {
   public typealias StateChangeHandler = (Bool) -> Void
 
   private static let logger = Logger(subsystem: SharedConstants.machServiceName, category: "LockStateSubscriber")
 
-  /// Subscribes to lock state changes.
+  /// Subscribes to the authoritative lock state.
+  /// After observer installation, the handler receives the current state when it differs from
+  /// `initialState`, then receives de-duplicated changes. Pass a trusted snapshot to avoid
+  /// re-delivering it; the default `nil` always emits a successful initial calibration.
+  /// A transiently failed initial calibration is retried on the next signal.
   /// Returns a token that must be retained; subscription is cancelled when the token deallocates.
-  public static func subscribe(_ handler: @escaping StateChangeHandler) -> ObserverToken {
-    let reconciler = StateReconciler(handler: handler)
+  public static func subscribe(
+    initialState: Bool? = nil,
+    _ handler: @escaping StateChangeHandler
+  ) -> ObserverToken {
+    subscribe(
+      initialState: initialState,
+      fetchState: { try await XPCClient.shared.status() },
+      handler
+    )
+  }
+
+  static func subscribe(
+    initialState: Bool? = nil,
+    fetchState: @escaping StateReconciler.FetchState,
+    _ handler: @escaping StateChangeHandler
+  ) -> ObserverToken {
+    let reconciler = StateReconciler(
+      initialState: initialState,
+      fetchState: fetchState,
+      handler: handler
+    )
 
     let darwin = DarwinObserver(name: NotificationNames.stateChanged) {
       reconciler.signal()
@@ -42,17 +66,24 @@ public enum LockStateSubscriber {
       reconciler.signal()
     }
 
+    // Notifications are hints rather than a durable event log. Calibrate only after both
+    // observers are installed so a state change racing this first fetch schedules a follow-up
+    // pass instead of falling into a subscribe/snapshot gap.
+    reconciler.signal()
+
     return ObserverToken {
+      reconciler.cancel()
       darwin.cancel()
       DistributedNotificationCenter.default().removeObserver(distributed)
     }
   }
 
-  /// Lock state changes as an `AsyncStream`. The subscription lives for the stream's lifetime
-  /// and is torn down automatically when the consuming task is cancelled.
+  /// The authoritative lock state as an `AsyncStream`, beginning with an initial calibration.
+  /// The subscription lives for the stream's lifetime and is torn down automatically when the
+  /// consuming task is cancelled.
   public static var stateChanges: AsyncStream<Bool> {
     AsyncStream { continuation in
-      let token = subscribe { continuation.yield($0) }
+      let token = subscribe(initialState: nil) { continuation.yield($0) }
       continuation.onTermination = { _ in
         // Retain the token until termination, then release to unsubscribe.
         _ = token
@@ -66,52 +97,150 @@ public enum LockStateSubscriber {
 /// On each signal, fetches the Agent's authoritative lock state and forwards it to the handler
 /// only when it differs from the last value delivered — collapsing duplicate cross-channel
 /// signals into one handler call per real change.
-private final class StateReconciler: @unchecked Sendable {
+final class StateReconciler: @unchecked Sendable {
+  typealias FetchState = @Sendable () async throws -> Bool
+
+  private let fetchState: FetchState
   private let handler: LockStateSubscriber.StateChangeHandler
   private let lock = OSAllocatedUnfairLock()
   private var lastDelivered: Bool?
+  private var hasPendingSignal = false
+  private var isReconciling = false
+  private var isCancelled = false
+  private var workerTask: Task<Void, Never>?
 
   /// Transient XPC failures (e.g. the Agent being relaunched on demand) are retried so a real
   /// state change is never dropped just because one fetch raced a reconnect.
   private static let fetchAttempts = 3
   private static let retryDelay: Duration = .milliseconds(200)
 
-  init(handler: @escaping LockStateSubscriber.StateChangeHandler) {
+  init(
+    initialState: Bool? = nil,
+    fetchState: @escaping FetchState,
+    handler: @escaping LockStateSubscriber.StateChangeHandler
+  ) {
+    lastDelivered = initialState
+    self.fetchState = fetchState
     self.handler = handler
   }
 
   func signal() {
-    Task { [weak self] in
-      guard let self, let isLocked = await fetchState() else {
+    lock.withLock {
+      guard !isCancelled else {
         return
       }
 
-      let shouldDeliver: Bool = lock.withLock {
-        guard lastDelivered != isLocked else {
-          return false
+      hasPendingSignal = true
+      guard !isReconciling else {
+        return
+      }
+
+      isReconciling = true
+      // Create and retain the worker while holding the same lock that protects
+      // `isReconciling`. The task's first state access blocks on this lock, so a completed
+      // worker can never overwrite the handle of a newer active worker.
+      workerTask = Task<Void, Never> { [weak self] in
+        guard let self else {
+          return
         }
-        lastDelivered = isLocked
-        return true
+        await reconcilePendingSignals()
       }
-
-      guard shouldDeliver else {
-        return
-      }
-
-      await MainActor.run { self.handler(isLocked) }
     }
   }
 
-  private func fetchState() async -> Bool? {
-    for attempt in 1 ... Self.fetchAttempts {
-      if let isLocked = try? await XPCClient.shared.status() {
-        return isLocked
+  func cancel() {
+    let task: Task<Void, Never>? = lock.withLock {
+      guard !isCancelled else {
+        return nil
       }
-      if attempt < Self.fetchAttempts {
-        try? await Task.sleep(for: Self.retryDelay)
+
+      isCancelled = true
+      hasPendingSignal = false
+      defer { workerTask = nil }
+      return workerTask
+    }
+    task?.cancel()
+  }
+
+  private func reconcilePendingSignals() async {
+    while takePendingSignal() {
+      guard let isLocked = await fetchAuthoritativeState() else {
+        continue
+      }
+
+      await MainActor.run {
+        let shouldDeliver: Bool = self.lock.withLock {
+          guard !self.isCancelled,
+                self.lastDelivered != isLocked
+          else {
+            return false
+          }
+
+          self.lastDelivered = isLocked
+          return true
+        }
+        guard shouldDeliver else {
+          return
+        }
+
+        self.handler(isLocked)
+      }
+    }
+  }
+
+  /// Atomically claims one pending pass. Clearing the worker flag in the same critical section
+  /// prevents a signal from being stranded between the worker's final check and its exit.
+  private func takePendingSignal() -> Bool {
+    lock.withLock {
+      guard !isCancelled else {
+        isReconciling = false
+        return false
+      }
+
+      guard hasPendingSignal else {
+        isReconciling = false
+        return false
+      }
+
+      hasPendingSignal = false
+      return true
+    }
+  }
+
+  private func fetchAuthoritativeState() async -> Bool? {
+    for attempt in 1 ... Self.fetchAttempts {
+      guard shouldContinue else {
+        return nil
+      }
+
+      do {
+        let isLocked = try await fetchState()
+        return shouldContinue ? isLocked : nil
+      } catch {
+        guard attempt < Self.fetchAttempts,
+              shouldContinue
+        else {
+          return nil
+        }
+
+        do {
+          try await Task.sleep(for: Self.retryDelay)
+        } catch {
+          return nil
+        }
       }
     }
     return nil
+  }
+
+  private var shouldContinue: Bool {
+    guard !Task.isCancelled else {
+      return false
+    }
+
+    return lock.withLock {
+      !isCancelled
+    }
   }
 }
 

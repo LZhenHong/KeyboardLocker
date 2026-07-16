@@ -4,6 +4,37 @@ import CoreGraphics
 import Foundation
 import os
 
+struct AutoUnlockSchedule: Equatable {
+  let deadline: Date
+  let delay: TimeInterval
+
+  static func make(
+    timeout: TimeInterval?,
+    referenceDate: Date,
+    currentDate: Date
+  ) -> Self? {
+    guard
+      let timeout,
+      timeout.isFinite,
+      timeout > 0,
+      referenceDate.timeIntervalSinceReferenceDate.isFinite,
+      currentDate.timeIntervalSinceReferenceDate.isFinite
+    else {
+      return nil
+    }
+
+    let deadline = referenceDate.addingTimeInterval(timeout)
+    guard deadline.timeIntervalSinceReferenceDate.isFinite else {
+      return nil
+    }
+
+    return Self(
+      deadline: deadline,
+      delay: max(0, deadline.timeIntervalSince(currentDate))
+    )
+  }
+}
+
 /// Use refcon to bridge C callback to Swift instance since CGEventTap requires C function pointer
 private func eventTapCallback(
   proxy: CGEventTapProxy,
@@ -181,20 +212,30 @@ public class LockEngine {
   private func configureAutoUnlockTimerIfNeeded() {
     cancelAutoUnlockTimer()
 
-    let (timeout, startDate) = withLock {
-      (_activeSettings.autoUnlockPolicy.timeout, _lockStartedAt)
+    let (timeout, isLocked) = withLock {
+      (_activeSettings.autoUnlockPolicy.timeout, _isLocked)
     }
 
-    guard let timeout, timeout > 0, let startDate else {
+    // Re-arming starts a fresh timeout window without changing the duration
+    // of the lock session tracked by `_lockStartedAt`.
+    let referenceDate = Date()
+    guard
+      isLocked,
+      let schedule = AutoUnlockSchedule.make(
+        timeout: timeout,
+        referenceDate: referenceDate,
+        currentDate: Date()
+      )
+    else {
       return
     }
 
     withLock {
-      _autoUnlockTargetDate = startDate.addingTimeInterval(timeout)
+      _autoUnlockTargetDate = schedule.deadline
     }
 
     let timer = DispatchSource.makeTimerSource(queue: .main)
-    timer.schedule(deadline: .now() + timeout)
+    timer.schedule(deadline: .now() + schedule.delay)
     timer.setEventHandler { [weak self] in
       self?.unlock()
     }

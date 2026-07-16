@@ -72,6 +72,7 @@
 --storedvarattrs preserve
 --stripunusedargs always
 --structthreshold 0
+--swift-version 5.10
 --tabwidth unspecified
 --throwcapturing 
 --timezone system

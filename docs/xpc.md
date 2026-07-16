@@ -528,7 +528,7 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 - App 和 CLI 各有自己的 connection。
 - 某条 connection interruption/invalidation 后，只清除 Client 侧缓存；下一次调用会重新连接。
 - App 退出、CLI 退出或 connection 断开，不会触发 unlock。
-- `klock lock` 当前会继续运行以打印后续的 `Unlocked.`，但它只是观察者；强制结束 CLI 不会解除锁。
+- `klock lock` 当前会继续运行以打印后续的 `Unlocked.`，但它只是观察者；强制结束 CLI 不会解除锁。等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
 - Agent 退出则不同：event tap 属于 Agent 进程，进程退出会由系统释放它，内存中的 locked 状态也会消失。
 
 因此项目刻意没有 `LockSession`、client ownership 或“连接释放时自动 unlock”之类的抽象。领域事实是一个物理键盘对应一个由 Agent 持有的全局状态。
@@ -569,6 +569,11 @@ sequenceDiagram
   participant Client as XPCClient
   participant UI as Long-lived UI
 
+  UI->>Subscriber: subscribe(last known state)
+  Subscriber->>Client: initial status() after observers installed
+  Client->>Agent: authoritative XPC query
+  Agent-->>Subscriber: current state
+  Subscriber-->>UI: de-duplicated initial state
   Agent->>Broadcast: state changed
   Broadcast-->>Subscriber: Darwin + Distributed signals
   Subscriber->>Client: status()
@@ -581,7 +586,9 @@ sequenceDiagram
 关键点：
 
 - Darwin 和 Distributed notification 都不携带锁状态，只表达“可能有变化”。
+- subscriber 在两个 observer 都安装完成后才发起初始 `status()`；setup 期间发生的变化会被初始查询或 follow-up signal 覆盖。
 - 通知可能重复、丢失或乱序，所以 subscriber 收到信号后必须再走 XPC `status()`。
+- 同一 subscription 内最多只有一个权威查询 worker；并发信号被合并为后续查询,取消后尚未进入 handler 的在途结果不再交付。
 - 两个通知通道是为了提高不同进程状态下的交付可靠性，不是两套状态源。
 - App 打开菜单或重新变为 active 时还会主动 reconcile，以弥补挂起期间错过的通知。
 - 一次性 `status` / `unlock` 命令直接查询 Agent，不需要为了读取当前状态先等待通知。

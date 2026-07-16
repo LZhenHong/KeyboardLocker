@@ -1,0 +1,574 @@
+# XPC 实现与使用指南
+
+本文解释 KeyboardLocker 当前的 XPC 实现：`Core` 为什么同时出现在 wrapper 和 Agent 的依赖图里、一次调用如何跨进程执行、锁状态如何同步，以及连接或 Agent 异常时应该如何理解系统状态。
+
+三份文档各自只负责一个层次，避免形成重复的事实源：
+
+- [architecture.md](architecture.md)：解释为什么必须是单 Agent、哪些架构边界不可违反。
+- 本文：解释 XPC 在当前实现里如何工作。
+- [development.md](development.md)：提供组件索引和常见修改步骤。
+
+## 先记住四个结论
+
+1. **`Core` 不是进程，也不是后台服务。** 它只是一个本地 Swift Package，构建时向不同 executable 提供代码模块。
+2. **两侧共享的是协议和数据定义，不是内存或单例。** `Common` 会编译进 wrapper 和 Agent，但唯一的锁状态只存在于 Agent 进程的 `LockEngine.shared` 中。
+3. **wrapper 与 Agent 没有互相直接调用 Swift 对象。** wrapper 取得的是 `KeyboardLockerServiceProtocol` 的远程 proxy；macOS 把方法参数和 reply 序列化后跨进程传输。
+4. **XPC connection 不拥有锁。** connection、App 或 CLI 退出后，锁仍由 Agent 持有；只有显式/自动 unlock、解锁热键或 Agent 退出才会释放 event tap。
+
+源码中的几个名字处在不同抽象层，阅读时可以这样理解：
+
+| 名字 | 实际含义 |
+|---|---|
+| `Core` | 容纳三种 library product 的 Swift Package；不是“正在运行的核心” |
+| `Common` | Client/Agent 两侧共同理解的 wire contract 与 value definitions |
+| `Client` | wrapper 侧的 outgoing XPC adapter |
+| `Service` | Agent 侧的 domain/runtime library；它本身不是进程 |
+| `AgentService` | 把 wire method 转成 domain call 的 exported object |
+| `KeyboardLockerAgent` | 真正运行 listener、持有 event tap 和全局状态的 executable/process |
+
+## 构建依赖和运行进程是两张不同的图
+
+### 构建时：`Core` 提供三个 library product
+
+`Core/Package.swift` 定义三个独立 product：
+
+```text
+Core
+├── Common
+├── Client  -> Common
+└── Service -> Common
+
+KeyboardLocker      -> Client  -> Common
+klock               -> Client  -> Common
+KeyboardLockerAgent -> Service -> Common
+```
+
+Xcode 会按 package 名把这些 dependency 都显示在 `Core` 下面，因此看起来像 App 和 Agent “都引用了 Core”。但 target 实际链接的是不同 product：主 App 和 `klock` 只链接 `Client`，Agent 只链接 `Service`；没有 target 把整个 package 的全部代码一起引入。
+
+它们的职责是：
+
+| Product | 被谁链接 | 内容 | 不包含什么 |
+|---|---|---|---|
+| `Common` | `Client`、`Service` | XPC 协议、Mach service 名、通知名、跨进程值类型 | connection、listener、锁状态、event tap |
+| `Client` | App、CLI | `NSXPCConnection`、async 封装、状态订阅 | `LockEngine`、设置存储、Accessibility 执行 |
+| `Service` | Agent | listener connection 配置、访问控制、锁引擎、设置真相源、状态广播 | App UI、CLI 命令、客户端 connection |
+
+`Client/Exports.swift` 和 `Service/Exports.swift` 使用 `@_exported import Common`，所以 App 只写 `import Client`、Agent 只写 `import Service`，也能看到 `Common` 中的类型。这只是 import 便利，不会让 App 获得 `Service`，也不会让两边共享内存。
+
+### 运行时：真正存在的是三个独立进程
+
+```mermaid
+flowchart LR
+  subgraph AppProcess["KeyboardLocker process"]
+    AppUI["SwiftUI + LockController"] --> AppClient["XPCClient"]
+  end
+
+  subgraph CLIProcess["klock process"]
+    CLI["Command handler"] --> CLIClient["XPCClient"]
+  end
+
+  AppClient -->|"NSXPCConnection"| Mach["Mach service"]
+  CLIClient -->|"NSXPCConnection"| Mach
+  subgraph AgentProcess["KeyboardLockerAgent process"]
+    Listener["NSXPCListener"] --> AgentService["AgentService"]
+    AgentService --> Engine["LockEngine.shared"]
+    AgentService --> Settings["Settings store"]
+    AgentService --> Accessibility["Accessibility APIs"]
+  end
+
+  Launchd["launchd"] -->|"starts on demand"| Listener
+  Mach --> Listener
+```
+
+`Core` 不会作为第四个进程出现。它的代码分别被链接进上图中的 executable：
+
+- App 和 CLI 各自包含一份 `Client + Common` 代码。
+- Agent 包含一份 `Service + Common` 代码。
+- 只有 Agent 的 executable 包含 `LockEngine`，因此 App/CLI 不可能绕过 XPC 直接操作 event tap。
+
+## `Common` 为什么必须同时存在于两侧
+
+XPC 两侧必须对“线上消息长什么样”达成一致。当前契约定义在 `Common/Shared.swift`：
+
+```swift
+@objc(KeyboardLockerServiceProtocol)
+public protocol KeyboardLockerServiceProtocol {
+  func lockKeyboard(reply: @escaping (Error?) -> Void)
+  func unlockKeyboard(reply: @escaping (Error?) -> Void)
+  func status(reply: @escaping (Bool, Error?) -> Void)
+  func hasAccessibilityPermission(reply: @escaping (Bool) -> Void)
+  func requestAccessibilityPermission(reply: @escaping (Error?) -> Void)
+  func currentSettings(reply: @escaping (Data?) -> Void)
+}
+```
+
+同一个 protocol 在两侧承担不同角色：
+
+- Client 侧把它交给 `NSXPCInterface`，说明远端 proxy 允许调用哪些 selector。
+- Agent 侧由 `AgentService` conform，提供 selector 的真实实现。
+
+这和 HTTP 的 client/server 共同依赖同一份 OpenAPI schema 类似：共享的是消息契约，不是业务实例。
+
+协议使用 `@objc`，因为 `NSXPCInterface` 基于 Objective-C runtime 描述方法。跨边界参数需要是 XPC 可序列化类型；当前设置模型是 Swift `Codable` struct，所以先编码成 JSON `Data`，到另一侧再解码，而不是把 Swift struct 直接放进 protocol。
+
+## Agent 如何被系统找到
+
+Release App 的关键 bundle layout 是：
+
+```text
+KeyboardLocker.app
+└── Contents
+    ├── Library
+    │   ├── LaunchAgents
+    │   │   └── io.lzhlovesjyq.keyboardlocker.agent.plist
+    │   └── LoginItems
+    │       └── KeyboardLockerAgent.app
+    └── MacOS
+        ├── KeyboardLocker
+        └── klock
+```
+
+启动链路如下：
+
+1. App 的 `AgentRegistrar` 使用 `SMAppService.agent(plistName:)` 注册 bundled Agent。
+2. plist 的 `MachServices` 声明 `io.lzhlovesjyq.keyboardlocker.agent`。
+3. 注册成功后，`launchd` 管理 Agent 生命周期。
+4. App 或 CLI 向这个 Mach service 发送第一条 XPC message 时，如果 Agent 尚未运行，`launchd` 可以按需启动它。仅创建或 activate connection 不等于 Agent 已经启动。
+5. Agent 在 `main.swift` 中创建同名 `NSXPCListener` 并开始接收连接。
+
+这里有两个不同的 readiness 条件：
+
+- `SMAppService.Status.enabled`：系统允许这个 Agent 运行。
+- XPC 调用成功：当前 Agent executable 确实启动、接受连接并理解当前 protocol。
+
+前者不是后者的充分条件。例如 App 更新后，系统中可能仍运行旧 Agent；它虽然是 enabled，却不认识新加入的 selector。App 因此会把“Agent enabled 但 XPC 不可达”显示为独立错误，并只在用户明确操作时重启 Agent。
+
+`klock` 自己不注册 Agent。它依赖完整 App 已经完成注册；一旦注册，App 是否仍在运行不影响 CLI 连接 Agent。
+
+## Listener 和 Connection 到底是什么关系
+
+“Agent 是 Listener、wrapper 是 Connection”作为第一层理解是对的，但完整模型是：
+
+- 每个 wrapper 进程主动创建一条 **client-side `NSXPCConnection`**。
+- Agent 创建一个 **`NSXPCListener`**，只负责等待、审查并接受新连接。
+- Listener 每接受一个 wrapper，Foundation 都会在 Agent 侧创建一条对应的 **server-side `NSXPCConnection`**。
+- 业务 method 不经过 Listener delegate；它们在这对 client/server connection 之间传输。
+
+```mermaid
+flowchart LR
+  AppConnection["App-side NSXPCConnection"] <-->|"peer channel A"| AgentConnectionA["Agent-side NSXPCConnection A"]
+  CLIConnection["CLI-side NSXPCConnection"] <-->|"peer channel B"| AgentConnectionB["Agent-side NSXPCConnection B"]
+
+  Listener["One NSXPCListener"] -->|"accepts"| AgentConnectionA
+  Listener -->|"accepts"| AgentConnectionB
+
+  AgentConnectionA --> SharedService["Shared AgentService"]
+  AgentConnectionB --> SharedService
+  SharedService --> Engine["LockEngine.shared"]
+```
+
+| 对象 | 所在进程 | 当前数量 | 作用 |
+|---|---|---|---|
+| wrapper-side `NSXPCConnection` | App 或 CLI | `XPCClient.shared` 每个进程通常缓存一条 | 主动找到 Mach service、创建 remote proxy、发送调用、接收 reply/error |
+| `NSXPCListener` | Agent | 一个 Mach service 对应一个 | 接收新 connection request，并把每个新 peer 交给 delegate 审查 |
+| Agent-side `NSXPCConnection` | Agent | 每个已接受 wrapper 一条 | 暴露 `AgentService`、接收该 wrapper 的 method call、把 reply 发回去 |
+| `AgentService` | Agent | 当前整个进程共享一个 | 所有 connection 共用的 wire adapter，保证最终指向同一个全局引擎 |
+
+在当前代码中：
+
+1. `KeyboardLockerAgent/main.swift` 创建一个 `NSXPCListener(machServiceName:)`。
+2. 新客户端到来时，Listener 调用 `listener(_:shouldAcceptNewConnection:)`。
+3. delegate 用 `XPCAccessControl` 审查这条新 connection 的对端身份。
+4. 接受后，`XPCServerConnection.configure` 为 **这条 Agent-side connection** 设置 `exportedInterface` 和 `exportedObject`，然后 activate/resume。
+5. 下一位客户端会得到另一条 Agent-side connection，但仍指向同一个 `sharedService`。
+
+因此 Listener 更像 socket server 的 acceptor；接受之后的 peer connection 才像一条已经建立的 socket。不过 XPC 是消息/RPC 系统，不应把它理解成可直接读取任意 bytes 的 TCP stream。
+
+### Client connection 和 Agent connection 不是同一个对象
+
+两侧的 `NSXPCConnection` 是两个不同的 Foundation object：
+
+```text
+Wrapper process                           Agent process
+
+clientConnection    <--- XPC/Mach --->    serverConnection
+NSXPCConnection                          NSXPCConnection
+different object                         different object
+different address space                  different address space
+```
+
+Client 侧的对象由 wrapper 主动创建：
+
+```swift
+let clientConnection = NSXPCConnection(
+  machServiceName: SharedConstants.machServiceName
+)
+```
+
+Agent 侧的对象由 Listener 创建，并作为参数交给 delegate：
+
+```swift
+func listener(
+  _: NSXPCListener,
+  shouldAcceptNewConnection serverConnection: NSXPCConnection
+) -> Bool
+```
+
+它们不能共享 object identity，也不能直接访问彼此的内存。准确说法是：
+
+- `clientConnection` 和 `serverConnection` 是两个不同的 object。
+- 它们分别包装当前进程这一侧的 endpoint 与 peer 状态。
+- XPC runtime 把两个 endpoint 关联成同一条双向逻辑 channel。
+- 任意一侧退出或 invalidate 会影响另一侧观察到的 connection lifecycle，但这不表示它们是同一个对象。
+
+业务调用的对象映射是：
+
+```text
+clientConnection.remoteObjectProxy
+                  │
+                  │ encoded XPC message
+                  ▼
+serverConnection.exportedObject
+                  │
+                  └─ shared AgentService
+                           │
+                           └─ LockEngine.shared
+```
+
+Client 的 `remoteObjectProxy` 也不是 Agent 的 `AgentService`。前者是 wrapper 进程中的本地动态代理；对它调用 method 时，Foundation 才把 invocation 编码并传到 Agent，由后者真正执行。
+
+如果 App 和 CLI 同时连接，会形成两对不同的 connection object：
+
+```text
+App clientConnection  <--> Agent serverConnection A ─┐
+                                                     ├─> shared AgentService
+CLI clientConnection  <--> Agent serverConnection B ─┘
+```
+
+所以文档中出现“同一条 connection”时，指的是同一条**逻辑 peer channel**，不是两个进程共享同一个 `NSXPCConnection` 实例。
+
+### `remote` 和 `exported` 是相对于当前进程命名的
+
+`NSXPCConnection` 是双向 channel，两侧拥有同一组配置概念：
+
+| 属性/对象 | 含义 |
+|---|---|
+| `remoteObjectInterface` | 当前进程准备调用的“对端对象”允许有哪些 method |
+| `remoteObjectProxy` | 当前进程中的本地替身；对它调用 method 会产生跨进程 message |
+| `exportedInterface` | 当前进程允许对端调用自己的哪些 method |
+| `exportedObject` | 当前进程实际接收并执行这些 method 的本地对象 |
+
+当前项目只使用单向业务接口：
+
+```text
+Wrapper side
+  remoteObjectInterface = KeyboardLockerServiceProtocol
+  remoteObjectProxy     = proxy for AgentService
+  exportedInterface     = nil
+  exportedObject        = nil
+
+Agent side
+  remoteObjectInterface = nil
+  remoteObjectProxy     = unused
+  exportedInterface     = KeyboardLockerServiceProtocol
+  exportedObject        = shared AgentService
+```
+
+所以 wrapper 侧这句：
+
+```swift
+connection.remoteObjectInterface = NSXPCInterface(
+  with: KeyboardLockerServiceProtocol.self
+)
+```
+
+和 Agent 侧这两句：
+
+```swift
+connection.exportedInterface = NSXPCInterface(
+  with: KeyboardLockerServiceProtocol.self
+)
+connection.exportedObject = exportedService
+```
+
+是在描述同一条 channel 的两端。两端不是共享一个 Swift object；只是对“远端能调用什么”和“本地由谁执行”达成一致。
+
+XPC 本身允许 Agent 反过来调用 wrapper：wrapper 可以设置自己的 `exportedInterface/object`，Agent 再取得 remote proxy。但 KeyboardLocker 没有这样做。全局状态变化使用 payload-free notification 作为刷新信号，再由 wrapper 调 `status()`，避免把状态绑定到某条 client connection。
+
+## 从 Foundation RPC 到 Mach IPC 的分层
+
+当前项目使用的是 Foundation 的 `NSXPCConnection` API。它建立在较低层的 libxpc、Mach IPC 与 `launchd` 服务发现之上：
+
+```text
+Project API
+  XPCClient.lock()
+        ↓
+Foundation RPC layer
+  NSXPCConnection + NSXPCInterface + remote proxy + NSXPCCoder
+        ↓
+libxpc layer
+  peer connection + opaque XPC message + reply correlation
+        ↓
+Mach IPC layer
+  Mach ports and Mach messages
+        ↓
+launchd / bootstrap namespace
+  service lookup, on-demand process launch, endpoint handoff
+        ↓
+Agent peer connection
+  decode invocation -> AgentService -> LockEngine
+```
+
+其中可以依赖的公开语义是：
+
+- XPC connection 是双向 peer channel。
+- `NSXPCInterface` 定义允许的 selector、参数/reply 类型和额外 proxy。
+- Foundation 自动编码调用参数并在对端解码，再把调用派发给 `exportedObject`。
+- 低层 libxpc 发送的是 XPC message，并使用 reply handler 关联响应。
+- Mach service name 必须存在于当前进程可访问的 bootstrap namespace，并由 `launchd.plist` 声明。
+- `launchd` 可以在第一条消息到达时按需启动 Agent，再把请求交给 Agent listener。
+
+不应依赖的部分是 Foundation/libxpc 的具体 wire bytes、内部 dictionary key、Mach message layout 或私有握手过程。Apple 明确把底层 encoding 和 communication channel 视为 opaque implementation detail；它们不是稳定 ABI，也不应该被持久化或自行解析。
+
+### 一次 proxy method call 在系统里发生什么
+
+以 `XPCClient.status()` 为例：
+
+1. `NSXPCConnection(machServiceName:)` 只创建本地 connection object；此时不验证服务名，也不保证 Agent 已运行。
+2. Client 设置 `remoteObjectInterface`、interruption/invalidation handler，然后调用 `resume()`。
+3. 当前 SDK 推荐新代码使用 `activate()`；项目的单次初始 `resume()` 仍有兼容语义：对 inactive 且未 suspend 的 connection 等价于 activate。
+4. `remoteObjectProxyWithErrorHandler` 创建一个本地动态 proxy。它不是 `AgentService` 的引用，也不能直接访问 Agent 地址空间。
+5. 对 proxy 调用 `status(reply:)` 时，Foundation 根据 `NSXPCInterface` 检查 selector 与参数形状，并把 invocation 编码成 opaque XPC message。
+6. 第一条实际 message 触发 service lookup；如果需要，`launchd` 启动 Agent。
+7. Agent Listener 收到 connection request，创建 Agent-side `NSXPCConnection` 并交给 delegate。
+8. delegate 校验身份、设置 `exportedInterface/object`、resume connection 并返回 `true`；返回 `false` 会拒绝并 invalidate 它。
+9. Foundation 在 Agent-side connection 上解码 invocation，并调用 `AgentService.status(reply:)`。
+10. `AgentService` 读取 `LockEngine.shared.isLocked`，再调用 `reply(isLocked, nil)`。
+11. 这里的 reply closure 不是把 Client 的 Swift closure 复制到 Agent 执行；它是 Foundation 提供的跨进程 reply capability。调用它会生成响应 message。
+12. Client connection 收到响应后，在自己的 connection queue 上执行 reply handler；`XPCClient` 再恢复 Swift continuation。
+
+当前所有 wire method 都是 `Void + reply block` 形式，因此 proxy method 本身是异步发送；真正的业务完成点是 reply 到达，而不是 proxy call 返回。项目没有使用 synchronous proxy，因为同步 IPC 可能无限阻塞调用线程，尤其不适合 UI/main thread。
+
+### Queue 与并发边界
+
+Foundation 当前公开的调度保证包括：
+
+- 每个 `NSXPCConnection` 有自己的 private serial queue，用于 reply、interruption 和 invalidation handler。
+- 每个 `NSXPCListener` 有自己的 private serial queue，用于 delegate callback。
+- 发给 `exportedObject` 的调用会被串行投递到 non-main queue；业务代码不能假设自己运行在 main thread。
+- 不同 wrapper 对应不同 Agent-side connection，因此不要把“单 connection 串行”误解成“整个 Agent 全局串行”。
+
+这解释了 `AgentService.executeOnMainThread` 的必要性：多个 client connection 最终都把 `LockEngine` 操作派发到 Agent main thread，event tap、CFRunLoop 和 timer 的生命周期因此收敛到同一执行上下文。`LockEngine` 内部的 `OSAllocatedUnfairLock` 继续保护可能跨线程读取的状态。
+
+### Interruption、invalidation 与项目自己的 timeout
+
+三者属于不同层次：
+
+| 事件 | Foundation/XPC 含义 | 当前项目处理 |
+|---|---|---|
+| interruption | 远端进程退出或 crash；named service 之后可能重新建立 | 清除缓存 connection，让下次调用重新创建 |
+| invalidation | connection 无法建立或已永久结束；不能再收发消息 | 清除缓存 connection，后续重建 |
+| proxy error | 当前 method 无法取得 reply | 恢复对应 continuation 并抛错 |
+| 5 秒 timeout | 项目自己加的上层 deadline，不是 Foundation 自动提供 | 让本 connection 失效；mutation 再查询权威状态 |
+
+Foundation 保证带 reply 的 proxy call 最终调用 reply handler 或 error handler 之一。项目的 `ResumeOnce` 还要处理自定义 timeout 与这两个 callback 的竞争，确保 Swift continuation 仍然只恢复一次。
+
+## 一次 `lock` 调用如何跨进程
+
+```mermaid
+sequenceDiagram
+  participant UI as App or CLI
+  participant Client as XPCClient
+  participant ClientConnection as Client Connection
+  participant Launchd as launchd
+  participant Listener as Agent Listener
+  participant Peer as Agent Connection
+  participant Adapter as AgentService
+  participant Engine as LockEngine
+
+  UI->>Client: lock()
+  Client->>ClientConnection: call remote proxy
+  ClientConnection->>Launchd: send first message to Mach service
+  Launchd->>Listener: start Agent / deliver connection request
+  Listener->>Peer: validate, configure, and accept
+  ClientConnection->>Peer: lockKeyboard(reply:)
+  Peer->>Adapter: dispatch to exported object
+  Adapter->>Engine: lock(settings:) on main thread
+  Engine-->>Adapter: success or domain error
+  Adapter-->>Peer: reply(error)
+  Peer-->>ClientConnection: reply message
+  ClientConnection-->>Client: resume continuation
+  Client-->>UI: return or throw
+```
+
+对应源码中的实际步骤是：
+
+1. App 的 `LockController` 或 CLI 调用 `XPCClient.shared.lock()`。
+2. `XPCClient.currentConnection()` 创建或复用 `NSXPCConnection(machServiceName:)`。
+3. Client 把 `KeyboardLockerServiceProtocol` 设置成 `remoteObjectInterface`，再取得 remote proxy。
+4. 第一条实际 message 让 `launchd` 按需启动 Agent；Agent 的 `NSXPCListenerDelegate` 收到新 connection。
+5. `XPCAccessControl` 在暴露任何方法前校验调用方身份。
+6. `XPCServerConnection` 为 Agent-side connection 设置 protocol，并把同一个 `AgentService` 实例设置为 `exportedObject`。
+7. 对 remote proxy 的 `lockKeyboard(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
+8. `AgentService` 把引擎操作切到主线程，因为 event tap 和 CFRunLoop 生命周期在这里维护。
+9. `LockEngine.shared.lock(settings:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap。
+10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
+
+`AgentService` 是 executable target 中的 adapter：它把 wire protocol 翻译成 `Service` 模块里的领域调用。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift`。
+
+## 当前 XPC 方法分别表达什么
+
+| Wire method | Client API | 权威执行方 | 语义 |
+|---|---|---|---|
+| `lockKeyboard` | `lock()` | `LockEngine` | 幂等地进入全局 locked 状态；已锁时重新应用设置 |
+| `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
+| `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
+| `hasAccessibilityPermission` | `hasAccessibilityPermission()` | `AccessibilityManager` | 查询 **Agent 进程** 当前是否受信任 |
+| `requestAccessibilityPermission` | `requestAccessibilityPermission()` | `AccessibilityManager` | 请求系统异步显示 Agent 的授权 prompt；reply 不代表用户已授权 |
+| `currentSettings` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 持有的设置快照 |
+
+Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使用 Accessibility API 的进程身份。App 获得 Accessibility 权限并不能让 Agent 创建 event tap。
+
+## Connection 生命周期不等于锁生命周期
+
+`XPCClient` 会缓存一条 connection，这是减少重复建连的实现优化，不是业务 session：
+
+- App 和 CLI 各有自己的 connection。
+- 某条 connection interruption/invalidation 后，只清除 Client 侧缓存；下一次调用会重新连接。
+- App 退出、CLI 退出或 connection 断开，不会触发 unlock。
+- `klock lock` 当前会继续运行以打印后续的 `Unlocked.`，但它只是观察者；强制结束 CLI 不会解除锁。
+- Agent 退出则不同：event tap 属于 Agent 进程，进程退出会由系统释放它，内存中的 locked 状态也会消失。
+
+因此项目刻意没有 `LockSession`、client ownership 或“连接释放时自动 unlock”之类的抽象。领域事实是一个物理键盘对应一个由 Agent 持有的全局状态。
+
+## Reply、超时与“结果未知”
+
+`XPCClient` 用 `withCheckedThrowingContinuation` 把 reply callback 转为 async，并通过 `ResumeOnce` 保证 reply、proxy error、missing proxy 和 timeout 竞争时只恢复 continuation 一次。
+
+所有调用都有 5 秒响应上限：
+
+| 情况 | Client 看到的结果 |
+|---|---|
+| Agent reply 成功 | async 方法正常返回 |
+| Agent reply 领域错误 | 抛出 Agent 返回的错误，例如缺少 Accessibility 权限 |
+| proxy 创建或传输失败 | 抛出 transport error / `serviceUnavailable` |
+| 5 秒内没有任何结果 | connection 失效并抛出 `timedOut`，或由 mutation API 转换为 outcome unknown |
+
+对 mutation 而言，timeout 不等于“Agent 没执行”。请求可能已经到达 Agent，只是 reply 没有及时返回。因此：
+
+- `lock()` timeout 后通过一条新 connection 查询 `status()`；如果已经 locked，就按成功处理。
+- `unlock()` 对称地确认是否已经 unlocked。
+- 无法确认最终状态时抛出 `operationOutcomeUnknown`，而不是谎称操作一定失败。
+- Accessibility prompt 请求 timeout 同样只表示最终结果未知；不能据此断言 prompt 没有发出。
+
+App 在动作结束后仍会做完整 reconciliation，因为跨进程系统中应以 Agent 的当前查询结果为准，而不是长期相信某次历史 reply。
+
+## 为什么还需要通知
+
+XPC request/reply 适合“现在执行”或“现在查询”，不会自动告诉其他 wrapper 状态后来发生了变化。例如 CLI 锁定后，App 需要更新菜单栏图标；自动解锁发生时，所有长命 UI 也需要刷新。
+
+当前状态同步链路是：
+
+```mermaid
+sequenceDiagram
+  participant Agent as AgentService + LockEngine
+  participant Broadcast as State Broadcaster
+  participant Subscriber as State Subscriber
+  participant Client as XPCClient
+  participant UI as Long-lived UI
+
+  Agent->>Broadcast: state changed
+  Broadcast-->>Subscriber: Darwin + Distributed signals
+  Subscriber->>Client: status()
+  Client->>Agent: authoritative XPC query
+  Agent-->>Client: current state
+  Client-->>Subscriber: current state
+  Subscriber-->>UI: de-duplicated update
+```
+
+关键点：
+
+- Darwin 和 Distributed notification 都不携带锁状态，只表达“可能有变化”。
+- 通知可能重复、丢失或乱序，所以 subscriber 收到信号后必须再走 XPC `status()`。
+- 两个通知通道是为了提高不同进程状态下的交付可靠性，不是两套状态源。
+- App 打开菜单或重新变为 active 时还会主动 reconcile，以弥补挂起期间错过的通知。
+- 一次性 `status` / `unlock` 命令直接查询 Agent，不需要为了读取当前状态先等待通知。
+
+## Connection 访问控制
+
+Agent 在 `NSXPCListenerDelegate` 中先调用 `XPCAccessControl.isConnectionAuthorized`，只有通过后才设置 `exportedObject`：
+
+- Release：校验签名完整性、调用方 Team ID 与正在运行的 Agent 相同，并检查 bundle/code-sign identifier allowlist。
+- Debug：保留 identifier allowlist，放宽 Team ID 与完整签名要求，便于本地开发。
+
+当前允许的调用方是主 App 和 bundled CLI 对应的 identifier。仅仅知道 Mach service 名称，不代表任意进程都能调用 Agent。
+
+## `SMAppService` 状态和 XPC 状态不要混为一谈
+
+| 观察结果 | 含义 | App 行为 |
+|---|---|---|
+| `.notRegistered` | Agent 尚未注册 | 尝试 `register()`，然后重新读取状态 |
+| `.enabled` | 系统允许 Agent 运行 | 继续通过 XPC 查询真实 readiness |
+| `.requiresApproval` | 用户需要在 Login Items 批准 | 显示说明和 System Settings 入口 |
+| `.notFound` | bundle 内找不到声明的 Agent/plist | 报告安装或 bundle layout 错误 |
+| enabled + XPC error | Agent 未启动、崩溃、版本不兼容或连接被拒绝 | 诚实显示不可达；可提供显式 retry/restart |
+
+显式 restart 会先尽可能 unlock，再等待 `SMAppService.unregister()` 完成并重新注册 bundled Agent。不能自动 restart，因为 Agent 退出本身会释放正在工作的 event tap。
+
+## 新增 XPC 能力时的修改顺序
+
+1. 在 `Core/Sources/Common/Shared.swift` 的 `KeyboardLockerServiceProtocol` 增加最小 wire method。
+2. 只使用 Objective-C/XPC 能表达的参数和 reply 类型；复杂 Swift value 优先编码成 `Data`。
+3. 在 `KeyboardLockerAgent/AgentService.swift` 实现 protocol adapter。
+4. 把真实领域行为放在 `Service`，不要堆进 App、CLI 或 wire adapter。
+5. 在 `Core/Sources/Client/XPCClient.swift` 增加薄的 async/throwing 封装。
+6. wrapper 只调用 `XPCClient`；App/CLI 不得 import `Service`。
+7. 明确方法是 query 还是 mutation，并定义 timeout 后能否确认最终结果。
+8. 如果状态可能在调用之外变化，继续用“notification signal + XPC query”，不要把通知 payload 变成第二个状态源。
+
+## 常见误解
+
+### “Core 被两侧引用，所以是不是有两份锁状态？”
+
+不是。两侧都能看到的是 `Common` 契约；`LockEngine` 位于只有 Agent 链接的 `Service` product。App/CLI 进程里根本没有 `LockEngine` 实例。
+
+### “`Service` product 就是 XPC 后台进程吗？”
+
+不是。`Service` 是 library product。`KeyboardLockerAgent` 才是 executable；它创建 listener，并把 `Service` 中的能力暴露给 XPC。
+
+### “XPC connection 断开时会自动解锁吗？”
+
+不会。锁属于 Agent，不属于 connection。只有 unlock、自动解锁、解锁热键或 Agent 进程退出会释放锁。
+
+### “通知已经告诉我状态，为什么还要调用 `status()`？”
+
+因为跨进程通知不是可靠、有序的状态存储。这里的通知只是刷新提示，Agent 的 `status()` 才是权威事实。
+
+### “主 App 请求 Accessibility 权限不就够了吗？”
+
+不够。创建 event tap 的是 Agent，必须由 Agent 自己查询和请求对应权限。
+
+## 源码导航
+
+| 想理解什么 | 入口 |
+|---|---|
+| Wire protocol、Mach name、allowlist | [`Core/Sources/Common/Shared.swift`](../Core/Sources/Common/Shared.swift) |
+| Client connection、async bridge、timeout | [`Core/Sources/Client/XPCClient.swift`](../Core/Sources/Client/XPCClient.swift) |
+| 长命 UI 的状态订阅 | [`Core/Sources/Client/LockStateSubscriber.swift`](../Core/Sources/Client/LockStateSubscriber.swift) |
+| Agent listener 与进程入口 | [`KeyboardLockerAgent/main.swift`](../KeyboardLockerAgent/main.swift) |
+| Wire method 到领域方法的适配 | [`KeyboardLockerAgent/AgentService.swift`](../KeyboardLockerAgent/AgentService.swift) |
+| 新 connection 的 server 配置 | [`Core/Sources/Service/XPCServerConnection.swift`](../Core/Sources/Service/XPCServerConnection.swift) |
+| 调用方身份校验 | [`Core/Sources/Service/XPCAccessControl.swift`](../Core/Sources/Service/XPCAccessControl.swift) |
+| 全局锁与 event tap | [`Core/Sources/Service/LockEngine.swift`](../Core/Sources/Service/LockEngine.swift) |
+| 状态变化信号 | [`Core/Sources/Service/LockStateBroadcaster.swift`](../Core/Sources/Service/LockStateBroadcaster.swift) |
+| Agent 注册与显式恢复 | [`KeyboardLocker/AgentRegistrar.swift`](../KeyboardLocker/AgentRegistrar.swift) |
+| App readiness 与操作协调 | [`KeyboardLocker/LockController.swift`](../KeyboardLocker/LockController.swift) |
+
+## Apple 参考资料
+
+- [`NSXPCConnection`](https://developer.apple.com/documentation/foundation/nsxpcconnection)
+- [`NSXPCListener`](https://developer.apple.com/documentation/foundation/nsxpclistener)
+- [`NSXPCListenerDelegate.listener(_:shouldAcceptNewConnection:)`](https://developer.apple.com/documentation/foundation/nsxpclistenerdelegate/listener%28_%3Ashouldacceptnewconnection%3A%29)
+- [`NSXPCInterface`](https://developer.apple.com/documentation/foundation/nsxpcinterface)
+- [Creating XPC Services](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html)
+- [Creating Launch Daemons and Agents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)

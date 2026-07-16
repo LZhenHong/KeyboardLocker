@@ -11,13 +11,8 @@ import SwiftUI
 struct KeyboardLockerApp: App {
   @StateObject private var lockController = LockController()
 
-  init() {
-    // Ensure the Agent is launchd-registered so it runs on demand for every surface.
-    AgentRegistrar.registerIfNeeded()
-  }
-
   var body: some Scene {
-    MenuBarExtra("KeyboardLocker", systemImage: lockController.isLocked ? "lock.fill" : "lock.open.fill") {
+    MenuBarExtra("KeyboardLocker", systemImage: lockController.systemImageName) {
       ContentView()
         .environmentObject(lockController)
     }

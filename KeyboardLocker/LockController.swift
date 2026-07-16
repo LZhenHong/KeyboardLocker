@@ -1,53 +1,646 @@
+import AppKit
 import Client
 import Combine
 import Foundation
 
-/// Observable view state for the lock. A thin wrapper: it holds no lock logic and no settings —
-/// it issues one-off XPC calls and reflects the Agent's broadcast state, never inferring state
-/// from whether a call succeeded.
+/// Observable view state for the App wrapper. Registration and Accessibility remain owned by
+/// their system boundaries; this controller only coordinates those facts for presentation.
 @MainActor
 final class LockController: ObservableObject {
-  @Published private(set) var isLocked = false
+  enum ViewState: Equatable {
+    case checking(lastKnownLock: Bool?)
+    case agentApprovalRequired
+    case agentReplacementInProgress(message: String)
+    case agentUpdateRequired(isLocked: Bool?, message: String)
+    case accessibilityRequired(isLocked: Bool)
+    case ready(isLocked: Bool)
+    case unavailable(message: String, canRestartAgent: Bool)
+  }
+
+  enum Activity: Equatable {
+    case locking
+    case requestingAccessibility
+    case restartingAgent
+    case unlocking
+    case updatingAgent
+  }
+
+  @Published private(set) var state: ViewState = .checking(lastKnownLock: nil)
+  @Published private(set) var activity: Activity?
   @Published private(set) var lastError: String?
 
+  var agentUpdateUsesSafeReplacement: Bool {
+    pendingUpdatePlan?.supportsSafeReplacement ?? false
+  }
+
+  var systemImageName: String {
+    switch state {
+    case .checking(lastKnownLock: true):
+      "lock.fill"
+
+    case .checking:
+      "ellipsis.circle"
+
+    case .ready(isLocked: true),
+         .accessibilityRequired(isLocked: true),
+         .agentUpdateRequired(isLocked: true, message: _):
+      "lock.fill"
+
+    case .ready(isLocked: false):
+      "lock.open.fill"
+
+    case .agentApprovalRequired,
+         .agentReplacementInProgress,
+         .agentUpdateRequired(isLocked: false, message: _),
+         .accessibilityRequired(isLocked: false),
+         .unavailable:
+      "exclamationmark.triangle.fill"
+
+    case .agentUpdateRequired(isLocked: nil, message: _):
+      "questionmark.diamond.fill"
+    }
+  }
+
+  private var reconciliationTask: Task<Void, Never>?
+  private var needsFollowUpReconciliation = false
+  private var pendingUpdatePlan: AgentUpdatePlan?
+  private var attemptedAutomaticUpdateBuilds: Set<String> = []
   private var stateToken: ObserverToken?
+  private let client: any AgentClientServing
+  private let lifecycle: any AgentLifecycleServing
+  private let readinessCoordinator: AgentReadinessCoordinator
+  private let replacementCoordinator: AgentReplacementCoordinator
+  private let usesLiveServices: Bool
 
-  init() {
-    stateToken = LockStateSubscriber.subscribe { [weak self] locked in
-      // Subscriber delivers on the main queue.
-      self?.isLocked = locked
-    }
-    Task { await refresh() }
+  private static let replacementProgressPollInterval: Duration = .seconds(3)
+
+  convenience init() {
+    self.init(
+      client: LiveAgentClient(),
+      lifecycle: LiveAgentLifecycle(),
+      usesLiveServices: true,
+      initialState: .checking(lastKnownLock: nil)
+    )
+    reconcile()
   }
 
-  func refresh() async {
-    do {
-      isLocked = try await XPCClient.shared.status()
-    } catch {
-      lastError = error.localizedDescription
-    }
+  /// Creates a static fixture without touching Service Management, XPC, or system settings.
+  convenience init(previewState: ViewState) {
+    self.init(
+      client: LiveAgentClient(),
+      lifecycle: LiveAgentLifecycle(),
+      usesLiveServices: false,
+      initialState: previewState
+    )
   }
 
-  /// Reconcile against the Agent's authoritative state. Call when the UI becomes visible:
-  /// a broadcast may have been missed while the app was suspended (distributed notifications
-  /// are best-effort and undelivered to a non-running process).
+  init(
+    client: any AgentClientServing,
+    lifecycle: any AgentLifecycleServing,
+    usesLiveServices: Bool,
+    initialState: ViewState
+  ) {
+    self.client = client
+    self.lifecycle = lifecycle
+    readinessCoordinator = AgentReadinessCoordinator(
+      client: client,
+      lifecycle: lifecycle
+    )
+    replacementCoordinator = AgentReplacementCoordinator(
+      client: client,
+      lifecycle: lifecycle
+    )
+    self.usesLiveServices = usesLiveServices
+    state = initialState
+  }
+
+  /// Rebuilds the complete readiness snapshot from Service Management and the Agent.
   func reconcile() {
-    Task { await refresh() }
+    guard usesLiveServices, activity == nil else {
+      return
+    }
+    startReconciliation()
   }
 
   func toggle() {
-    Task {
+    guard usesLiveServices, activity == nil else {
+      return
+    }
+
+    let isLocked: Bool
+    let allowsAutomaticAgentUpdateAfterAction: Bool
+    switch state {
+    case let .ready(currentLockState):
+      isLocked = currentLockState
+      allowsAutomaticAgentUpdateAfterAction = true
+
+    case .checking(lastKnownLock: true):
+      isLocked = true
+      allowsAutomaticAgentUpdateAfterAction = true
+
+    case .accessibilityRequired(isLocked: true):
+      // Unlock must remain available if permission is revoked while the Agent still reports locked.
+      isLocked = true
+      allowsAutomaticAgentUpdateAfterAction = true
+
+    case .agentUpdateRequired(isLocked: true, message: _):
+      // Unlock must remain independently available without forcing an Agent replacement.
+      isLocked = true
+      allowsAutomaticAgentUpdateAfterAction = false
+
+    default:
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = isLocked ? .unlocking : .locking
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      var actionError: String?
       do {
         if isLocked {
-          try await XPCClient.shared.unlock()
+          try await client.unlock()
         } else {
-          try await XPCClient.shared.lock()
+          try await client.lock()
         }
-        lastError = nil
       } catch {
-        lastError = error.localizedDescription
+        actionError = error.localizedDescription
       }
-      // State itself arrives via the broadcast subscription, not from this call's success.
+
+      activity = nil
+      startReconciliation(
+        preserving: actionError,
+        allowsAutomaticAgentUpdate: allowsAutomaticAgentUpdateAfterAction
+      )
+    }
+  }
+
+  func requestAccessibilityPermission() {
+    guard usesLiveServices, case .accessibilityRequired = state, activity == nil else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .requestingAccessibility
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      var actionError: String?
+      do {
+        try await client.requestAccessibilityPermission()
+      } catch {
+        actionError = error.localizedDescription
+      }
+
+      activity = nil
+      // The system prompt is asynchronous; only a fresh Agent query can confirm permission.
+      startReconciliation(preserving: actionError)
+    }
+  }
+
+  func openAgentApprovalSettings() {
+    guard usesLiveServices else {
+      return
+    }
+    lifecycle.openApprovalSettings()
+  }
+
+  func openAccessibilitySettings() {
+    guard usesLiveServices else {
+      return
+    }
+    guard let url = URL(
+      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+    ), NSWorkspace.shared.open(url) else {
+      lastError = "Unable to open Accessibility settings."
+      return
+    }
+    lastError = nil
+  }
+
+  func restartAgent() {
+    guard usesLiveServices,
+          case .unavailable(message: _, canRestartAgent: true) = state,
+          activity == nil
+    else {
+      return
+    }
+
+    activity = .restartingAgent
+    lastError = nil
+    stopStateObservation()
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+      defer {
+        activity = nil
+      }
+
+      // Gracefully clear the logical lock when possible; unregistering the Agent still releases
+      // its event tap if the old process is incompatible or unresponsive.
+      try? await client.unlock()
+      client.resetConnection()
+      let registrationState = await lifecycle.restart()
+      client.resetConnection()
+
+      guard case .enabled = registrationState else {
+        _ = applyRegistrationState(registrationState)
+        return
+      }
+      await refresh(
+        preserving: nil,
+        allowsAutomaticAgentUpdate: false
+      )
+    }
+  }
+
+  func updateAgent() {
+    guard usesLiveServices,
+          case .agentUpdateRequired = state,
+          let updatePlan = pendingUpdatePlan,
+          activity == nil
+    else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .updatingAgent
+    lastError = nil
+    stopStateObservation()
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      defer {
+        activity = nil
+      }
+
+      let outcome = await replacementCoordinator.replace(updatePlan)
+      await handleAgentReplacementOutcome(
+        outcome,
+        updatePlan: updatePlan,
+        preserving: nil
+      )
+    }
+  }
+
+  private func startReconciliation(
+    preserving actionError: String? = nil,
+    allowsAutomaticAgentUpdate: Bool = true
+  ) {
+    reconciliationTask?.cancel()
+    stopStateObservation()
+
+    let lastKnownLock: Bool? = switch state {
+    case let .checking(lastKnownLock):
+      lastKnownLock
+    case let .agentUpdateRequired(isLocked, _):
+      isLocked
+    case let .accessibilityRequired(isLocked),
+         let .ready(isLocked):
+      isLocked
+    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+      nil
+    }
+
+    needsFollowUpReconciliation = false
+    state = .checking(lastKnownLock: lastKnownLock)
+    lastError = nil
+
+    reconciliationTask = Task { [weak self] in
+      await self?.refresh(
+        preserving: actionError,
+        allowsAutomaticAgentUpdate: allowsAutomaticAgentUpdate,
+        expectedPreviousAgentInstanceID: nil
+      )
+    }
+  }
+
+  private func refresh(
+    preserving actionError: String?,
+    allowsAutomaticAgentUpdate: Bool,
+    expectedPreviousAgentInstanceID: UUID? = nil
+  ) async {
+    let outcome = await readinessCoordinator.inspect(
+      expectedPreviousAgentInstanceID: expectedPreviousAgentInstanceID
+    )
+    guard !Task.isCancelled else {
+      return
+    }
+
+    switch outcome {
+    case .agentDidNotRestart:
+      await showServiceFailure(AgentUpdateError.agentDidNotRestart)
+
+    case .cancelled:
+      return
+
+    case let .failure(error, context):
+      await showServiceFailure(error, context: context)
+
+    case let .invalidBundle(failure):
+      pendingUpdatePlan = nil
+      state = .unavailable(message: failure.message, canRestartAgent: false)
+      lastError = nil
+
+    case let .ready(isLocked, hasAccessibilityPermission):
+      pendingUpdatePlan = nil
+      state = hasAccessibilityPermission
+        ? .ready(isLocked: isLocked)
+        : .accessibilityRequired(isLocked: isLocked)
+      lastError = actionError
+      startStateObservation()
+
+      if needsFollowUpReconciliation {
+        startReconciliation(
+          preserving: actionError,
+          allowsAutomaticAgentUpdate: allowsAutomaticAgentUpdate
+        )
+      }
+
+    case let .registration(registrationState):
+      _ = applyRegistrationState(registrationState)
+
+    case let .replacementInProgress(descriptor):
+      showAgentReplacementInProgress(descriptor: descriptor)
+
+    case let .updateAvailable(descriptor, message, bundledBuild, isLocked):
+      if !isLocked,
+         allowsAutomaticAgentUpdate,
+         !attemptedAutomaticUpdateBuilds.contains(bundledBuild)
+      {
+        attemptedAutomaticUpdateBuilds.insert(bundledBuild)
+        await replaceAgentAutomatically(
+          descriptor,
+          updateMessage: message,
+          preserving: actionError
+        )
+      } else {
+        showAgentUpdateRequired(plan: AgentUpdatePlan(
+          mode: .safe(descriptor: descriptor, isLocked: isLocked),
+          message: message
+        ))
+      }
+
+    case let .updateRequired(updatePlan):
+      showAgentUpdateRequired(plan: updatePlan)
+    }
+  }
+
+  private func replaceAgentAutomatically(
+    _ previousDescriptor: ServiceDescriptor,
+    updateMessage: String,
+    preserving actionError: String?
+  ) async {
+    guard !Task.isCancelled else {
+      return
+    }
+
+    activity = .updatingAgent
+    defer {
+      activity = nil
+    }
+
+    let updatePlan = AgentUpdatePlan(
+      mode: .safe(descriptor: previousDescriptor, isLocked: false),
+      message: updateMessage
+    )
+    let outcome = await replacementCoordinator.replace(updatePlan)
+    await handleAgentReplacementOutcome(
+      outcome,
+      updatePlan: updatePlan,
+      preserving: actionError
+    )
+  }
+
+  private func handleAgentReplacementOutcome(
+    _ outcome: AgentReplacementCoordinator.Outcome,
+    updatePlan: AgentUpdatePlan,
+    preserving actionError: String?
+  ) async {
+    switch outcome {
+    case let .failed(error, currentLockState):
+      if let currentLockState {
+        showAgentUpdateRequired(
+          plan: updatePlan.updatingLockState(currentLockState)
+        )
+        lastError = error.localizedDescription
+      } else {
+        await showServiceFailure(error)
+      }
+
+    case let .registration(registrationState):
+      _ = applyRegistrationState(registrationState)
+
+    case let .replacementInProgress(descriptor):
+      showAgentReplacementInProgress(descriptor: descriptor)
+
+    case let .restarted(previousAgentInstanceID):
+      await refresh(
+        preserving: actionError,
+        allowsAutomaticAgentUpdate: false,
+        expectedPreviousAgentInstanceID: previousAgentInstanceID
+      )
+    }
+  }
+
+  private func showAgentReplacementInProgress(descriptor: ServiceDescriptor) {
+    let message = switch descriptor.replacementPhase {
+    case .committed:
+      """
+      An Agent replacement has been committed. New lock requests remain blocked while its \
+      coordinator finishes and the old Agent exits. If this state persists, restart macOS; \
+      another app instance cannot safely take over an unregister that may still be in flight.
+      """
+
+    case .prepared:
+      """
+      An Agent replacement is being prepared. New lock requests remain blocked until its \
+      coordinator commits or the short preparation expires.
+      """
+
+    default:
+      """
+      The Agent reports a replacement state this app does not recognize. New lock requests \
+      remain blocked to protect the current lock state. Update the app, or restart macOS if \
+      this state persists.
+      """
+    }
+
+    pendingUpdatePlan = nil
+    stopStateObservation()
+    state = .agentReplacementInProgress(message: message)
+    lastError = nil
+    reconciliationTask?.cancel()
+    reconciliationTask = Task { [weak self] in
+      do {
+        try await Task.sleep(for: Self.replacementProgressPollInterval)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else {
+        return
+      }
+      self?.startReconciliation(allowsAutomaticAgentUpdate: false)
+    }
+  }
+
+  private func showAgentUpdateRequired(plan: AgentUpdatePlan) {
+    pendingUpdatePlan = plan
+    state = .agentUpdateRequired(
+      isLocked: plan.isLocked,
+      message: plan.message
+    )
+    lastError = nil
+    if plan.canReadLockState {
+      startStateObservation()
+    } else {
+      stopStateObservation()
+    }
+  }
+
+  private func showServiceFailure(_ error: Error, context: String? = nil) async {
+    guard !Task.isCancelled else {
+      return
+    }
+    stopStateObservation()
+
+    if let clientError = error as? XPCClientError,
+       case .peerAuthenticationUnavailable = clientError
+    {
+      pendingUpdatePlan = nil
+      state = .unavailable(
+        message: """
+        This copy of KeyboardLocker cannot establish its signed XPC identity. \
+        \(clientError.localizedDescription) Install and run the complete app bundle signed by \
+        the configured Apple development team.
+        """,
+        canRestartAgent: false
+      )
+      lastError = nil
+      return
+    }
+
+    // An XPC failure can mean the user disabled the Agent while the App was running.
+    let currentRegistrationState = lifecycle.ensureEnabled()
+    guard !Task.isCancelled else {
+      return
+    }
+
+    if applyRegistrationState(currentRegistrationState) {
+      pendingUpdatePlan = nil
+      let contextMessage = context.map { " \($0)" } ?? ""
+      state = .unavailable(
+        message: """
+        The background agent is enabled but could not be reached. \
+        \(error.localizedDescription)\(contextMessage)
+        """,
+        canRestartAgent: true
+      )
+      lastError = nil
+    }
+  }
+
+  /// Returns `true` only when XPC readiness checks should continue.
+  private func applyRegistrationState(_ registrationState: AgentRegistrar.State) -> Bool {
+    switch registrationState {
+    case .enabled:
+      return true
+
+    case .approvalRequired:
+      stopStateObservation()
+      pendingUpdatePlan = nil
+      state = .agentApprovalRequired
+      lastError = nil
+      return false
+
+    case let .unavailable(failure):
+      stopStateObservation()
+      pendingUpdatePlan = nil
+      let canRestartAgent = if case .restartFailed = failure {
+        true
+      } else {
+        false
+      }
+      state = .unavailable(
+        message: failure.message,
+        canRestartAgent: canRestartAgent
+      )
+      lastError = nil
+      return false
+    }
+  }
+
+  private func receiveLockState(_ isLocked: Bool) {
+    if activity != nil {
+      return
+    }
+
+    switch state {
+    case .ready:
+      state = .ready(isLocked: isLocked)
+      lastError = nil
+
+    case .accessibilityRequired:
+      state = .accessibilityRequired(isLocked: isLocked)
+      lastError = nil
+
+    case .agentUpdateRequired:
+      if let pendingUpdatePlan,
+         pendingUpdatePlan.canReadLockState
+      {
+        let updatedPlan = pendingUpdatePlan.updatingLockState(isLocked)
+        self.pendingUpdatePlan = updatedPlan
+        state = .agentUpdateRequired(
+          isLocked: isLocked,
+          message: updatedPlan.message
+        )
+        lastError = nil
+      }
+
+    case .checking:
+      needsFollowUpReconciliation = true
+      state = .checking(lastKnownLock: isLocked)
+
+    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+      reconcile()
+    }
+  }
+
+  private func startStateObservation() {
+    guard stateToken == nil else {
+      return
+    }
+    stateToken = LockStateSubscriber.subscribe { [weak self] isLocked in
+      self?.receiveLockState(isLocked)
+    }
+  }
+
+  private func stopStateObservation() {
+    stateToken = nil
+  }
+}
+
+private enum AgentUpdateError: Error, LocalizedError {
+  case agentDidNotRestart
+
+  var errorDescription: String? {
+    switch self {
+    case .agentDidNotRestart:
+      "The background agent did not restart into a new process."
     }
   }
 }

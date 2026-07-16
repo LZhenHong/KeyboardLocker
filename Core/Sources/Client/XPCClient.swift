@@ -6,6 +6,7 @@ public enum XPCClientError: Error, LocalizedError {
   case agentChanged(expected: UUID, actual: UUID)
   case missingCapability(ServiceCapability)
   case operationOutcomeUnknown
+  case peerAuthenticationUnavailable(String)
   case serviceUnavailable
   case timedOut
 
@@ -22,6 +23,9 @@ public enum XPCClientError: Error, LocalizedError {
 
     case .operationOutcomeUnknown:
       "The KeyboardLocker agent did not confirm the operation. Its final outcome is unknown."
+
+    case let .peerAuthenticationUnavailable(message):
+      "XPC peer authentication could not be configured. \(message)"
 
     case .serviceUnavailable:
       "The KeyboardLocker agent is not reachable."
@@ -42,6 +46,12 @@ public enum XPCClientError: Error, LocalizedError {
 /// Agent being relaunched on demand by `launchd`.
 public final class XPCClient: @unchecked Sendable {
   public static let shared = XPCClient()
+
+  private static let agentCodeSigningRequirement = Result {
+    try XPCCodeSigningRequirement.sameTeam(
+      identifiers: [SharedConstants.agentBundleIdentifier]
+    )
+  }
 
   private static let responseTimeout: Duration = .seconds(5)
 
@@ -252,7 +262,7 @@ public final class XPCClient: @unchecked Sendable {
     requiring capabilities: Set<ServiceCapability>,
     expectedAgentInstanceID: UUID? = nil
   ) async throws -> NSXPCConnection {
-    let connection = currentConnection()
+    let connection = try currentConnection()
     let descriptor = try await serviceDescriptor(using: connection)
 
     if let expectedAgentInstanceID,
@@ -273,7 +283,14 @@ public final class XPCClient: @unchecked Sendable {
     return connection
   }
 
-  private func currentConnection() -> NSXPCConnection {
+  private func currentConnection() throws -> NSXPCConnection {
+    let codeSigningRequirement: String
+    do {
+      codeSigningRequirement = try Self.agentCodeSigningRequirement.get()
+    } catch {
+      throw XPCClientError.peerAuthenticationUnavailable(error.localizedDescription)
+    }
+
     lock.lock()
     defer { lock.unlock() }
 
@@ -283,6 +300,7 @@ public final class XPCClient: @unchecked Sendable {
 
     let connection = NSXPCConnection(machServiceName: SharedConstants.machServiceName)
     connection.remoteObjectInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
+    connection.setCodeSigningRequirement(codeSigningRequirement)
 
     // Drop the cached connection on teardown so the next call transparently reconnects.
     let connectionID = ObjectIdentifier(connection)
@@ -292,7 +310,7 @@ public final class XPCClient: @unchecked Sendable {
     connection.invalidationHandler = clear
     connection.interruptionHandler = clear
 
-    connection.resume()
+    connection.activate()
     self.connection = connection
     return connection
   }
@@ -333,7 +351,7 @@ public final class XPCClient: @unchecked Sendable {
     let connection = if let providedConnection {
       providedConnection
     } else {
-      currentConnection()
+      try currentConnection()
     }
 
     return try await withCheckedThrowingContinuation { continuation in

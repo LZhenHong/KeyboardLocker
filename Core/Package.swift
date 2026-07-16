@@ -16,6 +16,7 @@ let package = Package(
     .target(name: "Common"),
     .target(name: "Client", dependencies: ["Common"]),
     .target(name: "Service", dependencies: ["Common"]),
+    .testTarget(name: "CommonTests", dependencies: ["Common"]),
     .testTarget(name: "ClientTests", dependencies: ["Client"]),
     .testTarget(name: "ServiceTests", dependencies: ["Service"]),
   ]

@@ -12,11 +12,10 @@ public enum SharedConstants {
   /// Default unlock key code for 'L' key (⌃⌘L)
   public static let defaultUnlockKeyCode: UInt16 = 37
 
-  /// Bundle identifiers allowed to talk to the agent's Mach service
+  /// Exact code-signing identifiers allowed to talk to the Agent's Mach service.
   public static let authorizedClientBundleIdentifiers: Set<String> = [
     "io.lzhlovesjyq.keyboardlocker",
     "io.lzhlovesjyq.keyboardlocker.klock",
-    "klock", // CLI tool codesign identifier (no Info.plist = short name only)
   ]
 }
 

@@ -11,11 +11,7 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
     _: NSXPCListener,
     shouldAcceptNewConnection newConnection: NSXPCConnection
   ) -> Bool {
-    guard XPCAccessControl.isConnectionAuthorized(newConnection) else {
-      print("KeyboardLockerAgent: Rejected unauthorized connection")
-      return false
-    }
-
+    // The listener's code-signing requirement is evaluated before this delegate is called.
     XPCServerConnection.configure(newConnection, exportedService: sharedService)
     return true
   }
@@ -24,9 +20,17 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 @MainActor
 private func startAgent() {
   let listener = NSXPCListener(machServiceName: SharedConstants.machServiceName)
+  do {
+    try listener.setConnectionCodeSigningRequirement(
+      XPCAccessControl.authorizedClientRequirement()
+    )
+  } catch {
+    fatalError("KeyboardLockerAgent could not configure XPC peer authentication: \(error)")
+  }
+
   let delegate = ServiceDelegate()
   listener.delegate = delegate
-  listener.resume()
+  listener.activate()
 
   print("KeyboardLockerAgent started, listening on \(SharedConstants.machServiceName)")
   RunLoop.main.run()

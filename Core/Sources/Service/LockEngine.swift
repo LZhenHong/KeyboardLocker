@@ -43,7 +43,7 @@ public class LockEngine {
     public var errorDescription: String? {
       switch self {
       case .accessibilityPermissionDenied:
-        "Accessibility permission is required to lock keyboard and mouse input."
+        "Accessibility permission is required to lock keyboard input."
       case .eventTapCreationFailed:
         "Failed to create event tap. This may indicate a permissions issue or system restriction."
       case .runLoopSourceCreationFailed:
@@ -63,12 +63,11 @@ public class LockEngine {
     }
   }
 
+  /// Mouse and system-defined events remain available under the keyboard-only product contract.
   static let eventMasks: CGEventMask =
     (1 << CGEventType.keyDown.rawValue) |
     (1 << CGEventType.keyUp.rawValue) |
-    (1 << CGEventType.flagsChanged.rawValue) |
-    (1 << CGEventType.otherMouseDown.rawValue) |
-    (1 << CGEventType.otherMouseUp.rawValue)
+    (1 << CGEventType.flagsChanged.rawValue)
 
   private static let runLoopSourceOrder: CFIndex = 0
   private static let autoRepeatFlagValue: Int64 = 1

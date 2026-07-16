@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Manages Accessibility permission for CGEventTap-based keyboard/mouse monitoring
+/// Manages Accessibility permission for CGEventTap-based keyboard filtering
 public final class AccessibilityManager {
   private init() {}
 

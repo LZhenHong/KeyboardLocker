@@ -35,15 +35,19 @@ Widget ──┘            ├─ Settings ownership (source of truth)
                        └─ Accessibility      (permission gate)
 ```
 
+这里的 `Core`、SwiftPM product、运行进程和 XPC connection 是不同层次。完整的构建依赖图、进程图和调用时序见 [XPC 实现与使用指南](xpc.md)。
+
 ## 各职责的归属
 
 | 关注点 | 归属 | 规则 |
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
 | 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`currentSettings`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。 |
-| Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。向 wrapper 暴露状态查询 / 权限请求的 XPC 接口尚未接线;加入时只能由 Agent 经 XPC 提供,wrapper 不得自行请求权限。 |
+| Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
-| UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,但不含任何领域逻辑。 |
+| UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
+
+App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management、XPC 两个系统边界之间的应用层编排,不是第二份锁核心。它必须保持为无锁状态真相源的薄协调器：输入来自 Agent/系统查询,输出由 `LockController` 映射到 UI；任何 CGEventTap、设置持久化和 Accessibility 判定仍只在 Agent 内执行。
 
 ## 全局锁语义
 
@@ -76,6 +80,23 @@ Widget ──┘            ├─ Settings ownership (source of truth)
 ## Agent 生命周期要求
 
 即使 App 没有运行,wrapper 也依赖 Agent 可达。Agent 必须向系统注册(`SMAppService`),以便 `launchd` 能按需为任何 XPC 客户端拉起它。假定 Agent 已经在运行(例如"因为 App 恰好开着")的 wrapper 是错误的。
+
+App 必须区分 `SMAppService` 的 enabled、requires-approval、not-found 和 registration-failure 状态。只有 enabled 才继续查询 Agent;requires-approval 必须提供 Login Items 恢复入口。Agent 已 enabled 但 XPC 失败属于不可达,不能伪装成未锁定或缺少 Accessibility 权限。`enabled` 只表示系统允许该 service 运行,不证明当前进程就是 App 内 bundled 版本。
+
+App 在调用新能力前必须先读取 `ServiceDescriptor`,分别验证 XPC protocol major/minor、required capabilities 和 bundled Agent 的 identifier/version/build。descriptor 中的身份字段只用于兼容性与更新判断,不能代替 XPC connection 的代码签名认证。descriptor 必须在 fresh connection 上重试后才能降级；若两次 descriptor 都失败而旧 `status` 成功，只能断言 base contract 可达，不能断言远端一定是 legacy Agent。此时只允许使用旧 `status` / `unlock` 做显式安全迁移，不得继续调用新 selector。
+
+XPC peer authentication 必须由系统双向执行。Agent Listener 在 activate 前安装同 Team + 主 App/CLI 精确 signing identifier 的 connection requirement；App/CLI connection 在 activate 前安装同 Team + 精确 Agent signing identifier 的 requirement。Debug 不得降级成 identifier-only，不能通过 PID 后查静态签名来代替 XPC runtime 的 requirement。Team ID 从各进程自身已验证的签名读取；unsigned/ad-hoc 进程 fail closed。
+
+capability grant 必须绑定到读取 descriptor 的同一条 client-side connection generation。所有 optional method 都要在一条具体 connection 上完成 handshake 与 capability check，再经同一个 `NSXPCConnection` 发出；connection 失效就同时失去 grant。named connection object 仍可能在 interruption 后面对新进程，因此 replacement wire request 必须携带 expected `agentInstanceID`，由 Agent 在副作用前原子验证，Client 也必须验证返回 ticket。
+
+Agent 更新必须遵守以下边界:
+
+- 当前锁为 locked 时绝不自动退出 Agent,因为进程退出会释放其 event tap;UI 必须明确说明并由用户选择 `Unlock and Replace Agent`。
+- unlocked 也不能仅凭一次 `status()` 就自动替换,因为另一个 wrapper 可能随后重新 lock。只有 identifier 与 protocol major 相同、bundled `CFBundleVersion` 可比较且严格更高、并且 Agent 同时声明 prepared 与 committed-drain capability 时,App 才可自动更新。运行中 Agent build 更高时绝不自动降级。
+- `prepareForReplacement` 必须在 Agent 的串行执行边界安装短期 fail-safe barrier,再按策略解锁并返回独占 ownership ticket。Agent 必须拒绝第二个 prepare，不能覆盖 ticket 或转移 cancellation 权限。
+- legacy Agent、major 不兼容、身份不匹配或缺少 replacement capability 的 Agent 只能通过明确用户动作更新。无法建立 drain 时 UI 必须说明 replacement 窗口中的新 lock 可能被进程退出释放。
+- 替换顺序固定为 prepare/unlock → 幂等 commit 为不可取消、不可过期的 drain → 仅在 commit reply 成功后提交并等待 `SMAppService.unregister()` → 注册 bundled Agent → 失效旧 Client connection → 建立新 connection → 重新读取 descriptor。新 descriptor 必须兼容且 `agentInstanceID` 必须变化;任何失败都停止。每个 App 进程对同一 bundled build 最多自动尝试一次,不得形成 restart loop。
+- prepared drain 可以在 commit 前由 owner cancel 或短期 expire；committed drain 只能随旧 Agent 进程退出清除，绝不能用 heartbeat loss 或固定 timeout 推断在途 unregister 已取消。commit reply 丢失时由 exact ticket 的 `replacementStatus` 恢复真实结果。其他 App 通过 additive `replacementPhase` 解释 UI，只能周期性重新握手，不得接管、cancel 或再次 unregister。commit 后 coordinator crash 的极端窗口选择 fail closed；若长期未恢复，需要重启 macOS，而不能冒险让第二次 unregister 释放后来建立的活动锁。
 
 ## 需要警惕的违约
 

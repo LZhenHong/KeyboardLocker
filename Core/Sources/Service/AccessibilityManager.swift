@@ -10,4 +10,13 @@ public final class AccessibilityManager {
   public static func hasPermission() -> Bool {
     AXIsProcessTrusted()
   }
+
+  /// Asks macOS to present the Accessibility permission prompt for the Agent process.
+  /// The prompt is asynchronous, so callers must query `hasPermission()` again later.
+  public static func requestPermission() {
+    let options = [
+      kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true,
+    ] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
+  }
 }

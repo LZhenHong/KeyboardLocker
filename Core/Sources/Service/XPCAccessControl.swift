@@ -4,11 +4,22 @@ import Security
 
 /// Validates XPC connections by verifying code signature and bundle identifier.
 ///
-/// - **Release**: Full verification (signature + Team ID + bundle ID allowlist)
+/// - **Release**: Full verification (signature + Agent Team ID + bundle ID allowlist)
 /// - **Debug**: Relaxed verification (bundle ID allowlist only)
 public enum XPCAccessControl {
-  /// Apple Developer Team ID for certificate verification (Release only)
-  private static let expectedTeamID = "SBLX9H66X2"
+  #if !DEBUG
+    /// Reads the Agent's signing Team ID from the running process so code-signing configuration
+    /// remains the single source of truth.
+    private static let agentTeamID: String? = {
+      guard let staticCode = staticCodeForCurrentProcess(),
+            SecStaticCodeCheckValidity(staticCode, SecCSFlags(), nil) == errSecSuccess,
+            let info = signingInfo(for: staticCode)
+      else {
+        return nil
+      }
+      return teamIdentifier(from: info)
+    }()
+  #endif
 
   /// Returns true if the connection passes security checks.
   public static func isConnectionAuthorized(_ connection: NSXPCConnection) -> Bool {
@@ -31,8 +42,10 @@ public enum XPCAccessControl {
     }
 
     #if !DEBUG
-      // Release: Verify Team ID
-      guard extractTeamID(from: info) == expectedTeamID else {
+      // Release: Require the client to be signed by the same team as the Agent.
+      guard let agentTeamID = Self.agentTeamID,
+            teamIdentifier(from: info) == agentTeamID
+      else {
         return false
       }
     #endif
@@ -52,6 +65,19 @@ public enum XPCAccessControl {
       return nil
     }
 
+    return staticCode(for: code)
+  }
+
+  private static func staticCodeForCurrentProcess() -> SecStaticCode? {
+    var code: SecCode?
+    guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code else {
+      return nil
+    }
+
+    return staticCode(for: code)
+  }
+
+  private static func staticCode(for code: SecCode) -> SecStaticCode? {
     var staticCode: SecStaticCode?
     guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess else {
       return nil
@@ -68,30 +94,7 @@ public enum XPCAccessControl {
     return info as? [CFString: Any]
   }
 
-  private static func extractTeamID(from info: [CFString: Any]) -> String? {
-    if let teamID = info[kSecCodeInfoTeamIdentifier] as? String {
-      return teamID
-    }
-
-    // Fallback: Parse from certificate Common Name
-    guard let certs = info[kSecCodeInfoCertificates] as? [SecCertificate],
-          let leafCert = certs.first
-    else {
-      return nil
-    }
-
-    var commonName: CFString?
-    SecCertificateCopyCommonName(leafCert, &commonName)
-
-    // Extract Team ID from "Developer Name (TEAMID)" format
-    if let name = commonName as String?,
-       let match = name.range(of: #"\(([A-Z0-9]{10})\)$"#, options: .regularExpression)
-    {
-      let start = name.index(match.lowerBound, offsetBy: 1)
-      let end = name.index(match.upperBound, offsetBy: -1)
-      return String(name[start ..< end])
-    }
-
-    return nil
+  private static func teamIdentifier(from info: [CFString: Any]) -> String? {
+    info[kSecCodeInfoTeamIdentifier] as? String
   }
 }

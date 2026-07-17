@@ -224,15 +224,15 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
-  /// The Agent's current settings, falling back to `.default` if the Agent can't provide them.
+  /// The Agent's authoritative current settings.
   public func currentSettings() async throws -> KeyboardLockerSettings {
     let connection = try await negotiatedConnection(
-      requiring: [.currentSettings]
+      requiring: [.currentSettingsWithError]
     )
     let data: Data? = try await withProxyReturning(using: connection) { service, resume in
-      service.currentSettings { resume($0, nil) }
+      service.currentSettingsWithError { resume($0, $1) }
     }
-    return KeyboardLockerSettings.decodedFromXPC(data)
+    return try KeyboardLockerSettings.decodedFromXPC(data)
   }
 
   // MARK: - Connection Management
@@ -308,7 +308,16 @@ public final class XPCClient: @unchecked Sendable {
       self?.clearConnection(ifMatching: connectionID)
     }
     connection.invalidationHandler = clear
-    connection.interruptionHandler = clear
+    connection.interruptionHandler = { [weak self, weak connection] in
+      guard let connection else {
+        return
+      }
+
+      // An interrupted named connection may transparently attach to a different Agent process.
+      // Invalidate this object so a descriptor/capability grant can never cross process
+      // generations; the next operation must create a fresh connection and negotiate again.
+      self?.invalidateConnection(connection)
+    }
 
     connection.activate()
     self.connection = connection
@@ -344,7 +353,7 @@ public final class XPCClient: @unchecked Sendable {
 
   /// Central reply bridge. Every operation has a bounded response time and resumes exactly once
   /// across reply, proxy-error, missing-proxy, and timeout races.
-  private func withProxyReturning<T>(
+  private func withProxyReturning<T: Sendable>(
     using providedConnection: NSXPCConnection? = nil,
     _ body: @escaping (KeyboardLockerServiceProtocol, _ resume: @escaping (T, Error?) -> Void) -> Void
   ) async throws -> T {
@@ -356,18 +365,19 @@ public final class XPCClient: @unchecked Sendable {
 
     return try await withCheckedThrowingContinuation { continuation in
       let once = ResumeOnce()
+      let connectionReference = XPCConnectionReference(connection)
       let timeoutTask = Task { [weak self] in
         try? await Task.sleep(for: Self.responseTimeout)
         guard !Task.isCancelled else {
           return
         }
         once.run {
-          self?.invalidateConnection(connection)
+          self?.invalidateConnection(connectionReference.value)
           continuation.resume(throwing: XPCClientError.timedOut)
         }
       }
 
-      let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+      let proxy = connectionReference.value.remoteObjectProxyWithErrorHandler { error in
         once.run {
           timeoutTask.cancel()
           continuation.resume(throwing: error)
@@ -393,6 +403,17 @@ public final class XPCClient: @unchecked Sendable {
         }
       }
     }
+  }
+}
+
+/// Foundation documents `NSXPCConnection` as supporting calls from multiple threads. This box
+/// makes that external synchronization contract explicit when a connection is shared with the
+/// timeout task that can invalidate it.
+private final class XPCConnectionReference: @unchecked Sendable {
+  let value: NSXPCConnection
+
+  init(_ value: NSXPCConnection) {
+    self.value = value
   }
 }
 

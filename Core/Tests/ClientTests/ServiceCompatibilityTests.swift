@@ -90,6 +90,13 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 1)
   }
 
+  func testCurrentContractRequiresErrorReportingSettingsSelector() {
+    XCTAssertTrue(
+      ServiceContract.requiredCapabilities.contains(.currentSettingsWithError)
+    )
+    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 2)
+  }
+
   func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
@@ -101,6 +108,20 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertEqual(
       descriptor.compatibilityIssues(against: requirements),
       [.missingCapabilities([.committedReplacementDrain])]
+    )
+  }
+
+  func testAgentWithoutErrorReportingSettingsIsNotCurrentContractCompatible() {
+    let requirements = makeRequirements()
+    let descriptor = makeDescriptor(
+      capabilities: requirements.requiredCapabilities.subtracting([
+        .currentSettingsWithError,
+      ])
+    )
+
+    XCTAssertEqual(
+      descriptor.compatibilityIssues(against: requirements),
+      [.missingCapabilities([.currentSettingsWithError])]
     )
   }
 

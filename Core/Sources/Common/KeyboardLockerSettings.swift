@@ -114,18 +114,48 @@ public extension KeyboardLockerSettings.Hotkey {
 
 // MARK: - XPC Serialization
 
+public enum KeyboardLockerSettingsCodingError: Error, Equatable, LocalizedError {
+  case invalidPayload
+  case missingPayload
+  case payloadTooLarge
+
+  public var errorDescription: String? {
+    switch self {
+    case .invalidPayload:
+      "The KeyboardLocker agent returned invalid settings."
+    case .missingPayload:
+      "The KeyboardLocker agent returned no settings."
+    case .payloadTooLarge:
+      "The KeyboardLocker agent returned oversized settings."
+    }
+  }
+}
+
 public extension KeyboardLockerSettings {
+  static let maximumEncodedSize = 16 * 1024
+
   /// Encodes settings for transport across the `@objc` XPC boundary as JSON.
   func encodedForXPC() throws -> Data {
-    try JSONEncoder().encode(self)
+    let data = try JSONEncoder().encode(self)
+    guard data.count <= Self.maximumEncodedSize else {
+      throw KeyboardLockerSettingsCodingError.payloadTooLarge
+    }
+    return data
   }
 
-  /// Decodes settings received over XPC, falling back to `.default` on nil/corrupt data
-  /// so a wrapper never operates on an ambiguous state.
-  static func decodedFromXPC(_ data: Data?) -> KeyboardLockerSettings {
-    guard let data, let settings = try? JSONDecoder().decode(KeyboardLockerSettings.self, from: data) else {
-      return .default
+  /// Decodes the Agent's authoritative settings snapshot without inventing a wrapper-side
+  /// fallback when the transport payload is absent or corrupt.
+  static func decodedFromXPC(_ data: Data?) throws -> KeyboardLockerSettings {
+    guard let data else {
+      throw KeyboardLockerSettingsCodingError.missingPayload
     }
-    return settings
+    guard data.count <= maximumEncodedSize else {
+      throw KeyboardLockerSettingsCodingError.payloadTooLarge
+    }
+    do {
+      return try JSONDecoder().decode(KeyboardLockerSettings.self, from: data)
+    } catch {
+      throw KeyboardLockerSettingsCodingError.invalidPayload
+    }
   }
 }

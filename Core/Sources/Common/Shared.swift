@@ -84,6 +84,9 @@ public protocol KeyboardLockerServiceProtocol {
   // MARK: Settings Methods
 
   /// Returns the Agent's current settings as JSON-encoded `KeyboardLockerSettings`.
-  /// `data` is nil only if the Agent failed to encode; wrappers fall back to `.default`.
+  /// Retained for compatibility with protocol 1.1 clients.
   func currentSettings(reply: @escaping (Data?) -> Void)
+
+  /// Returns the Agent's current settings and reports serialization failures explicitly.
+  func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void)
 }

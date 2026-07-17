@@ -284,7 +284,10 @@ private final class DarwinObserver {
 
 /// Token that controls subscription lifecycle.
 /// Subscription is automatically cancelled when token is deallocated.
-public final class ObserverToken {
+///
+/// The token is immutable and its teardown path is thread-safe, so releasing the final reference
+/// from an `AsyncStream` termination callback is safe on any executor.
+public final class ObserverToken: @unchecked Sendable {
   private let onDeinit: () -> Void
 
   public init(onDeinit: @escaping () -> Void) {

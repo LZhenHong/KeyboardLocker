@@ -9,6 +9,14 @@ protocol AgentControlServing: Sendable {
   func resetConnection()
 }
 
+/// One-shot lock capabilities used by system automation wrappers.
+@MainActor
+protocol AgentLockActionServing: Sendable {
+  func lock() async throws
+  func unlock() async throws
+  func status() async throws -> Bool
+}
+
 @MainActor
 protocol AgentReadinessServing: Sendable {
   func serviceDescriptor() async throws -> ServiceDescriptor
@@ -50,11 +58,14 @@ protocol AgentLockStateObserving: Sendable {
 @MainActor
 protocol AgentClientServing:
   AgentControlServing,
+  AgentLockActionServing,
   AgentReadinessServing,
   AgentReplacementServing {}
 
 @MainActor
 struct LiveAgentClient: AgentClientServing {
+  nonisolated init() {}
+
   func serviceDescriptor() async throws -> ServiceDescriptor {
     try await XPCClient.shared.serviceDescriptor()
   }

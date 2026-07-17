@@ -52,6 +52,11 @@
 - `AgentReplacementCoordinator.swift`:执行 App 侧 Agent 替换顺序。`AgentUpdatePlan` 用类型区分已协商的 safe replacement 与需要用户授权的 forced fallback,所有自动/手动更新共用 prepare → commit → restart → reconnect 边界。
 - `AppCoordinator.swift`:不依赖 presentation framework 的 `@MainActor` 应用协调器 —— 持有异步任务/订阅生命周期、单次自动更新策略和 replacement progress polling,把 domain outcome 收敛为可观察的应用 snapshot；不直接实现 handshake、replacement transaction、锁或设置逻辑。
 
+**WidgetKit extension**(`KeyboardLockerWidgets/`)—— sandboxed、按需运行的只读状态 wrapper，只调用 Client
+- `KeyboardLockerWidgetTimeline.swift`:每次 timeline execution 经 `XPCClient.lockStatusSnapshot()` 读取 Agent 的权威原子快照。loader 把 transport failure 建模为显式 unavailable entry,并请求 regular refresh 或更早的 auto-unlock deadline reconciliation；不订阅长命通知、不维护第二份状态。
+- `KeyboardLockerStatusWidget.swift`:small/medium 状态 presentation,显示 locked/unlocked、deadline、解锁热键与 Agent unavailable。WidgetKit 可以合并 timeline policy,因此该 UI 不承诺实时刷新。
+- `KeyboardLockerWidgets.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent 仍以同 Team + 精确 extension identifier 的 listener requirement 独立认证调用方。
+
 ## 常见任务
 
 ### 新增一个设置项
@@ -89,7 +94,7 @@
 
 `klock lock` 只有在本次请求原子创建全局锁时才进入等待，并提示 `Ctrl+C`。这个按键由 Agent event tap 识别后直接解锁，不依赖 Terminal 先收到被锁定输入并生成 `SIGINT`。若 Agent 已被 App 或其他 CLI 锁定，命令会报告 `Already locked. This command did not create a new lock.` 后成功退出，不改变既有锁。自动化脚本应使用 `klock lock --no-wait`：它确认全局状态为 locked 后立即退出，不启用临时 `Ctrl+C` 手势，也不等待 unlock。
 
-Shortcuts、AppleScript 与 CLI 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
+Shortcuts、AppleScript、CLI 与 Widget 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
 
 ### Homebrew Cask 发布计划（尚未实现）
 

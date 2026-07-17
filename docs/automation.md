@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、AppleScript 与 CLI 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、AppleScript、CLI 与 Widget 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -8,7 +8,7 @@ KeyboardLocker 的 Shortcuts、AppleScript 与 CLI 都是同一个 Agent capabil
 - `status` 每次都从 Agent 查询权威状态；wrapper 不维护本地副本。
 - lock 是全局状态,不属于发起它的 Shortcut、AppleScript 或 shell process。任意入口的 `unlock` 都会解开同一个全局锁。
 - 当前没有暴露 client-side `toggle`。需要确定结果时,显式选择 `lock` 或 `unlock`。
-- Agent 不可达、权限不足或结果无法确认时,wrapper 会明确失败,不会把失败猜成 unlocked。
+- Agent 不可达、权限不足或结果无法确认时,action wrapper 会明确失败,Widget 会显示 unavailable；任何入口都不会把失败猜成 unlocked。
 
 ## Shortcuts
 
@@ -19,6 +19,12 @@ KeyboardLocker 提供三个可组合 action：
 - `Get Keyboard Lock Status`
 
 `Get Keyboard Lock Status` 返回 typed Boolean,可直接接入 Shortcuts 的条件分支。当前版本没有声明 `AppShortcutsProvider`;这些 action 从 Shortcuts 的 action library 中选择,不会作为 promoted shortcut 自动出现,也没有预注册的 invocation phrase。
+
+## Widget
+
+`Keyboard Lock Status` Widget 支持 small 和 medium family。每次生成 timeline 时,extension 都通过 XPC 读取 Agent 的 `LockStatusSnapshot`,并显示 locked/unlocked、auto-unlock countdown 或 manual unlock，以及当前解锁热键。它不使用 App Group、`UserDefaults` 或自己的状态缓存；Agent 不可达时会明确显示 `Agent Unavailable`。
+
+Widget 会请求每分钟校准一次,若 auto-unlock deadline 更早,则请求在 deadline 后立即校准。该时间只是 WidgetKit timeline policy；系统可以根据刷新预算合并或延后执行,因此 Widget 是系统级状态概览,不是实时监视器。倒计时文本会由系统持续渲染,但从其他 wrapper 发起的手动 lock/unlock 可能要到下一次获准刷新才显示。
 
 ## AppleScript
 

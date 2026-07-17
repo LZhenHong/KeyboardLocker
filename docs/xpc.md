@@ -40,6 +40,7 @@ Core
 
 KeyboardLocker      -> Client  -> Common
 klock               -> Client  -> Common
+KeyboardLockerWidgets -> Client -> Common
 KeyboardLockerAgent -> Service -> Common
 ```
 
@@ -55,7 +56,7 @@ Xcode 会按 package 名把这些 dependency 都显示在 `Core` 下面，因此
 
 `Client/Exports.swift` 和 `Service/Exports.swift` 使用 `@_exported import Common`，所以 App 只写 `import Client`、Agent 只写 `import Service`，也能看到 `Common` 中的类型。这只是 import 便利，不会让 App 获得 `Service`，也不会让两边共享内存。
 
-### 运行时：真正存在的是三个独立进程
+### 运行时：各 wrapper 与 Agent 是独立进程
 
 ```mermaid
 flowchart LR
@@ -67,8 +68,13 @@ flowchart LR
     CLI["Command handler"] --> CLIClient["XPCClient"]
   end
 
+  subgraph WidgetProcess["WidgetKit extension process"]
+    Timeline["Timeline provider"] --> WidgetClient["XPCClient"]
+  end
+
   AppClient -->|"NSXPCConnection"| Mach["Mach service"]
   CLIClient -->|"NSXPCConnection"| Mach
+  WidgetClient -->|"NSXPCConnection"| Mach
   subgraph AgentProcess["KeyboardLockerAgent process"]
     Listener["NSXPCListener"] --> AgentService["AgentService"]
     AgentService --> Engine["LockEngine.shared"]
@@ -82,7 +88,7 @@ flowchart LR
 
 `Core` 不会作为第四个进程出现。它的代码分别被链接进上图中的 executable：
 
-- App 和 CLI 各自包含一份 `Client + Common` 代码。
+- App、CLI 与按需启动的 WidgetKit extension 各自包含一份 `Client + Common` 代码。
 - Agent 包含一份 `Service + Common` 代码。
 - 只有 Agent 的 executable 包含 `LockEngine`，因此 App/CLI 不可能绕过 XPC 直接操作 event tap。
 

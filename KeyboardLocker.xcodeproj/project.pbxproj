@@ -7,12 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1000000000000000000000B /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000A /* Client */; };
 		F21304CF2ECDC2E200735580 /* KeyboardLockerAgent.app in Copy Agent App */ = {isa = PBXBuildFile; fileRef = F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F21304D32ECDC51F00735580 /* klock in Copy CLI */ = {isa = PBXBuildFile; fileRef = F21304B42ECDC26400735580 /* klock */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		F2BFFCFF2EEFAF0B0065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFCFE2EEFAF0B0065F041 /* Client */; };
 		F2BFFD012EEFAF1A0065F041 /* Service in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD002EEFAF1A0065F041 /* Service */; };
 		F2BFFD032EEFAF200065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD022EEFAF200065F041 /* Client */; };
-		A1000000000000000000000B /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000A /* Client */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,30 +77,30 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A10000000000000000000001 /* KeyboardLockerModelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyboardLockerModelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F21304282ECDAD3500735580 /* KeyboardLocker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyboardLocker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F21304362ECDADC900735580 /* Core */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Core; sourceTree = "<group>"; };
 		F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyboardLockerAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F21304B42ECDC26400735580 /* klock */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = klock; sourceTree = BUILT_PRODUCTS_DIR; };
-		A10000000000000000000001 /* KeyboardLockerModelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyboardLockerModelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A1000000000000000000000C /* Exceptions for "KeyboardLocker" folder in "KeyboardLockerModelTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				io.lzhlovesjyq.keyboardlocker.agent.plist,
+				KeyboardLockerApplication.swift,
+				StatusMenuController.swift,
+			);
+			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
+		};
 		F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				io.lzhlovesjyq.keyboardlocker.agent.plist,
 			);
 			target = F21304272ECDAD3500735580 /* KeyboardLocker */;
-		};
-		A1000000000000000000000C /* Exceptions for "KeyboardLocker" folder in "KeyboardLockerModelTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Assets.xcassets,
-				KeyboardLockerApplication.swift,
-				StatusMenuController.swift,
-				io.lzhlovesjyq.keyboardlocker.agent.plist,
-			);
-			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -118,6 +118,11 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A10000000000000000000002 /* KeyboardLockerModelTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KeyboardLockerModelTests;
+			sourceTree = "<group>";
+		};
 		F213042A2ECDAD3500735580 /* KeyboardLocker */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -138,14 +143,17 @@
 			path = klock;
 			sourceTree = "<group>";
 		};
-		A10000000000000000000002 /* KeyboardLockerModelTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = KeyboardLockerModelTests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000B /* Client in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F21304252ECDAD3500735580 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -167,14 +175,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				F2BFFD032EEFAF200065F041 /* Client in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A10000000000000000000005 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A1000000000000000000000B /* Client in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,6 +207,30 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A10000000000000000000003 /* KeyboardLockerModelTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000009 /* Build configuration list for PBXNativeTarget "KeyboardLockerModelTests" */;
+			buildPhases = (
+				A10000000000000000000004 /* Sources */,
+				A10000000000000000000005 /* Frameworks */,
+				A10000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000002 /* KeyboardLockerModelTests */,
+				F213042A2ECDAD3500735580 /* KeyboardLocker */,
+			);
+			name = KeyboardLockerModelTests;
+			packageProductDependencies = (
+				A1000000000000000000000A /* Client */,
+			);
+			productName = KeyboardLockerModelTests;
+			productReference = A10000000000000000000001 /* KeyboardLockerModelTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		F21304272ECDAD3500735580 /* KeyboardLocker */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F21304332ECDAD3600735580 /* Build configuration list for PBXNativeTarget "KeyboardLocker" */;
@@ -281,30 +305,6 @@
 			productReference = F21304B42ECDC26400735580 /* klock */;
 			productType = "com.apple.product-type.tool";
 		};
-		A10000000000000000000003 /* KeyboardLockerModelTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A10000000000000000000009 /* Build configuration list for PBXNativeTarget "KeyboardLockerModelTests" */;
-			buildPhases = (
-				A10000000000000000000004 /* Sources */,
-				A10000000000000000000005 /* Frameworks */,
-				A10000000000000000000006 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				F213042A2ECDAD3500735580 /* KeyboardLocker */,
-				A10000000000000000000002 /* KeyboardLockerModelTests */,
-			);
-			name = KeyboardLockerModelTests;
-			packageProductDependencies = (
-				A1000000000000000000000A /* Client */,
-			);
-			productName = KeyboardLockerModelTests;
-			productReference = A10000000000000000000001 /* KeyboardLockerModelTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -315,6 +315,9 @@
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					A10000000000000000000003 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					F21304272ECDAD3500735580 = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
@@ -323,9 +326,6 @@
 					};
 					F21304B32ECDC26400735580 = {
 						CreatedOnToolsVersion = 26.1.1;
-					};
-					A10000000000000000000003 = {
-						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -352,6 +352,13 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F21304262ECDAD3500735580 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -366,16 +373,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A10000000000000000000006 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
 		F21304242ECDAD3500735580 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -391,13 +398,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F21304B02ECDC26400735580 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A10000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -420,6 +420,38 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		A10000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.modeltests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		A10000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = V65YCRQZ2M;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.modeltests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
 		F21304312ECDAD3600735580 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -726,41 +758,18 @@
 			};
 			name = Release;
 		};
-		A10000000000000000000007 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = V65YCRQZ2M;
-				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.modeltests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "";
-			};
-			name = Debug;
-		};
-		A10000000000000000000008 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = V65YCRQZ2M;
-				GENERATE_INFOPLIST_FILE = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = io.lzhlovesjyq.keyboardlocker.modeltests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A10000000000000000000009 /* Build configuration list for PBXNativeTarget "KeyboardLockerModelTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000007 /* Debug */,
+				A10000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		F21304232ECDAD3500735580 /* Build configuration list for PBXProject "KeyboardLocker" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -797,18 +806,13 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A10000000000000000000009 /* Build configuration list for PBXNativeTarget "KeyboardLockerModelTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A10000000000000000000007 /* Debug */,
-				A10000000000000000000008 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A1000000000000000000000A /* Client */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Client;
+		};
 		F2BFFCFE2EEFAF0B0065F041 /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
@@ -818,10 +822,6 @@
 			productName = Service;
 		};
 		F2BFFD022EEFAF200065F041 /* Client */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Client;
-		};
-		A1000000000000000000000A /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
 		};

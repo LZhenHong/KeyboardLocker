@@ -5,5 +5,9 @@ import WidgetKit
 struct KeyboardLockerWidgetsBundle: WidgetBundle {
   var body: some Widget {
     KeyboardLockerStatusWidget()
+
+    if #available(macOS 26.0, *) {
+      KeyboardLockerControl()
+    }
   }
 }

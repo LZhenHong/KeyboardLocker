@@ -3,7 +3,7 @@ import SwiftUI
 import WidgetKit
 
 struct KeyboardLockerStatusWidget: Widget {
-  static let kind = "io.lzhlovesjyq.keyboardlocker.status"
+  nonisolated static let kind = "io.lzhlovesjyq.keyboardlocker.status"
 
   var body: some WidgetConfiguration {
     StaticConfiguration(

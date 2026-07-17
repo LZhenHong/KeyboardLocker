@@ -138,6 +138,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				KeyboardLockerControl.swift,
 				KeyboardLockerStatusWidget.swift,
 				KeyboardLockerWidgets.entitlements,
 				KeyboardLockerWidgetsBundle.swift,

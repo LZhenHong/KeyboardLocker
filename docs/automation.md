@@ -73,9 +73,10 @@ klock lock --no-wait
 
 ```bash
 klock status
+klock status --json
 klock unlock
 ```
 
-`status` 当前输出供人阅读的 `Locked` 或 `Unlocked`。在增加明确的 machine-readable output contract 前,脚本不要把这段文本当成稳定 JSON/API。所有命令在调用成功时返回 exit code `0`,参数或 Agent 调用失败时返回 `1`。
+`status` 默认输出供人阅读的 `Locked` 或 `Unlocked`。自动化使用 `status --json`,其稳定 contract 是单行 `{"locked":true}` 或 `{"locked":false}`。两种状态都表示查询成功并返回 exit code `0`;参数或 Agent 调用失败返回 `1`,因此脚本不需要把 unlocked 与 transport failure 混在同一个 exit code 中。
 
 不要把 `lock --no-wait` / `unlock` 当成 acquire/release pair：若调用 `lock --no-wait` 时全局状态本来已经 locked,后续无条件执行 `unlock` 会解除其他 wrapper 建立的锁。需要这种 ownership 语义时,应先在 Agent contract 中设计明确的 lease/session capability,而不是在 shell 中模拟。

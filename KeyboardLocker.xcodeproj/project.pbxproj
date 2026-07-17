@@ -145,6 +145,13 @@
 			);
 			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
 		};
+		C30000000000000000000001 /* Exceptions for "klock" folder in "KeyboardLockerModelTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				main.swift,
+			);
+			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
@@ -192,6 +199,9 @@
 		};
 		F21304B52ECDC26400735580 /* klock */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C30000000000000000000001 /* Exceptions for "klock" folder in "KeyboardLockerModelTests" target */,
+			);
 			path = klock;
 			sourceTree = "<group>";
 		};
@@ -285,6 +295,7 @@
 				A10000000000000000000002 /* KeyboardLockerModelTests */,
 				F213042A2ECDAD3500735580 /* KeyboardLocker */,
 				B20000000000000000000002 /* KeyboardLockerWidgets */,
+				F21304B52ECDC26400735580 /* klock */,
 			);
 			name = KeyboardLockerModelTests;
 			packageProductDependencies = (

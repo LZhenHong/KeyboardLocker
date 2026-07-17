@@ -54,10 +54,16 @@ enum KlockCLI {
       await executeUnlock()
 
     case "status":
-      guard arguments.count == 1 else {
-        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      switch Array(arguments.dropFirst()) {
+      case []:
+        await executeStatus(output: .humanReadable)
+
+      case ["--json"]:
+        await executeStatus(output: .json)
+
+      case let unexpectedArguments:
+        reportUnexpectedArguments(unexpectedArguments)
       }
-      await executeStatus()
 
     default:
       printError("Unknown command: \(command)")
@@ -132,10 +138,10 @@ enum KlockCLI {
     }
   }
 
-  private static func executeStatus() async {
+  private static func executeStatus(output: KlockStatusOutput) async {
     do {
       let isLocked = try await XPCClient.shared.status()
-      print(isLocked ? "Locked" : "Unlocked")
+      print(output.render(isLocked: isLocked))
       exit(ExitCode.success)
     } catch {
       reportFailure(error)
@@ -180,12 +186,13 @@ enum KlockCLI {
       COMMANDS:
         lock [--no-wait]    Lock the keyboard; by default, wait until it is unlocked.
         unlock              Unlock the keyboard.
-        status              Print the current lock state.
+        status [--json]     Print the current lock state.
         help                Show this help message.
         version             Show the klock version.
 
       OPTIONS:
         --no-wait          Return after lock is confirmed; do not enable Ctrl+C unlock.
+        --json             Emit a stable JSON object for status automation.
         -h, --help         Show this help message.
         -v, --version      Show the klock version.
       """

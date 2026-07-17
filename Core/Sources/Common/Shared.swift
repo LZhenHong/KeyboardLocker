@@ -19,6 +19,17 @@ public enum SharedConstants {
   ]
 }
 
+// MARK: - Lock Requests
+
+/// Whether one atomic lock request created the global lock or found it already active.
+///
+/// This describes a state transition, not client ownership. The Agent still owns one global lock,
+/// and any authorized wrapper may explicitly unlock it.
+public enum LockRequestOutcome: Equatable, Sendable {
+  case acquired
+  case alreadyLocked
+}
+
 // MARK: - Notification Names
 
 /// Shared notification identifiers for cross-process communication.
@@ -42,6 +53,13 @@ public protocol KeyboardLockerServiceProtocol {
   // MARK: Keyboard Locking Methods
 
   func lockKeyboard(reply: @escaping (Error?) -> Void)
+
+  /// Requests a lock that treats Control-C as an additional unlock gesture only when this call
+  /// atomically creates the global lock. `didAcquireLock` is false for a strict duplicate no-op.
+  func lockKeyboardInteractively(
+    reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
+
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 

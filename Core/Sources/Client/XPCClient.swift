@@ -37,6 +37,12 @@ public enum XPCClientError: Error, LocalizedError {
 
   public var recoverySuggestion: String? {
     switch self {
+    case .missingCapability:
+      "Open KeyboardLocker to update its background agent, then retry."
+
+    case .operationOutcomeUnknown:
+      "Run `klock status` to inspect the authoritative state, then use `klock unlock` if needed."
+
     case .serviceUnavailable:
       "Open KeyboardLocker once to register its background agent, then retry. If KeyboardLocker is already running, choose Show Details… from its menu."
 
@@ -95,6 +101,30 @@ public final class XPCClient: @unchecked Sendable {
       }
     } catch XPCClientError.timedOut {
       try await confirmTimedOutMutation(expectedIsLocked: true)
+    }
+  }
+
+  /// Atomically creates an interactive global lock or reports that one was already active.
+  ///
+  /// A newly acquired lock treats Control-C as an additional Agent-side unlock gesture. This
+  /// outcome does not grant client ownership; it only describes whether this request performed
+  /// the unlocked-to-locked transition.
+  public func lockInteractively() async throws -> LockRequestOutcome {
+    let connection = try await negotiatedConnection(
+      requiring: [.interactiveLock]
+    )
+
+    do {
+      let didAcquireLock: Bool = try await withProxyReturning(
+        using: connection
+      ) { service, resume in
+        service.lockKeyboardInteractively { resume($0, $1) }
+      }
+      return didAcquireLock ? .acquired : .alreadyLocked
+    } catch XPCClientError.timedOut {
+      // Status alone cannot recover whether this request created a lock or observed an existing
+      // one, so a lost mutation reply must remain explicitly unknown.
+      throw XPCClientError.operationOutcomeUnknown
     }
   }
 

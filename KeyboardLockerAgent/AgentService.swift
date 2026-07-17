@@ -56,19 +56,24 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   func lockKeyboard(reply: @escaping (Error?) -> Void) {
     executeOnMainActor {
-      guard !self.replacement.isPending else {
-        reply(Self.replacementError(
-          code: 1,
-          description: "The agent is preparing to be replaced and is not accepting new lock requests."
-        ))
-        return
-      }
-
       do {
-        try LockEngine.shared.lock(settings: self.settings)
+        _ = try self.performLock(allowsControlCUnlock: false)
         reply(nil)
       } catch {
         reply(error)
+      }
+    }
+  }
+
+  func lockKeyboardInteractively(
+    reply: @escaping (Bool, Error?) -> Void
+  ) {
+    executeOnMainActor {
+      do {
+        let outcome = try self.performLock(allowsControlCUnlock: true)
+        reply(outcome == .acquired, nil)
+      } catch {
+        reply(false, error)
       }
     }
   }
@@ -250,6 +255,22 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   // MARK: - Helpers
+
+  @MainActor private func performLock(
+    allowsControlCUnlock: Bool
+  ) throws -> LockRequestOutcome {
+    guard !replacement.isPending else {
+      throw Self.replacementError(
+        code: 1,
+        description: "The agent is preparing to be replaced and is not accepting new lock requests."
+      )
+    }
+
+    return try LockEngine.shared.lock(
+      settings: settings,
+      allowsControlCUnlock: allowsControlCUnlock
+    )
+  }
 
   private static func makeServiceDescriptor(bundle: Bundle = .main) throws -> ServiceDescriptor {
     guard let bundleIdentifier = bundle.bundleIdentifier, !bundleIdentifier.isEmpty else {

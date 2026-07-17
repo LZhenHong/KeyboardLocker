@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Common
 @preconcurrency import CoreGraphics
 import Foundation
@@ -37,23 +38,26 @@ struct AutoUnlockSchedule: Equatable {
 
 struct LockRuntimeState: Equatable {
   private(set) var activeSettings: KeyboardLockerSettings = .default
+  private(set) var allowsControlCUnlock = false
   private(set) var autoUnlockTargetDate: Date?
   private(set) var isLocked = false
   private(set) var startedAt: Date?
 
   mutating func begin(
     settings: KeyboardLockerSettings,
+    allowsControlCUnlock: Bool,
     at date: Date
-  ) -> Bool {
+  ) -> LockRequestOutcome {
     guard !isLocked else {
-      return false
+      return .alreadyLocked
     }
 
     activeSettings = settings
+    self.allowsControlCUnlock = allowsControlCUnlock
     autoUnlockTargetDate = nil
     isLocked = true
     startedAt = date
-    return true
+    return .acquired
   }
 
   mutating func updateSettings(_ settings: KeyboardLockerSettings) {
@@ -65,9 +69,39 @@ struct LockRuntimeState: Equatable {
   }
 
   mutating func end() {
+    allowsControlCUnlock = false
     autoUnlockTargetDate = nil
     isLocked = false
     startedAt = nil
+  }
+}
+
+struct UnlockGestureMatcher {
+  static let controlCKeyCode = CGKeyCode(kVK_ANSI_C)
+
+  private static let controlCHotkey = KeyboardLockerSettings.Hotkey(
+    keyCode: controlCKeyCode,
+    modifierFlags: [.maskControl]
+  )
+
+  static func matches(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags,
+    isAutoRepeat: Bool,
+    configuredHotkey: KeyboardLockerSettings.Hotkey,
+    allowsControlCUnlock: Bool
+  ) -> Bool {
+    guard type == .keyDown, !isAutoRepeat else {
+      return false
+    }
+
+    if configuredHotkey.matches(keyCode: keyCode, flags: flags) {
+      return true
+    }
+
+    return allowsControlCUnlock
+      && controlCHotkey.matches(keyCode: keyCode, flags: flags)
   }
 }
 
@@ -214,11 +248,15 @@ public final class LockEngine {
 
   private init() {}
 
-  public func lock(settings: KeyboardLockerSettings = .default) throws {
+  @discardableResult
+  public func lock(
+    settings: KeyboardLockerSettings = .default,
+    allowsControlCUnlock: Bool = false
+  ) throws -> LockRequestOutcome {
     // A duplicate request is a strict no-op. In particular, it must not extend the authoritative
     // auto-unlock deadline merely because another wrapper repeated the same global intent.
     if runtimeState.isLocked {
-      return
+      return .alreadyLocked
     }
 
     // Verify Accessibility permission before attempting to create event tap.
@@ -228,11 +266,17 @@ public final class LockEngine {
 
     // Event tap creation must happen on main thread
     try startEventTap()
-    guard runtimeState.begin(settings: settings, at: Date()) else {
+    let outcome = runtimeState.begin(
+      settings: settings,
+      allowsControlCUnlock: allowsControlCUnlock,
+      at: Date()
+    )
+    guard outcome == .acquired else {
       teardownEventTap()
-      return
+      return outcome
     }
     markLocked()
+    return outcome
   }
 
   /// Updates the active settings. If a lock is running, changes take effect immediately
@@ -417,21 +461,15 @@ public final class LockEngine {
   }
 
   private func shouldTriggerUnlock(for type: CGEventType, event: CGEvent) -> Bool {
-    let hotkey = runtimeState.activeSettings.unlockHotkey
-
-    switch type {
-    case .keyDown:
-      let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-      guard hotkey.matches(keyCode: keyCode, flags: event.flags) else {
-        return false
-      }
-
-      let isAutoRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) == Self.autoRepeatFlagValue
-      return !isAutoRepeat
-
-    default:
-      return false
-    }
+    UnlockGestureMatcher.matches(
+      type: type,
+      keyCode: CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode)),
+      flags: event.flags,
+      isAutoRepeat: event.getIntegerValueField(.keyboardEventAutorepeat)
+        == Self.autoRepeatFlagValue,
+      configuredHotkey: runtimeState.activeSettings.unlockHotkey,
+      allowsControlCUnlock: runtimeState.allowsControlCUnlock
+    )
   }
 
   func lockDuration(at date: Date = Date()) -> TimeInterval? {

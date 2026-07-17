@@ -97,6 +97,13 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 2)
   }
 
+  func testCurrentContractRequiresInteractiveLockSelector() {
+    XCTAssertTrue(
+      ServiceContract.requiredCapabilities.contains(.interactiveLock)
+    )
+    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 3)
+  }
+
   func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
@@ -122,6 +129,20 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertEqual(
       descriptor.compatibilityIssues(against: requirements),
       [.missingCapabilities([.currentSettingsWithError])]
+    )
+  }
+
+  func testAgentWithoutInteractiveLockIsNotCurrentContractCompatible() {
+    let requirements = makeRequirements()
+    let descriptor = makeDescriptor(
+      capabilities: requirements.requiredCapabilities.subtracting([
+        .interactiveLock,
+      ])
+    )
+
+    XCTAssertEqual(
+      descriptor.compatibilityIssues(against: requirements),
+      [.missingCapabilities([.interactiveLock])]
     )
   }
 

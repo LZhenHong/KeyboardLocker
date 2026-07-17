@@ -21,4 +21,21 @@ final class XPCClientErrorTests: XCTestCase {
     XCTAssertTrue(suggestion.contains("Open KeyboardLocker once"))
     XCTAssertTrue(suggestion.contains("Show Details"))
   }
+
+  func testMissingCapabilityExplainsAgentUpdateRecovery() throws {
+    let suggestion = try XCTUnwrap(
+      XPCClientError.missingCapability(.interactiveLock).recoverySuggestion
+    )
+
+    XCTAssertTrue(suggestion.contains("update its background agent"))
+  }
+
+  func testUnknownMutationOutcomeExplainsStateRecovery() throws {
+    let suggestion = try XCTUnwrap(
+      XPCClientError.operationOutcomeUnknown.recoverySuggestion
+    )
+
+    XCTAssertTrue(suggestion.contains("klock status"))
+    XCTAssertTrue(suggestion.contains("klock unlock"))
+  }
 }

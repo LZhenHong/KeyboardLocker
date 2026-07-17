@@ -7,12 +7,12 @@ import Service
 final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   private static let replacementPreparationDuration: TimeInterval = 30
 
-  private let descriptorResult: Result<ServiceDescriptor, Error>
-  private let settings: KeyboardLockerSettings
-  private var replacement = ReplacementTransaction()
-  private var replacementPreparationExpiration: DispatchWorkItem?
+  @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
+  @MainActor private let settings: KeyboardLockerSettings
+  @MainActor private var replacement = ReplacementTransaction()
+  @MainActor private var replacementPreparationExpiration: DispatchWorkItem?
 
-  override init() {
+  @MainActor override init() {
     let loaded = KeyboardLockerSettingsStore().load()
     descriptorResult = Result {
       try Self.makeServiceDescriptor()
@@ -26,7 +26,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Bootstrap
 
   func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void) {
-    executeOnMainThread {
+    executeOnMainActor {
       switch self.descriptorResult {
       case let .success(base):
         let descriptor = ServiceDescriptor(
@@ -55,8 +55,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Locking
 
   func lockKeyboard(reply: @escaping (Error?) -> Void) {
-    let current = settings
-    executeOnMainThread {
+    executeOnMainActor {
       guard !self.replacement.isPending else {
         reply(Self.replacementError(
           code: 1,
@@ -66,7 +65,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       }
 
       do {
-        try LockEngine.shared.lock(settings: current)
+        try LockEngine.shared.lock(settings: self.settings)
         reply(nil)
       } catch {
         reply(error)
@@ -75,14 +74,14 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   func unlockKeyboard(reply: @escaping (Error?) -> Void) {
-    executeOnMainThread {
+    executeOnMainActor {
       LockEngine.shared.unlock()
       reply(nil)
     }
   }
 
   func status(reply: @escaping (Bool, Error?) -> Void) {
-    executeOnMainThread {
+    executeOnMainActor {
       reply(LockEngine.shared.isLocked, nil)
     }
   }
@@ -92,7 +91,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     expectedAgentInstanceID: UUID,
     reply: @escaping (Data?, Error?) -> Void
   ) {
-    executeOnMainThread {
+    executeOnMainActor {
       guard case let .success(descriptor) = self.descriptorResult else {
         reply(nil, Self.replacementError(
           code: 2,
@@ -158,7 +157,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       return
     }
 
-    executeOnMainThread {
+    executeOnMainActor {
       do {
         try self.replacement.commit(ticket: candidate)
         self.replacementPreparationExpiration?.cancel()
@@ -182,7 +181,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       return
     }
 
-    executeOnMainThread {
+    executeOnMainActor {
       do {
         let data = try self.replacement.status(for: candidate).encodedForXPC()
         reply(data, nil)
@@ -204,7 +203,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       return
     }
 
-    executeOnMainThread {
+    executeOnMainActor {
       do {
         try self.replacement.cancel(ticket: candidate)
         self.replacementPreparationExpiration?.cancel()
@@ -219,13 +218,13 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Accessibility
 
   func hasAccessibilityPermission(reply: @escaping (Bool) -> Void) {
-    executeOnMainThread {
+    executeOnMainActor {
       reply(AccessibilityManager.hasPermission())
     }
   }
 
   func requestAccessibilityPermission(reply: @escaping (Error?) -> Void) {
-    executeOnMainThread {
+    executeOnMainActor {
       AccessibilityManager.requestPermission()
       reply(nil)
     }
@@ -234,7 +233,20 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Settings
 
   func currentSettings(reply: @escaping (Data?) -> Void) {
-    reply(try? settings.encodedForXPC())
+    executeOnMainActor {
+      reply(try? self.settings.encodedForXPC())
+    }
+  }
+
+  func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void) {
+    executeOnMainActor {
+      do {
+        let data = try self.settings.encodedForXPC()
+        reply(data, nil)
+      } catch {
+        reply(nil, error)
+      }
+    }
   }
 
   // MARK: - Helpers
@@ -286,7 +298,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     return replacementError(code: code, description: error.localizedDescription)
   }
 
-  private func scheduleExpiration(
+  @MainActor private func scheduleExpiration(
     for preparation: ReplacementTransaction.Preparation
   ) {
     replacementPreparationExpiration?.cancel()
@@ -306,12 +318,32 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     )
   }
 
-  private func executeOnMainThread(_ operation: @escaping () -> Void) {
+  private func executeOnMainActor(_ operation: @escaping @MainActor () -> Void) {
+    let operation = MainActorOperation(operation)
     if Thread.isMainThread {
-      operation()
+      MainActor.assumeIsolated {
+        operation()
+      }
     } else {
-      DispatchQueue.main.async(execute: operation)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          operation()
+        }
+      }
     }
+  }
+}
+
+/// Immutable transfer object used to move an Objective-C XPC reply operation onto `MainActor`.
+private final class MainActorOperation: @unchecked Sendable {
+  private let body: @MainActor () -> Void
+
+  init(_ body: @escaping @MainActor () -> Void) {
+    self.body = body
+  }
+
+  @MainActor func callAsFunction() {
+    body()
   }
 }
 

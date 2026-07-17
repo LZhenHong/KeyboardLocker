@@ -1,12 +1,14 @@
 import Foundation
 import Service
 
-/// Singleton service instance shared across all XPC connections
-/// Ensures consistent state and avoids per-connection instance issues
-private let sharedService = AgentService()
-
 /// Accepts incoming XPC connections and configures them using the factory
 private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
+  private let sharedService: AgentService
+
+  init(sharedService: AgentService) {
+    self.sharedService = sharedService
+  }
+
   func listener(
     _: NSXPCListener,
     shouldAcceptNewConnection newConnection: NSXPCConnection
@@ -19,6 +21,9 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 
 @MainActor
 private func startAgent() {
+  // One process-wide service owns the authoritative settings, replacement transaction, and
+  // LockEngine. Every accepted connection receives only a proxy to this same instance.
+  let sharedService = AgentService()
   let listener = NSXPCListener(machServiceName: SharedConstants.machServiceName)
   do {
     try listener.setConnectionCodeSigningRequirement(
@@ -28,12 +33,16 @@ private func startAgent() {
     fatalError("KeyboardLockerAgent could not configure XPC peer authentication: \(error)")
   }
 
-  let delegate = ServiceDelegate()
+  let delegate = ServiceDelegate(sharedService: sharedService)
   listener.delegate = delegate
   listener.activate()
 
   print("KeyboardLockerAgent started, listening on \(SharedConstants.machServiceName)")
-  RunLoop.main.run()
+  // `NSXPCListener.delegate` is weak. Retain both objects explicitly for the lifetime of the
+  // process instead of relying on optimizer-dependent local-variable lifetime extension.
+  withExtendedLifetime((listener, delegate)) {
+    RunLoop.main.run()
+  }
 }
 
 MainActor.assumeIsolated {

@@ -2,7 +2,7 @@ import Client
 import Foundation
 
 @MainActor
-protocol AgentControlServing {
+protocol AgentControlServing: Sendable {
   func lock() async throws
   func unlock() async throws
   func requestAccessibilityPermission() async throws
@@ -10,7 +10,7 @@ protocol AgentControlServing {
 }
 
 @MainActor
-protocol AgentReadinessServing {
+protocol AgentReadinessServing: Sendable {
   func serviceDescriptor() async throws -> ServiceDescriptor
   func status() async throws -> Bool
   func hasAccessibilityPermission() async throws -> Bool
@@ -18,7 +18,7 @@ protocol AgentReadinessServing {
 }
 
 @MainActor
-protocol AgentReplacementServing {
+protocol AgentReplacementServing: Sendable {
   func serviceDescriptor() async throws -> ServiceDescriptor
   func unlock() async throws
   func status() async throws -> Bool
@@ -33,6 +33,14 @@ protocol AgentReplacementServing {
     ticket: ServiceReplacementTicket
   ) async throws
   func resetConnection()
+}
+
+@MainActor
+protocol AgentLockStateObserving: Sendable {
+  func subscribe(
+    initialState: Bool?,
+    _ handler: @escaping (Bool) -> Void
+  ) -> ObserverToken
 }
 
 /// Complete live Client surface retained by `AppCoordinator`.
@@ -99,7 +107,17 @@ struct LiveAgentClient: AgentClientServing {
 }
 
 @MainActor
-protocol AgentReadinessLifecycleServing {
+struct LiveAgentLockStateObserver: AgentLockStateObserving {
+  func subscribe(
+    initialState: Bool?,
+    _ handler: @escaping (Bool) -> Void
+  ) -> ObserverToken {
+    LockStateSubscriber.subscribe(initialState: initialState, handler)
+  }
+}
+
+@MainActor
+protocol AgentReadinessLifecycleServing: Sendable {
   func ensureEnabled() -> AgentRegistrar.State
   func compatibility(
     of descriptor: ServiceDescriptor
@@ -107,7 +125,7 @@ protocol AgentReadinessLifecycleServing {
 }
 
 @MainActor
-protocol AgentReplacementLifecycleServing {
+protocol AgentReplacementLifecycleServing: Sendable {
   func restart() async -> AgentRegistrar.State
 }
 

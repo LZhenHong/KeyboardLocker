@@ -22,9 +22,39 @@ final class AppCoordinator {
     case updatingAgent
   }
 
-  private(set) var state: State = .checking(lastKnownLock: nil)
-  private(set) var activity: Activity?
-  private(set) var lastError: String?
+  struct Snapshot: Equatable {
+    let state: State
+    let activity: Activity?
+    let lastError: String?
+  }
+
+  private(set) var state: State = .checking(lastKnownLock: nil) {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
+  private(set) var activity: Activity? {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
+  private(set) var lastError: String? {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
+  var snapshot: Snapshot {
+    Snapshot(state: state, activity: activity, lastError: lastError)
+  }
+
+  var onSnapshotChange: ((Snapshot) -> Void)? {
+    didSet {
+      publishSnapshotIfNeeded(force: true)
+    }
+  }
 
   private var reconciliationTask: Task<Void, Never>?
   private var needsFollowUpReconciliation = false
@@ -33,8 +63,10 @@ final class AppCoordinator {
   private var stateToken: ObserverToken?
   private let client: any AgentClientServing
   private let lifecycle: any AgentLifecycleServing
+  private let lockStateObserver: any AgentLockStateObserving
   private let readinessCoordinator: AgentReadinessCoordinator
   private let replacementCoordinator: AgentReplacementCoordinator
+  private var lastPublishedSnapshot: Snapshot?
 
   private static let replacementProgressPollInterval: Duration = .seconds(3)
 
@@ -42,6 +74,7 @@ final class AppCoordinator {
     self.init(
       client: LiveAgentClient(),
       lifecycle: LiveAgentLifecycle(),
+      lockStateObserver: LiveAgentLockStateObserver(),
       initialState: .checking(lastKnownLock: nil)
     )
     reconcile()
@@ -50,10 +83,12 @@ final class AppCoordinator {
   init(
     client: any AgentClientServing,
     lifecycle: any AgentLifecycleServing,
+    lockStateObserver: any AgentLockStateObserving,
     initialState: State
   ) {
     self.client = client
     self.lifecycle = lifecycle
+    self.lockStateObserver = lockStateObserver
     readinessCoordinator = AgentReadinessCoordinator(
       client: client,
       lifecycle: lifecycle
@@ -566,13 +601,23 @@ final class AppCoordinator {
       nil
     }
 
-    stateToken = LockStateSubscriber.subscribe(initialState: initialState) { [weak self] isLocked in
+    stateToken = lockStateObserver.subscribe(initialState: initialState) { [weak self] isLocked in
       self?.receiveLockState(isLocked)
     }
   }
 
   private func stopStateObservation() {
     stateToken = nil
+  }
+
+  private func publishSnapshotIfNeeded(force: Bool = false) {
+    let currentSnapshot = snapshot
+    guard force || currentSnapshot != lastPublishedSnapshot else {
+      return
+    }
+
+    lastPublishedSnapshot = currentSnapshot
+    onSnapshotChange?(currentSnapshot)
   }
 }
 

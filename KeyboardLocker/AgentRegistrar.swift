@@ -6,6 +6,7 @@ import ServiceManagement
 /// Registers the Agent as a launchd-managed login item so `launchd` can start it on demand
 /// for any XPC client — even when this App is not running. This is the contract's
 /// "Agent Lifecycle Requirement": wrappers must not assume the Agent is already up.
+@MainActor
 enum AgentRegistrar {
   enum State: Equatable {
     case enabled

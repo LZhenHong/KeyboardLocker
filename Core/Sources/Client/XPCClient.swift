@@ -145,6 +145,17 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
+  /// One authoritative point-in-time snapshot of the global lock and its active settings.
+  public func lockStatusSnapshot() async throws -> LockStatusSnapshot {
+    let connection = try await negotiatedConnection(
+      requiring: [.lockStatusSnapshot]
+    )
+    let data: Data? = try await withProxyReturning(using: connection) { service, resume in
+      service.lockStatusSnapshot { resume($0, $1) }
+    }
+    return try LockStatusSnapshot.decodedFromXPC(data)
+  }
+
   /// Enters the Agent's fail-safe replacement drain and returns its ownership ticket.
   public func prepareForReplacement(
     unlockIfNeeded: Bool,

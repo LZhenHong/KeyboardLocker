@@ -74,6 +74,16 @@ struct LockRuntimeState: Equatable {
     isLocked = false
     startedAt = nil
   }
+
+  func statusSnapshot(capturedAt: Date) -> LockStatusSnapshot {
+    LockStatusSnapshot(
+      capturedAt: capturedAt,
+      isLocked: isLocked,
+      startedAt: startedAt,
+      autoUnlockTargetDate: autoUnlockTargetDate,
+      settings: activeSettings
+    )
+  }
 }
 
 struct UnlockGestureMatcher {
@@ -236,6 +246,11 @@ public final class LockEngine {
 
   public var isLocked: Bool {
     runtimeState.isLocked
+  }
+
+  /// One coherent Agent-owned snapshot for read-only wrappers and presentation surfaces.
+  public var statusSnapshot: LockStatusSnapshot {
+    runtimeState.statusSnapshot(capturedAt: Date())
   }
 
   var lockStartedAt: Date? {

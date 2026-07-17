@@ -43,6 +43,7 @@ Widget ──┘            ├─ Settings ownership (source of truth)
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
 | 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`XPCClient.currentSettings()`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
+| 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline 与 active settings。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
@@ -57,14 +58,16 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 - 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
 - `lock` 是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改当前设置、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。
 - interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。
+- `status()` 保留为兼容旧 wrapper 的最小布尔查询；需要呈现锁定时长、auto-unlock deadline 或 active settings 的 wrapper 使用 capability-gated `lockStatusSnapshot()`。snapshot 传输权威时间点,不传会立即过期的 duration/countdown counter。
 - 要对状态变化做出反应,订阅全局广播(`LockStateSubscriber`)。绝不从"我这次调用是否成功"去推断状态。
 
 ## 状态同步
 
 因为状态只存在于唯一一处(Agent),wrapper 保持同步的方式就是始终以它为准。wrapper 有两种形态,读取状态的方式不同:
 
-- **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
-- **长命的状态反映面** —— 后续恢复的 App UI、未来的 Widgets。它们持续显示状态,因此必须既**订阅**(`LockStateSubscriber`),又在**变为可见 / 启动时校准**(拉取 `status()`)—— 因为进程被挂起期间可能错过某次广播。`LockStateSubscriber` 会先安装两个 observer,再立即做一次权威初始查询;只要初始查询成功或后续 signal 到达,snapshot 与 subscription 之间的变化就会被校准。调用方仍需在重新可见时做完整 readiness reconciliation。
+- **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()` 或 `lockStatusSnapshot()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
+- **长命的状态反映面** —— menu-bar App 等持续运行的 UI。它们必须既接收状态变化 signal,又在**变为可见 / 启动时校准** —— 因为进程被挂起期间可能错过某次广播。只显示布尔状态的现有 App 可以继续使用 `LockStateSubscriber`；需要起点、deadline 与 active settings 的界面在 signal 或重新可见时重新拉取 `lockStatusSnapshot()`。通知与本地缓存都不是真相源。
+- **系统托管的 snapshot 面** —— Widget、Control 等由系统按需启动的 provider。它们不假定进程常驻,也不安装长命 subscription；每次生成 timeline/value 或处理 action 时读取 `lockStatusSnapshot()`,把本地值只当 presentation cache。
 
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
 
@@ -79,7 +82,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 3. **不持有独立状态。** 没有私有 `UserDefaults`,没有本地锁标志。设置和锁状态都从核心读取。
 4. **不向其他进程发出任何东西。** 只有 Agent 广播状态。
 5. **Agent 不可达时诚实降级。** 每个 wrapper 都必须处理"核心不可达"(见下方 Agent 生命周期要求),而不是假定调用成功。
-6. **按自身形态读取状态。** 判断这个 wrapper 属于"状态同步"里的哪一种形态:一次性面直接调 `status()`,**不加**任何通知处理;长命 UI 通过 `LockStateSubscriber` 订阅,*并且*在变为可见时校准。
+6. **按自身形态读取状态。** 判断这个 wrapper 属于"状态同步"里的哪一种形态:一次性面直接 query,**不加**任何通知处理;长命 UI 订阅 signal 并重新 query；系统托管的 snapshot 面则在每次 provider/action execution 中读取 `lockStatusSnapshot()`。
 
 ## Agent 生命周期要求
 

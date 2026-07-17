@@ -63,6 +63,10 @@ public protocol KeyboardLockerServiceProtocol {
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 
+  /// Returns one authoritative point-in-time lock snapshot as JSON-encoded
+  /// `LockStatusSnapshot`. This is additive; legacy clients continue using `status`.
+  func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void)
+
   /// Atomically enters a short-lived fail-safe drain and optionally unlocks before returning its
   /// exclusive ownership ticket.
   func prepareForReplacement(

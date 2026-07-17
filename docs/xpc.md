@@ -100,6 +100,7 @@ public protocol KeyboardLockerServiceProtocol {
   )
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
+  func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void)
   func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID,
@@ -131,7 +132,7 @@ public protocol KeyboardLockerServiceProtocol {
 
 这和 HTTP 的 client/server 共同依赖同一份 OpenAPI schema 类似：共享的是消息契约，不是业务实例。
 
-协议使用 `@objc`，因为 `NSXPCInterface` 基于 Objective-C runtime 描述方法。跨边界参数需要是 XPC 可序列化类型；`ServiceDescriptor` 和设置模型都是 Swift `Codable` struct，所以先编码成有大小上限的 JSON `Data`，到另一侧再解码，而不是把 Swift struct 直接放进 protocol。
+协议使用 `@objc`，因为 `NSXPCInterface` 基于 Objective-C runtime 描述方法。跨边界参数需要是 XPC 可序列化类型；`ServiceDescriptor`、`LockStatusSnapshot` 和设置模型都是 Swift `Codable` struct，所以先编码成有大小上限的 JSON `Data`，到另一侧再解码，而不是把 Swift struct 直接放进 protocol。
 
 ## Agent 如何被系统找到
 
@@ -516,6 +517,7 @@ sequenceDiagram
 | `lockKeyboardInteractively` | `lockInteractively()` | `LockEngine` | 原子返回本次请求是否创建全局锁；仅 acquired 的新锁临时接受 `Ctrl+C` 作为额外解锁手势 |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
+| `lockStatusSnapshot` | `lockStatusSnapshot()` | `LockEngine` / `AgentService` | capability-gated query；在一个 Agent execution turn 中读取布尔状态、capture time、锁定起点、auto-unlock deadline 与 active settings，并以有大小上限的 format-1 JSON payload 返回 |
 | `prepareForReplacement` | `prepareForReplacement(unlockIfNeeded:expectedAgentInstanceID:)` | `AgentService` | Agent 原子校验 expected instance,安装短期 prepared drain,可在同一 execution turn 解锁,返回同 generation ticket |
 | `commitReplacement` | `commitReplacement(ticket:)` | `AgentService` | 在提交 unregister 前把 prepared drain 幂等切换为不可过期的 committed drain |
 | `replacementStatus` | `replacementStatus(ticket:)` | `AgentService` | 查询 exact ticket 的 inactive/prepared/committed phase,恢复丢失的 commit reply |

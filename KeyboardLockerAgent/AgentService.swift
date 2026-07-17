@@ -91,6 +91,17 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
+  func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void) {
+    executeOnMainActor {
+      do {
+        let data = try LockEngine.shared.statusSnapshot.encodedForXPC()
+        reply(data, nil)
+      } catch {
+        reply(nil, error)
+      }
+    }
+  }
+
   func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID,

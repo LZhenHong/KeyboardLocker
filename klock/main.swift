@@ -43,9 +43,13 @@ enum KlockCLI {
       exit(ExitCode.error)
     }
 
-    let hotkey = await (try? XPCClient.shared.currentSettings())?.unlockHotkey.displayString
-      ?? KeyboardLockerSettings.default.unlockHotkey.displayString
-    print("Locked. Press \(hotkey) to unlock.")
+    do {
+      let hotkey = try await XPCClient.shared.currentSettings().unlockHotkey.displayString
+      print("Locked. Press \(hotkey) to unlock.")
+    } catch {
+      print("Locked. Run `klock unlock` to unlock.")
+      printWarning("Could not read the configured unlock shortcut: \(error.localizedDescription)")
+    }
 
     do {
       try await XPCClient.shared.waitUntilUnlocked()
@@ -94,6 +98,10 @@ enum KlockCLI {
 
   private static func printError(_ message: String) {
     FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
+  }
+
+  private static func printWarning(_ message: String) {
+    FileHandle.standardError.write(Data("Warning: \(message)\n".utf8))
   }
 
   private enum ExitCode {

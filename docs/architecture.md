@@ -42,7 +42,7 @@ Widget ──┘            ├─ Settings ownership (source of truth)
 | 关注点 | 归属 | 规则 |
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
-| 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`currentSettings`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。 |
+| 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`XPCClient.currentSettings()`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
@@ -55,6 +55,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 - 任何 wrapper 都可以锁;任何 wrapper 都可以解锁。CLI 发起的锁,App 可以解开,反之亦然。
 - 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
+- `lock` 是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改当前设置、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。
 - 要对状态变化做出反应,订阅全局广播(`LockStateSubscriber`)。绝不从"我这次调用是否成功"去推断状态。
 
 ## 状态同步
@@ -105,6 +106,7 @@ Agent 更新必须遵守以下边界:
 以下是本契约要防范的具体失败模式:
 
 - wrapper 自己持有 `KeyboardLockerSettingsStore` / `UserDefaults` → 设置与核心漂移(Agent 会基于过期或默认设置行动)。
+- wrapper 在设置 payload 缺失或损坏时回退 `.default` → wrapper 凭空制造第二份“当前设置”,展示的解锁方式可能与 Agent 实际执行不一致。
 - 引入"会话"抽象、暗示客户端拥有锁 → 造成"某个面无法解开另一个面锁上的锁"这种迷惑行为。
 - 锁/设置逻辑在 App 与 CLI 之间重复 → 正是 DRY 规则要禁止的维护爆炸。
 - wrapper 为了"直接调引擎"而 import `Service` → 绕过了单核。

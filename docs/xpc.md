@@ -117,6 +117,7 @@ public protocol KeyboardLockerServiceProtocol {
   func hasAccessibilityPermission(reply: @escaping (Bool) -> Void)
   func requestAccessibilityPermission(reply: @escaping (Error?) -> Void)
   func currentSettings(reply: @escaping (Data?) -> Void)
+  func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void)
 }
 ```
 
@@ -179,7 +180,7 @@ KeyboardLocker.app
 
 `agentBundleIdentifier`、version 和 build 是远端自报的兼容性信息,不是安全凭证。它们只有在 connection 已完成 peer authentication 后才有意义；不能用 descriptor 替代代码签名 requirement。
 
-descriptor/capability grant 还必须绑定到读取它的 **同一条 client-side connection generation**。`XPCClient` 的 capability-gated API 会先在一条具体 connection 上读取 descriptor，再用同一个 `NSXPCConnection` 发送 feature selector；若这条 connection 已失效，调用失败并重新协商，不能把 Agent A 的 capability 缓存用于透明重连后的 Agent B。由于 named connection object 在 interruption 后仍可能面对新的远端进程，replacement request 还把 expected `agentInstanceID` 放进 wire message：Agent 在安装 barrier 前原子比较自己的 instance ID，Client 再校验返回 ticket，形成两侧 generation fence。
+descriptor/capability grant 还必须绑定到读取它的 **同一条 client-side connection generation**。`XPCClient` 的 capability-gated API 会先在一条具体 connection 上读取 descriptor，再用同一个 `NSXPCConnection` 发送 feature selector；若这条 connection interruption/invalidation，Client 会 invalidate 该 object，后续调用以新 connection 重新协商，不能把 Agent A 的 capability grant 用于 Agent B。replacement request 还把 expected `agentInstanceID` 放进 wire message：Agent 在安装 barrier 前原子比较自己的 instance ID，Client 再校验返回 ticket，形成两侧 generation fence。
 
 App 的 readiness 顺序是：
 
@@ -445,7 +446,7 @@ Foundation 当前公开的调度保证包括：
 - 发给 `exportedObject` 的调用会被串行投递到 non-main queue；业务代码不能假设自己运行在 main thread。
 - 不同 wrapper 对应不同 Agent-side connection，因此不要把“单 connection 串行”误解成“整个 Agent 全局串行”。
 
-这解释了 `AgentService.executeOnMainThread` 的必要性：多个 client connection 最终都把 `LockEngine` 操作派发到 Agent main thread，event tap、CFRunLoop 和 timer 的生命周期因此收敛到同一执行上下文。`LockEngine` 内部的 `OSAllocatedUnfairLock` 继续保护可能跨线程读取的状态。
+这解释了 `AgentService.executeOnMainActor` 的必要性：nonisolated XPC adapter 把多个 client connection 的调用切到 `MainActor`；Agent 的 settings、replacement transaction 与 `LockEngine` 状态都受编译器检查的同一隔离域约束，event tap、CFRunLoop 和 timer 的生命周期也收敛到这里。
 
 ### Interruption、invalidation 与项目自己的 timeout
 
@@ -453,7 +454,7 @@ Foundation 当前公开的调度保证包括：
 
 | 事件 | Foundation/XPC 含义 | 当前项目处理 |
 |---|---|---|
-| interruption | 远端进程退出或 crash；named service 之后可能重新建立 | 清除缓存 connection，让下次调用重新创建 |
+| interruption | 远端进程退出或 crash；同一个 named connection object 之后可能透明附着到新进程 | 清除缓存并主动 invalidate 该 object；下次调用创建新 connection 并重新握手 |
 | invalidation | connection 无法建立或已永久结束；不能再收发消息 | 清除缓存 connection，后续重建 |
 | proxy error | 当前 method 无法取得 reply | 恢复对应 continuation 并抛错 |
 | 5 秒 timeout | 项目自己加的上层 deadline，不是 Foundation 自动提供 | 让本 connection 失效；mutation 再查询权威状态 |
@@ -480,7 +481,7 @@ sequenceDiagram
   Listener->>Peer: validate, configure, and accept
   ClientConnection->>Peer: lockKeyboard(reply:)
   Peer->>Adapter: dispatch to exported object
-  Adapter->>Engine: lock(settings:) on main thread
+  Adapter->>Engine: lock(settings:) on MainActor
   Engine-->>Adapter: success or domain error
   Adapter-->>Peer: reply(error)
   Peer-->>ClientConnection: reply message
@@ -497,7 +498,7 @@ sequenceDiagram
 5. Agent Listener 的 requirement 在 delegate 暴露任何方法前校验调用方身份；Client requirement 同时拒绝伪造的 Agent。
 6. `XPCServerConnection` 为 Agent-side connection 设置 protocol，并把同一个 `AgentService` 实例设置为 `exportedObject`。
 7. 对 remote proxy 的 `lockKeyboard(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
-8. `AgentService` 把引擎操作切到主线程，因为 event tap 和 CFRunLoop 生命周期在这里维护。
+8. `AgentService` 把领域操作切到 `MainActor`，Agent 可变状态、event tap 和 CFRunLoop 生命周期都在这里维护。
 9. `LockEngine.shared.lock(settings:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap。
 10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
 
@@ -508,7 +509,7 @@ sequenceDiagram
 | Wire method | Client API | 权威执行方 | 语义 |
 |---|---|---|---|
 | `serviceDescriptor` | `serviceDescriptor()` | `AgentService` | bootstrap query；返回 protocol、capability、bundled metadata 和 process instance ID |
-| `lockKeyboard` | `lock()` | `LockEngine` | 幂等地进入全局 locked 状态；已锁时重新应用设置 |
+| `lockKeyboard` | `lock()` | `LockEngine` | 严格幂等地进入全局 locked 状态；已锁时直接成功且不修改设置、锁定起点或 auto-unlock deadline |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
 | `prepareForReplacement` | `prepareForReplacement(unlockIfNeeded:expectedAgentInstanceID:)` | `AgentService` | Agent 原子校验 expected instance,安装短期 prepared drain,可在同一 execution turn 解锁,返回同 generation ticket |
@@ -517,7 +518,8 @@ sequenceDiagram
 | `cancelReplacementPreparation` | `cancelReplacementPreparation(ticket:)` | `AgentService` | 仅在 commit 前由 ticket owner 解除 preparation；committed drain 拒绝 cancel |
 | `hasAccessibilityPermission` | `hasAccessibilityPermission()` | `AccessibilityManager` | 查询 **Agent 进程** 当前是否受信任 |
 | `requestAccessibilityPermission` | `requestAccessibilityPermission()` | `AccessibilityManager` | 请求系统异步显示 Agent 的授权 prompt；reply 不代表用户已授权 |
-| `currentSettings` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 持有的设置快照 |
+| `currentSettings` | protocol 1.1 legacy Client only | `AgentService` | 为既有 selector ABI 保留；编码失败只能返回 `nil` |
+| `currentSettingsWithError` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 持有的设置快照；缺失、损坏、过大或编码失败均显式抛错，不在 wrapper 侧回退默认值 |
 
 Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使用 Accessibility API 的进程身份。App 获得 Accessibility 权限并不能让 Agent 创建 event tap。
 
@@ -526,7 +528,7 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 `XPCClient` 会缓存一条 connection，这是减少重复建连的实现优化，不是业务 session：
 
 - App 和 CLI 各有自己的 connection。
-- 某条 connection interruption/invalidation 后，只清除 Client 侧缓存；下一次调用会重新连接。
+- 某条 connection interruption 后，Client 会将其 invalidate 并清除缓存；invalidation 同样清除缓存。下一次调用创建新 connection 并重新握手。
 - App 退出、CLI 退出或 connection 断开，不会触发 unlock。
 - `klock lock` 当前会继续运行以打印后续的 `Unlocked.`，但它只是观察者；强制结束 CLI 不会解除锁。等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
 - Agent 退出则不同：event tap 属于 Agent 进程，进程退出会由系统释放它，内存中的 locked 状态也会消失。

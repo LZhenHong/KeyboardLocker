@@ -111,6 +111,13 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 4)
   }
 
+  func testCurrentContractRequiresFocusFilterLockSelector() {
+    XCTAssertTrue(
+      ServiceContract.requiredCapabilities.contains(.focusFilterLock)
+    )
+    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 5)
+  }
+
   func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
@@ -164,6 +171,20 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertEqual(
       descriptor.compatibilityIssues(against: requirements),
       [.missingCapabilities([.lockStatusSnapshot])]
+    )
+  }
+
+  func testAgentWithoutFocusFilterLockIsNotCurrentContractCompatible() {
+    let requirements = makeRequirements()
+    let descriptor = makeDescriptor(
+      capabilities: requirements.requiredCapabilities.subtracting([
+        .focusFilterLock,
+      ])
+    )
+
+    XCTAssertEqual(
+      descriptor.compatibilityIssues(against: requirements),
+      [.missingCapabilities([.focusFilterLock])]
     )
   }
 

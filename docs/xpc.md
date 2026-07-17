@@ -509,7 +509,7 @@ sequenceDiagram
 6. `XPCServerConnection` 为 Agent-side connection 设置 protocol，并把同一个 `AgentService` 实例设置为 `exportedObject`。
 7. 对 remote proxy 的 legacy `lockKeyboard(reply:)` 或 additive `lockKeyboardInteractively(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
 8. `AgentService` 把领域操作切到 `MainActor`，Agent 可变状态、event tap 和 CFRunLoop 生命周期都在这里维护。
-9. `LockEngine.shared.lock(settings:allowsControlCUnlock:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap；strict duplicate 在创建资源前直接返回 already locked。
+9. `LockEngine.shared.lock(settings:allowsControlCUnlock:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap；physical duplicate 在创建资源前直接返回 already locked,且只可能清除 Focus 的内部 release marker。
 10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
 
 `AgentService` 是 executable target 中的 adapter：它把 wire protocol 翻译成 `Service` 模块里的领域调用。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift`。
@@ -521,6 +521,7 @@ sequenceDiagram
 | `serviceDescriptor` | `serviceDescriptor()` | `AgentService` | bootstrap query；返回 protocol、capability、bundled metadata 和 process instance ID |
 | `lockKeyboard` | `lock()` | `LockEngine` | 严格幂等地进入全局 locked 状态；已锁时直接成功且不修改设置、锁定起点或 auto-unlock deadline |
 | `lockKeyboardInteractively` | `lockInteractively()` | `LockEngine` | 原子返回本次请求是否创建全局锁；仅 acquired 的新锁临时接受 `Ctrl+C` 作为额外解锁手势 |
+| `setFocusFilterLockEnabled` | `setFocusFilterLockEnabled(_:)` | `LockEngine` | capability-gated desired state；启用只认领自己新建的 lock generation,停用只条件性释放仍属 Focus 的同一代 |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
 | `lockStatusSnapshot` | `lockStatusSnapshot()` | `LockEngine` / `AgentService` | capability-gated query；在一个 Agent execution turn 中读取布尔状态、capture time、锁定起点、auto-unlock deadline 与 active settings，并以有大小上限的 format-1 JSON payload 返回 |
@@ -562,8 +563,9 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 
 对 mutation 而言，timeout 不等于“Agent 没执行”。请求可能已经到达 Agent，只是 reply 没有及时返回。因此：
 
-- `lock()` timeout 后通过一条新 connection 查询 `status()`；如果已经 locked，就按成功处理。
+- `lock()` timeout 后通过一条新 connection 重发一次幂等 desired-lock,并要求收到 reply；仅查询 `status()` 不能证明 Focus persistence takeover 已经发生。
 - `unlock()` 对称地确认是否已经 unlocked。
+- `setFocusFilterLockEnabled(_:)` timeout 后同样在 fresh connection 上重新协商 capability 并重发同一 desired state；布尔状态无法证明当前 generation 是否由 Focus 创建。
 - 无法确认最终状态时抛出 `operationOutcomeUnknown`，而不是谎称操作一定失败。
 - Accessibility prompt 请求 timeout 同样只表示最终结果未知；不能据此断言 prompt 没有发出。
 

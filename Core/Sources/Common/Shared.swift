@@ -68,6 +68,14 @@ public protocol KeyboardLockerServiceProtocol {
     reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
   )
 
+  /// Applies the Focus Filter's desired state. Disabling releases only a lock generation that
+  /// the Focus Filter itself created; it never unlocks a pre-existing or subsequently claimed
+  /// global lock.
+  func setFocusFilterLockEnabled(
+    _ enabled: Bool,
+    reply: @escaping (Error?) -> Void
+  )
+
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 

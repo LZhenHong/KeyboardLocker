@@ -99,6 +99,67 @@ final class LockRuntimeStateTests: XCTestCase {
     XCTAssertEqual(state.startedAt, secondStart)
   }
 
+  func testManualDesiredLockTakesOverFocusOwnershipWithoutChangingRuntimeState() throws {
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 60),
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
+    )
+    let startedAt = Date(timeIntervalSinceReferenceDate: 1000)
+    let deadline = startedAt.addingTimeInterval(60)
+    var state = LockRuntimeState()
+
+    XCTAssertEqual(
+      state.begin(
+        settings: settings,
+        allowsControlCUnlock: false,
+        at: startedAt
+      ),
+      .acquired
+    )
+    state.markCurrentLockAsFocusOwned()
+    state.setAutoUnlockTargetDate(deadline)
+    let generation = try XCTUnwrap(state.lockGeneration)
+
+    state.takeOverFocusOwnedLock()
+
+    XCTAssertNil(state.focusOwnedLockGeneration)
+    XCTAssertEqual(state.lockGeneration, generation)
+    XCTAssertEqual(state.activeSettings, settings)
+    XCTAssertFalse(state.allowsControlCUnlock)
+    XCTAssertEqual(state.startedAt, startedAt)
+    XCTAssertEqual(state.autoUnlockTargetDate, deadline)
+    XCTAssertTrue(state.isLocked)
+  }
+
+  func testEndingFocusOwnedLockClearsOwnershipAndNextLockUsesNewGeneration() throws {
+    let firstStart = Date(timeIntervalSinceReferenceDate: 1000)
+    var state = LockRuntimeState()
+
+    _ = state.begin(
+      settings: .default,
+      allowsControlCUnlock: false,
+      at: firstStart
+    )
+    state.markCurrentLockAsFocusOwned()
+    let firstGeneration = try XCTUnwrap(state.lockGeneration)
+
+    XCTAssertEqual(state.focusOwnedLockGeneration, firstGeneration)
+
+    state.end()
+
+    XCTAssertNil(state.focusOwnedLockGeneration)
+    XCTAssertNil(state.lockGeneration)
+
+    _ = state.begin(
+      settings: .default,
+      allowsControlCUnlock: false,
+      at: firstStart.addingTimeInterval(1)
+    )
+
+    XCTAssertNotEqual(state.lockGeneration, firstGeneration)
+    XCTAssertNil(state.focusOwnedLockGeneration)
+  }
+
   func testSnapshotCapturesOneCoherentRuntimeState() {
     let settings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),

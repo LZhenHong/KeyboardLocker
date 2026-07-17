@@ -44,6 +44,7 @@ public struct ServiceCapability: Codable, Equatable, Hashable, RawRepresentable,
   public static let committedReplacementDrain = Self(
     rawValue: "committed-replacement-drain"
   )
+  public static let focusFilterLock = Self(rawValue: "focus-filter-lock")
   public static let interactiveLock = Self(rawValue: "interactive-lock")
   public static let lockControl = Self(rawValue: "lock-control")
   public static let lockStatusSnapshot = Self(rawValue: "lock-status-snapshot")
@@ -76,7 +77,7 @@ public struct ServiceReplacementPhase: Codable, Equatable, RawRepresentable, Sen
 
 /// Current bootstrap contract advertised by the bundled Agent.
 public enum ServiceContract {
-  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 4)
+  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 5)
 
   public static let requiredCapabilities: Set<ServiceCapability> = [
     .accessibilityPrompt,
@@ -84,6 +85,7 @@ public enum ServiceContract {
     .committedReplacementDrain,
     .currentSettings,
     .currentSettingsWithError,
+    .focusFilterLock,
     .interactiveLock,
     .lockControl,
     .lockStatusSnapshot,

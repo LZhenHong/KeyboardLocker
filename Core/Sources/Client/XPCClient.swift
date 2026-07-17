@@ -96,11 +96,23 @@ public final class XPCClient: @unchecked Sendable {
 
   public func lock() async throws {
     do {
-      try await withProxy { service, resume in
-        service.lockKeyboard { resume($0) }
-      }
+      try await lockOnce()
     } catch XPCClientError.timedOut {
-      try await confirmTimedOutMutation(expectedIsLocked: true)
+      // A general desired-lock can take persistence over from a Focus-created lock even when the
+      // physical state is already locked. Status cannot prove that this semantic mutation ran,
+      // so retry the idempotent request and require a reply from a fresh connection.
+      resetConnection()
+      do {
+        try await lockOnce()
+      } catch XPCClientError.timedOut {
+        throw XPCClientError.operationOutcomeUnknown
+      }
+    }
+  }
+
+  private func lockOnce() async throws {
+    try await withProxy { service, resume in
+      service.lockKeyboard { resume($0) }
     }
   }
 
@@ -125,6 +137,31 @@ public final class XPCClient: @unchecked Sendable {
       // Status alone cannot recover whether this request created a lock or observed an existing
       // one, so a lost mutation reply must remain explicitly unknown.
       throw XPCClientError.operationOutcomeUnknown
+    }
+  }
+
+  /// Applies the system Focus Filter state through an ownership-aware Agent operation.
+  public func setFocusFilterLockEnabled(_ enabled: Bool) async throws {
+    do {
+      try await setFocusFilterLockEnabledOnce(enabled)
+    } catch XPCClientError.timedOut {
+      // Both enable and disable are idempotent, but status alone cannot reveal whether Focus owns
+      // the current generation. Re-negotiate and require one confirmed reply.
+      resetConnection()
+      do {
+        try await setFocusFilterLockEnabledOnce(enabled)
+      } catch XPCClientError.timedOut {
+        throw XPCClientError.operationOutcomeUnknown
+      }
+    }
+  }
+
+  private func setFocusFilterLockEnabledOnce(_ enabled: Bool) async throws {
+    let connection = try await negotiatedConnection(
+      requiring: [.focusFilterLock]
+    )
+    try await withProxy(using: connection) { service, resume in
+      service.setFocusFilterLockEnabled(enabled, reply: resume)
     }
   }
 

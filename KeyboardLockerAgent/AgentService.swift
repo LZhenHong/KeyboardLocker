@@ -78,6 +78,26 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
+  func setFocusFilterLockEnabled(
+    _ enabled: Bool,
+    reply: @escaping (Error?) -> Void
+  ) {
+    executeOnMainActor {
+      do {
+        if enabled {
+          try self.ensureAcceptingLockRequests()
+        }
+        try LockEngine.shared.setFocusFilterLockEnabled(
+          enabled,
+          settings: self.settings
+        )
+        reply(nil)
+      } catch {
+        reply(error)
+      }
+    }
+  }
+
   func unlockKeyboard(reply: @escaping (Error?) -> Void) {
     executeOnMainActor {
       LockEngine.shared.unlock()
@@ -270,17 +290,21 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   @MainActor private func performLock(
     allowsControlCUnlock: Bool
   ) throws -> LockRequestOutcome {
+    try ensureAcceptingLockRequests()
+
+    return try LockEngine.shared.lock(
+      settings: settings,
+      allowsControlCUnlock: allowsControlCUnlock
+    )
+  }
+
+  @MainActor private func ensureAcceptingLockRequests() throws {
     guard !replacement.isPending else {
       throw Self.replacementError(
         code: 1,
         description: "The agent is preparing to be replaced and is not accepting new lock requests."
       )
     }
-
-    return try LockEngine.shared.lock(
-      settings: settings,
-      allowsControlCUnlock: allowsControlCUnlock
-    )
   }
 
   private static func makeServiceDescriptor(bundle: Bundle = .main) throws -> ServiceDescriptor {

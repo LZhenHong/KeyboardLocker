@@ -40,8 +40,12 @@ struct LockRuntimeState: Equatable {
   private(set) var activeSettings: KeyboardLockerSettings = .default
   private(set) var allowsControlCUnlock = false
   private(set) var autoUnlockTargetDate: Date?
+  private(set) var focusOwnedLockGeneration: UInt64?
   private(set) var isLocked = false
+  private(set) var lockGeneration: UInt64?
   private(set) var startedAt: Date?
+
+  private var nextLockGeneration: UInt64 = 0
 
   mutating func begin(
     settings: KeyboardLockerSettings,
@@ -55,9 +59,22 @@ struct LockRuntimeState: Equatable {
     activeSettings = settings
     self.allowsControlCUnlock = allowsControlCUnlock
     autoUnlockTargetDate = nil
+    focusOwnedLockGeneration = nil
     isLocked = true
+    nextLockGeneration &+= 1
+    lockGeneration = nextLockGeneration
     startedAt = date
     return .acquired
+  }
+
+  mutating func markCurrentLockAsFocusOwned() {
+    focusOwnedLockGeneration = lockGeneration
+  }
+
+  /// Converts a Focus-created lock into an ordinary global desired lock without changing any
+  /// physical runtime state. A later Focus deactivation must no longer release it.
+  mutating func takeOverFocusOwnedLock() {
+    focusOwnedLockGeneration = nil
   }
 
   mutating func updateSettings(_ settings: KeyboardLockerSettings) {
@@ -71,7 +88,9 @@ struct LockRuntimeState: Equatable {
   mutating func end() {
     allowsControlCUnlock = false
     autoUnlockTargetDate = nil
+    focusOwnedLockGeneration = nil
     isLocked = false
+    lockGeneration = nil
     startedAt = nil
   }
 
@@ -244,6 +263,11 @@ public final class LockEngine {
   private var autoUnlockTimer: DispatchSourceTimer?
   private var runtimeState = LockRuntimeState()
 
+  private enum LockRequestSource {
+    case focusFilter
+    case general
+  }
+
   public var isLocked: Bool {
     runtimeState.isLocked
   }
@@ -268,9 +292,42 @@ public final class LockEngine {
     settings: KeyboardLockerSettings = .default,
     allowsControlCUnlock: Bool = false
   ) throws -> LockRequestOutcome {
-    // A duplicate request is a strict no-op. In particular, it must not extend the authoritative
-    // auto-unlock deadline merely because another wrapper repeated the same global intent.
+    try acquireLock(
+      settings: settings,
+      allowsControlCUnlock: allowsControlCUnlock,
+      source: .general
+    )
+  }
+
+  /// Applies the Focus Filter's desired state without giving Focus ownership of a pre-existing
+  /// global lock. Deactivation releases only the exact lock generation created by Focus.
+  public func setFocusFilterLockEnabled(
+    _ enabled: Bool,
+    settings: KeyboardLockerSettings = .default
+  ) throws {
+    if enabled {
+      _ = try acquireLock(
+        settings: settings,
+        allowsControlCUnlock: false,
+        source: .focusFilter
+      )
+    } else if let generation = runtimeState.focusOwnedLockGeneration {
+      unlock(ifLockGeneration: generation)
+    }
+  }
+
+  private func acquireLock(
+    settings: KeyboardLockerSettings,
+    allowsControlCUnlock: Bool,
+    source: LockRequestSource
+  ) throws -> LockRequestOutcome {
+    // A duplicate never mutates the physical lock, its settings, gestures, start time, or
+    // deadline. An explicit non-Focus desired-lock does take over persistence from Focus so a
+    // later Focus deactivation cannot undo the user's newer intent.
     if runtimeState.isLocked {
+      if source == .general {
+        runtimeState.takeOverFocusOwnedLock()
+      }
       return .alreadyLocked
     }
 
@@ -289,6 +346,9 @@ public final class LockEngine {
     guard outcome == .acquired else {
       teardownEventTap()
       return outcome
+    }
+    if source == .focusFilter {
+      runtimeState.markCurrentLockAsFocusOwned()
     }
     markLocked()
     return outcome
@@ -379,10 +439,14 @@ public final class LockEngine {
 
     runtimeState.setAutoUnlockTargetDate(schedule.deadline)
 
+    guard let lockGeneration = runtimeState.lockGeneration else {
+      return
+    }
+
     let timer = DispatchSource.makeTimerSource(queue: .main)
     timer.schedule(deadline: .now() + schedule.delay)
     timer.setEventHandler { [weak self] in
-      self?.unlock()
+      self?.unlock(ifLockGeneration: lockGeneration)
     }
     timer.resume()
     autoUnlockTimer = timer
@@ -402,6 +466,13 @@ public final class LockEngine {
     cancelAutoUnlockTimer()
     teardownEventTap()
     resetLockState()
+  }
+
+  private func unlock(ifLockGeneration generation: UInt64) {
+    guard runtimeState.lockGeneration == generation else {
+      return
+    }
+    unlock()
   }
 
   private func teardownEventTap() {
@@ -467,8 +538,12 @@ public final class LockEngine {
     }
 
     if shouldTriggerUnlock(for: type, event: event) {
+      let lockGeneration = runtimeState.lockGeneration
       DispatchQueue.main.async { [weak self] in
-        self?.unlock()
+        guard let lockGeneration else {
+          return
+        }
+        self?.unlock(ifLockGeneration: lockGeneration)
       }
     }
 

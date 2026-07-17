@@ -49,6 +49,7 @@
 - `AppleScript/KeyboardLockerScriptCommands.swift` / `KeyboardLocker.sdef`:向 Cocoa Scripting 暴露 `lock keyboard`、`unlock keyboard` 与 `get keyboard lock status`。命令先 suspend 当前 Apple event，异步调用同一个 `AgentLockActionServing`，再以结果或显式错误 resume；它们不持有本地状态，也不把 XPC 不可达猜成 unlocked。
 - `Automation/ExternalAutomationController.swift`:Services 与 URL event 共用的串行 one-shot executor。每个 action 只调用 `AgentLockActionServing` 的对应 desired-state/query method；跨多次 submit 也保持接收顺序,并把 authoritative status 或合并后的 failure 交给 presentation boundary。
 - `Automation/KeyboardLockerServicesProvider.swift`:将 `NSServices` 的三个 Objective-C selector 适配成 `.lock` / `.unlock` / `.status`。Services handler 只同步受理,不把短生命周期的 error pointer 或 pasteboard 捕获进异步 Task,也不阻塞 AppKit 线程等待 XPC。
+- `Automation/KeyboardLockerURLRoute.swift`:只把 `keyboardlocker://lock|unlock|status` 的严格 canonical URL 映射为 action。它拒绝额外 URL component,不回显原始输入,并把多个 URL 转成保序的 action/failure request；custom scheme 不声称 caller authentication。
 - `Automation/AppKitExternalAutomationPresenter.swift`:主 App 内统一呈现外部 automation 的 status 与异步 failure；显示 alert 前激活 accessory App,避免提示留在后台。
 - `AgentCoordinationServices.swift`:App 内部的可注入依赖边界。live adapter 把 `XPCClient`、`LockStateSubscriber` 与 `AgentRegistrar` 暴露为按用途拆分的最小 protocol；`AgentLockActionServing` 只提供 one-shot wrapper 所需的 `lock` / `unlock` / `status`,协调器和系统 action 都无需依赖无关 Client surface。
 - `AgentReadinessCoordinator.swift`:一次性收集 registration、descriptor handshake/重连、兼容性、replacement phase、Accessibility 与权威锁状态,返回不含 UI 的 domain outcome。
@@ -104,7 +105,7 @@
 
 `klock lock` 只有在本次请求原子创建全局锁时才进入等待，并提示 `Ctrl+C`。这个按键由 Agent event tap 识别后直接解锁，不依赖 Terminal 先收到被锁定输入并生成 `SIGINT`。若 Agent 已被 App 或其他 CLI 锁定，命令会报告 `Already locked. This command did not create a new lock.` 后成功退出，不改变既有锁。自动化脚本应使用 `klock lock --no-wait`：它确认全局状态为 locked 后立即退出，不启用临时 `Ctrl+C` 手势，也不等待 unlock。
 
-Shortcuts、Focus Filter、Services、AppleScript、CLI、Widget 与 Control 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
+Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget 与 Control 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
 
 ### Homebrew Cask 发布计划（尚未实现）
 

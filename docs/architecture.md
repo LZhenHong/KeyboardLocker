@@ -1,6 +1,6 @@
 # 核心架构契约
 
-**这是项目的根本规则。每一个功能面 —— App、`klock`、Shortcuts、AppleScript、Widgets 以及后续新增的任何形态 —— 都必须遵守它。当某个改动与本契约冲突时,契约优先;修改的是那个改动,而不是契约。**
+**这是项目的根本规则。每一个功能面 —— App、`klock`、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets 以及后续新增的任何形态 —— 都必须遵守它。当某个改动与本契约冲突时,契约优先;修改的是那个改动,而不是契约。**
 
 ## 为什么是单核(从旧方案学到的)
 
@@ -19,7 +19,7 @@
 
 ## 单核原则
 
-**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、AppleScript、Widgets、扩展)都是**薄 wrapper**,职责仅限两件事:
+**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、扩展)都是**薄 wrapper**,职责仅限两件事:
 
 1. 把用户意图翻译成对 Agent 的一次 XPC 调用;
 2. 通过通知观察全局状态。
@@ -27,12 +27,14 @@
 wrapper 永远不拥有行为或状态。如果两个 wrapper 看起来需要同一段逻辑,那段逻辑属于核心,而不该复制进每个 wrapper。
 
 ```
-App ─────┐
-CLI ─────┤
-Shortcut ┼── XPC ──▶ Agent  ◀── the ONLY executor
-AppleScript┤            ├─ LockEngine        (event tap, lock lifecycle)
-Widget ──┘            ├─ Settings ownership (source of truth)
-                       └─ Accessibility      (permission gate)
+App ─────────┐
+CLI ─────────┤
+Shortcut ────┤
+Services/URL ┤
+Focus ───────┼── XPC ──▶ Agent  ◀── the ONLY executor
+AppleScript ─┤              ├─ LockEngine        (event tap, lock lifecycle)
+Widget ──────┘              ├─ Settings ownership (source of truth)
+                            └─ Accessibility      (permission gate)
 ```
 
 这里的 `Core`、SwiftPM product、运行进程和 XPC connection 是不同层次。完整的构建依赖图、进程图和调用时序见 [XPC 实现与使用指南](xpc.md)。
@@ -66,7 +68,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 因为状态只存在于唯一一处(Agent),wrapper 保持同步的方式就是始终以它为准。wrapper 有两种形态,读取状态的方式不同:
 
-- **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()` 或 `lockStatusSnapshot()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
+- **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、Services、URL action 与任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()` 或 `lockStatusSnapshot()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
 - **长命的状态反映面** —— menu-bar App 等持续运行的 UI。它们必须既接收状态变化 signal,又在**变为可见 / 启动时校准** —— 因为进程被挂起期间可能错过某次广播。只显示布尔状态的现有 App 可以继续使用 `LockStateSubscriber`；需要起点、deadline 与 active settings 的界面在 signal 或重新可见时重新拉取 `lockStatusSnapshot()`。通知与本地缓存都不是真相源。
 - **系统托管的 snapshot 面** —— Widget、Control 等由系统按需启动的 provider。它们不假定进程常驻,也不安装长命 subscription；每次生成 timeline/value 或处理 action 时读取 `lockStatusSnapshot()`,把本地值只当 presentation cache。
 
@@ -95,7 +97,7 @@ App 必须区分 `SMAppService` 的 enabled、requires-approval、not-found 和 
 
 App 在调用新能力前必须先读取 `ServiceDescriptor`,分别验证 XPC protocol major/minor、required capabilities 和 bundled Agent 的 identifier/version/build。descriptor 中的身份字段只用于兼容性与更新判断,不能代替 XPC connection 的代码签名认证。descriptor 必须在 fresh connection 上重试后才能降级；若两次 descriptor 都失败而旧 `status` 成功，只能断言 base contract 可达，不能断言远端一定是 legacy Agent。此时只允许使用旧 `status` / `unlock` 做显式安全迁移，不得继续调用新 selector。
 
-XPC peer authentication 必须由系统双向执行。Agent Listener 在 activate 前安装同 Team + 每个 wrapper 精确 signing identifier 的 connection requirement；wrapper connection 在 activate 前安装同 Team + 精确 Agent signing identifier 的 requirement。WidgetKit extension 使用单独的 `io.lzhlovesjyq.keyboardlocker.widgets` 身份承载 Widget 与 Control；它保持 App Sandbox,并只通过 Mach lookup temporary exception 访问 KeyboardLocker Agent 的 global service。Debug 不得降级成 identifier-only，不能通过 PID 后查静态签名来代替 XPC runtime 的 requirement。Team ID 从各进程自身已验证的签名读取；unsigned/ad-hoc 进程 fail closed。
+XPC peer authentication 必须由系统双向执行。Agent Listener 在 activate 前安装同 Team + 每个 wrapper 精确 signing identifier 的 connection requirement；wrapper connection 在 activate 前安装同 Team + 精确 Agent signing identifier 的 requirement。WidgetKit extension 使用单独的 `io.lzhlovesjyq.keyboardlocker.widgets` 身份承载 Widget 与 Control；Focus App Intents extension 使用 `io.lzhlovesjyq.keyboardlocker.focus-intents`;两者保持 App Sandbox,并只通过 Mach lookup temporary exception 访问 KeyboardLocker Agent 的 global service。Services 与 URL event 在主 App 进程内执行,因此 XPC peer 仍是主 App；这只认证 KeyboardLocker,不认证最初触发 Service 或 custom URL 的外部 caller。Debug 不得降级成 identifier-only，不能通过 PID 后查静态签名来代替 XPC runtime 的 requirement。Team ID 从各进程自身已验证的签名读取；unsigned/ad-hoc 进程 fail closed。
 
 capability grant 必须绑定到读取 descriptor 的同一条 client-side connection generation。所有 optional method 都要在一条具体 connection 上完成 handshake 与 capability check，再经同一个 `NSXPCConnection` 发出；connection 失效就同时失去 grant。named connection object 仍可能在 interruption 后面对新进程，因此 replacement wire request 必须携带 expected `agentInstanceID`，由 Agent 在副作用前原子验证，Client 也必须验证返回 ticket。
 

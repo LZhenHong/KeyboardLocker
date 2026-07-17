@@ -6,6 +6,11 @@ nonisolated enum ExternalAutomationAction: Equatable, Sendable {
   case status
 }
 
+nonisolated enum ExternalAutomationRequest: Equatable, Sendable {
+  case action(ExternalAutomationAction)
+  case failure(ExternalAutomationFailure)
+}
+
 nonisolated enum ExternalAutomationSource: String, Equatable, Sendable {
   case service = "Service"
   case urlScheme = "URL"

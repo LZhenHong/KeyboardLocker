@@ -92,4 +92,11 @@ private final class KeyboardLockerApplicationDelegate: NSObject, NSApplicationDe
     NSApp.servicesProvider = servicesProvider
     statusMenuController = StatusMenuController(coordinator: AppCoordinator())
   }
+
+  func application(_: NSApplication, open urls: [URL]) {
+    automationController.submit(
+      KeyboardLockerURLRoute.requests(for: urls),
+      source: .urlScheme
+    )
+  }
 }

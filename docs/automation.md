@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、Focus Filter、Services、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -44,6 +44,22 @@ KeyboardLocker 在 macOS 的 **Services** 菜单注册三个不依赖当前选�
 它们可以从其他 App 的 Services 菜单调用,也可以在 **System Settings > Keyboard > Keyboard Shortcuts > Services** 中绑定全局快捷键。三个入口都交给同一个串行 executor：lock/unlock 直接发送 desired state,status 从 Agent 读取权威 Boolean 后显示提示；并发到达的 action 按接收顺序执行。
 
 AppKit Services 的 handler 没有与异步 XPC 对应的 suspend/resume contract,因此 provider 只同步受理请求并立即返回,不会阻塞主线程等待 Agent。后续失败由 KeyboardLocker 激活并显示明确错误。需要调用方拿到事务级结果或 machine-readable status 时,使用 AppleScript、Shortcuts action 或 `klock status --json`,不要把 Services 的返回当作完成确认。
+
+## URL Scheme
+
+Launcher、浏览器或其他本地 App 可以打开三个 canonical deep link：
+
+```text
+keyboardlocker://lock
+keyboardlocker://unlock
+keyboardlocker://status
+```
+
+Parser 对 scheme 与 host 使用 URL 规定的大小写不敏感比较,但只接受上述 `scheme://host` 结构。userinfo、port、path（包括尾随 `/`）、query、fragment、percent-encoded action 与未知 host 都会被拒绝；错误提示不会回显原始 URL,避免意外暴露调用方放入 query 的数据。一次收到多个 URL 时按交付顺序串行执行。
+
+`lock` / `unlock` 成功时静默完成；`status` 读取 Agent 的权威 Boolean 并显示 alert。custom URL scheme 没有结果返回通道,因此 machine-readable 查询仍使用 `klock status --json`。
+
+安全边界必须明确：macOS custom URL scheme 不提供 caller authentication,任何能请求系统打开 URL 的本地 App 或网页都可能触发这些 action。Agent 只会看到经过签名认证的 KeyboardLocker App,无法识别最初调用方；严格 parsing 解决的是输入歧义,不是授权。不要在 query 中加入 token 来伪装鉴权。当前实现把这个 unauthenticated convenience surface 作为公开 contract,包括 `unlock`。
 
 ## Widget
 

@@ -78,6 +78,25 @@ final class ExternalAutomationControllerTests: XCTestCase {
   }
 
   @MainActor
+  func testRejectedRequestIsPresentedWithoutCallingAgent() async {
+    let client = RecordingExternalAutomationClient(isLocked: false)
+    let presenter = RecordingExternalAutomationPresenter()
+    let controller = ExternalAutomationController(client: client, presenter: presenter)
+
+    controller.submit(
+      [.failure(.init(message: "Invalid URL"))],
+      source: .urlScheme
+    )
+    await controller.waitUntilIdle()
+
+    XCTAssertTrue(client.calls.isEmpty)
+    XCTAssertEqual(
+      presenter.failureBatches,
+      [.init(failures: [.init(message: "Invalid URL")], source: .urlScheme)]
+    )
+  }
+
+  @MainActor
   func testSeparateSubmissionsStaySerializedWhileFirstActionIsSuspended() async {
     let gate = AsyncGate()
     let client = RecordingExternalAutomationClient(isLocked: false, lockGate: gate)

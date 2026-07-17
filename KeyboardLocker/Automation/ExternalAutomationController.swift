@@ -34,14 +34,21 @@ final class ExternalAutomationController {
     _ action: ExternalAutomationAction,
     source: ExternalAutomationSource
   ) {
-    submit([action], source: source)
+    submit([.action(action)], source: source)
   }
 
   func submit(
     _ actions: [ExternalAutomationAction],
     source: ExternalAutomationSource
   ) {
-    guard !actions.isEmpty else {
+    submit(actions.map(ExternalAutomationRequest.action), source: source)
+  }
+
+  func submit(
+    _ requests: [ExternalAutomationRequest],
+    source: ExternalAutomationSource
+  ) {
+    guard !requests.isEmpty else {
       return
     }
 
@@ -52,22 +59,27 @@ final class ExternalAutomationController {
       await previous?.value
 
       var failures: [ExternalAutomationFailure] = []
-      for action in actions {
-        do {
-          switch action {
-          case .lock:
-            try await client.lock()
-          case .unlock:
-            try await client.unlock()
-          case .status:
-            let isLocked = try await client.status()
-            presenter.presentStatus(
-              isLocked: isLocked,
-              source: source
-            )
+      for request in requests {
+        switch request {
+        case let .failure(failure):
+          failures.append(failure)
+        case let .action(action):
+          do {
+            switch action {
+            case .lock:
+              try await client.lock()
+            case .unlock:
+              try await client.unlock()
+            case .status:
+              let isLocked = try await client.status()
+              presenter.presentStatus(
+                isLocked: isLocked,
+                source: source
+              )
+            }
+          } catch {
+            failures.append(ExternalAutomationFailure(error: error))
           }
-        } catch {
-          failures.append(ExternalAutomationFailure(error: error))
         }
       }
 

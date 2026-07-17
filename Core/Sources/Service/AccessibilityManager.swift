@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 
 /// Manages Accessibility permission for CGEventTap-based keyboard filtering
 public final class AccessibilityManager {

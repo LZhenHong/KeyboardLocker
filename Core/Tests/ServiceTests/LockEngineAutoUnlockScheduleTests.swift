@@ -18,7 +18,7 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
     XCTAssertEqual(schedule.delay, 60)
   }
 
-  func testRearmedScheduleStartsANewTimeoutWindow() throws {
+  func testExplicitRearmStartsANewTimeoutWindow() throws {
     let initialSchedule = try XCTUnwrap(
       AutoUnlockSchedule.make(
         timeout: 60,

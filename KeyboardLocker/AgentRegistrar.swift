@@ -8,6 +8,7 @@ protocol AgentRegistrationServing: AnyObject {
   var status: SMAppService.Status { get }
 
   func register() throws
+  func unregister() async throws
 }
 
 extension SMAppService: AgentRegistrationServing {}
@@ -28,6 +29,7 @@ enum AgentRegistrar {
     case notFound
     case registrationFailed(String)
     case restartFailed(String)
+    case unregistrationFailed(String)
 
     var message: String {
       switch self {
@@ -39,6 +41,8 @@ enum AgentRegistrar {
         "The KeyboardLocker agent could not be registered. \(message)"
       case let .restartFailed(message):
         "The KeyboardLocker agent could not be restarted. \(message)"
+      case let .unregistrationFailed(message):
+        "The KeyboardLocker agent could not be unregistered. \(message)"
       }
     }
   }
@@ -61,6 +65,13 @@ enum AgentRegistrar {
 
   private static var agent: SMAppService {
     SMAppService.agent(plistName: plistName)
+  }
+
+  static var isAgentEnabled: Bool {
+    if case .enabled = agent.status {
+      return true
+    }
+    return false
   }
 
   /// Ensures the Agent is registered and returns the user-visible lifecycle state.
@@ -197,12 +208,10 @@ enum AgentRegistrar {
 
     case .enabled, .requiresApproval:
       do {
-        try await service.unregister()
+        try await unregister(service: service)
       } catch {
-        guard service.status == .notRegistered else {
-          logger.error("Failed to restart agent: \(error.localizedDescription, privacy: .public)")
-          return .unavailable(.restartFailed(error.localizedDescription))
-        }
+        logger.error("Failed to restart agent: \(error.localizedDescription, privacy: .public)")
+        return .unavailable(.restartFailed(error.localizedDescription))
       }
       return ensureEnabled(
         service: service,
@@ -211,6 +220,40 @@ enum AgentRegistrar {
 
     @unknown default:
       return .unavailable(.restartFailed("The system returned an unsupported registration status."))
+    }
+  }
+
+  /// Removes only this App's Service Management registration. The caller is responsible for
+  /// resolving any active keyboard lock before invoking this lifecycle operation.
+  static func unregister() async throws {
+    try await unregister(service: agent)
+  }
+
+  static func unregister(service: any AgentRegistrationServing) async throws {
+    switch service.status {
+    case .notFound, .notRegistered:
+      return
+
+    case .enabled, .requiresApproval:
+      do {
+        try await service.unregister()
+        logger.info("Unregistered agent")
+      } catch {
+        switch service.status {
+        case .notFound, .notRegistered:
+          return
+        case .enabled, .requiresApproval:
+          logger.error("Failed to unregister agent: \(error.localizedDescription, privacy: .public)")
+          throw error
+        @unknown default:
+          throw error
+        }
+      }
+
+    @unknown default:
+      throw Failure.unregistrationFailed(
+        "The system returned an unsupported registration status."
+      )
     }
   }
 

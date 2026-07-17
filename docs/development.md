@@ -68,6 +68,18 @@
 
 ## 测试须知
 
+### 重置本地 Agent 注册
+
+需要复现首次启动或清理调试注册状态时，运行：
+
+```bash
+./scripts/reset-keyboardlocker.sh
+```
+
+脚本会构建 Debug App、退出正在运行的 KeyboardLocker、请求 Agent 解锁，然后由 App 自身通过 `SMAppService.unregister()` 移除自己的 LaunchAgent 注册，并确认对应的 `launchd` service 与 Agent 进程都已消失。下次启动 App 时会按首次启动路径重新注册 Agent。
+
+该操作是应用范围的开发重置：不会调用影响其他应用的 `sfltool resetbtm`，也不会重置 Accessibility/TCC 权限或删除 Agent 持有的用户设置。
+
 - 缺少 Accessibility 权限时,`LockEngine.lock` 抛出 `.accessibilityPermissionDenied`(在创建 event tap 之前检查)。
 - `requestAccessibilityPermission()` 只表示 Agent 已请求系统显示异步 prompt;用户操作完成后必须重新调用 `hasAccessibilityPermission()`。
 - XPC 调用要成功,Agent 必须正在运行 / 已注册(`SMAppService`),且 App、CLI 与 Agent 都必须使用同一 Apple Team 的项目签名。Debug 与 Release 都执行双向 XPC code-signing requirement；unsigned/ad-hoc 可执行文件即使复制 signing identifier 也会被拒绝。

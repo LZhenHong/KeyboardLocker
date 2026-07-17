@@ -1,9 +1,17 @@
 import AppKit
+import Client
+import Foundation
 
 @main
 enum KeyboardLockerApplication {
   @MainActor
   static func main() {
+    #if DEBUG
+    if runDevelopmentCommandIfRequested() {
+      return
+    }
+    #endif
+
     let application = NSApplication.shared
     let delegate = KeyboardLockerApplicationDelegate()
     application.delegate = delegate
@@ -15,6 +23,52 @@ enum KeyboardLockerApplication {
       application.run()
     }
   }
+
+  #if DEBUG
+  @MainActor
+  private static func runDevelopmentCommandIfRequested() -> Bool {
+    guard CommandLine.arguments.dropFirst().elementsEqual(["--reset-agent-registration"]) else {
+      return false
+    }
+
+    Task { @MainActor in
+      exit(await resetAgentRegistration())
+    }
+    RunLoop.main.run()
+    return true
+  }
+
+  @MainActor
+  private static func resetAgentRegistration() async -> Int32 {
+    if AgentRegistrar.isAgentEnabled {
+      do {
+        try await XPCClient.shared.unlock()
+      } catch {
+        writeStandardError(
+          """
+          Warning: Could not unlock the agent before reset: \(error.localizedDescription) \
+          Continuing with the explicit reset; stopping the agent releases its event tap.
+          """
+        )
+      }
+    }
+
+    XPCClient.shared.resetConnection()
+
+    do {
+      try await AgentRegistrar.unregister()
+      print("KeyboardLocker agent registration reset.")
+      return EXIT_SUCCESS
+    } catch {
+      writeStandardError("Error: Could not reset agent registration: \(error.localizedDescription)")
+      return EXIT_FAILURE
+    }
+  }
+
+  private static func writeStandardError(_ message: String) {
+    FileHandle.standardError.write(Data("\(message)\n".utf8))
+  }
+  #endif
 }
 
 @MainActor

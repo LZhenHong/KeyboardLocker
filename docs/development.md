@@ -46,6 +46,7 @@
 - `AgentRegistrar.swift`:通过 `SMAppService.agent(plistName:)` 确保注册,读取 bundled Agent metadata 并比较运行中 descriptor;replacement 会等待旧 Agent 退出后重新注册 bundled 版本。
 - `KeyboardLockerApplication.swift` / `StatusMenuController.swift`:进程级 AppKit 生命周期与 status-menu presentation。它们只渲染 `AppCoordinator.Snapshot` 并把用户动作转发给 coordinator,不直接读取或持有锁/设置状态。
 - `AppIntents/KeyboardLockAppIntents.swift`:可在 Shortcuts 中组合的 `Lock Keyboard`、`Unlock Keyboard` 与返回 `Bool` 的 `Get Keyboard Lock Status` action。它们是 one-shot wrapper，每次执行只经 `AgentLockActionServing` 调用 Agent，不缓存状态、不订阅通知，也不注册 macOS 不支持的 promoted App Shortcuts。
+- `AppleScript/KeyboardLockerScriptCommands.swift` / `KeyboardLocker.sdef`:向 Cocoa Scripting 暴露 `lock keyboard`、`unlock keyboard` 与 `get keyboard lock status`。命令先 suspend 当前 Apple event，异步调用同一个 `AgentLockActionServing`，再以结果或显式错误 resume；它们不持有本地状态，也不把 XPC 不可达猜成 unlocked。
 - `AgentCoordinationServices.swift`:App 内部的可注入依赖边界。live adapter 把 `XPCClient`、`LockStateSubscriber` 与 `AgentRegistrar` 暴露为按用途拆分的最小 protocol；`AgentLockActionServing` 只提供 one-shot wrapper 所需的 `lock` / `unlock` / `status`,协调器和系统 action 都无需依赖无关 Client surface。
 - `AgentReadinessCoordinator.swift`:一次性收集 registration、descriptor handshake/重连、兼容性、replacement phase、Accessibility 与权威锁状态,返回不含 UI 的 domain outcome。
 - `AgentReplacementCoordinator.swift`:执行 App 侧 Agent 替换顺序。`AgentUpdatePlan` 用类型区分已协商的 safe replacement 与需要用户授权的 forced fallback,所有自动/手动更新共用 prepare → commit → restart → reconnect 边界。

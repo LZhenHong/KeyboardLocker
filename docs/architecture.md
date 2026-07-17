@@ -56,6 +56,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 - 任何 wrapper 都可以锁;任何 wrapper 都可以解锁。CLI 发起的锁,App 可以解开,反之亦然。
 - 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
 - `lock` 是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改当前设置、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。
+- interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。
 - 要对状态变化做出反应,订阅全局广播(`LockStateSubscriber`)。绝不从"我这次调用是否成功"去推断状态。
 
 ## 状态同步
@@ -67,7 +68,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
 
-`klock lock` 是一个会等待并报告后续解锁的长命命令,不是一次性 `status`。它同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
+`klock lock` 先发出 atomic interactive lock request。只有 outcome 为 acquired 时,它才等待并报告后续解锁；本轮 event tap 会把 `Ctrl+C` 当作额外解锁手势并在 Agent 内消费该事件。若 outcome 为 already locked,CLI 必须说明本命令没有创建新锁并立即退出,不能把 App 或另一个 CLI 已建立的锁变成自己的可取消 session。acquired 后的等待同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 
 ## 新增 wrapper 的规则(Widget、Shortcut、AppleScript……)
 

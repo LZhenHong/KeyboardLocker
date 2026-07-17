@@ -95,6 +95,9 @@ XPC 两侧必须对“线上消息长什么样”达成一致。当前契约定�
 public protocol KeyboardLockerServiceProtocol {
   func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void)
   func lockKeyboard(reply: @escaping (Error?) -> Void)
+  func lockKeyboardInteractively(
+    reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
   func prepareForReplacement(
@@ -479,9 +482,9 @@ sequenceDiagram
   ClientConnection->>Launchd: send first message to Mach service
   Launchd->>Listener: start Agent / deliver connection request
   Listener->>Peer: validate, configure, and accept
-  ClientConnection->>Peer: lockKeyboard(reply:)
+  ClientConnection->>Peer: lockKeyboard(...) / lockKeyboardInteractively(...)
   Peer->>Adapter: dispatch to exported object
-  Adapter->>Engine: lock(settings:) on MainActor
+  Adapter->>Engine: lock(settings:allowsControlCUnlock:) on MainActor
   Engine-->>Adapter: success or domain error
   Adapter-->>Peer: reply(error)
   Peer-->>ClientConnection: reply message
@@ -491,15 +494,15 @@ sequenceDiagram
 
 对应源码中的实际步骤是：
 
-1. App 的 `AppCoordinator` 已在 readiness reconciliation 中完成 descriptor handshake,随后 App 或 CLI 调用 `XPCClient.shared.lock()`；CLI 使用的 lock/status/unlock 属于 legacy base selector。
+1. App 的 `AppCoordinator` 已在 readiness reconciliation 中完成 descriptor handshake,随后 App 调用 legacy `XPCClient.shared.lock()`；CLI 的 `klock lock` 使用 capability-gated `lockInteractively()`，原子取得 acquired/already-locked outcome。
 2. `XPCClient.currentConnection()` 创建或复用 `NSXPCConnection(machServiceName:)`。
 3. Client 把 `KeyboardLockerServiceProtocol` 设置成 `remoteObjectInterface`，再取得 remote proxy。
 4. Client 在 activate 前安装只接受同 Team、精确 Agent signing identifier 的 requirement；第一条实际 message 让 `launchd` 按需启动 Agent。
 5. Agent Listener 的 requirement 在 delegate 暴露任何方法前校验调用方身份；Client requirement 同时拒绝伪造的 Agent。
 6. `XPCServerConnection` 为 Agent-side connection 设置 protocol，并把同一个 `AgentService` 实例设置为 `exportedObject`。
-7. 对 remote proxy 的 `lockKeyboard(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
+7. 对 remote proxy 的 legacy `lockKeyboard(reply:)` 或 additive `lockKeyboardInteractively(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
 8. `AgentService` 把领域操作切到 `MainActor`，Agent 可变状态、event tap 和 CFRunLoop 生命周期都在这里维护。
-9. `LockEngine.shared.lock(settings:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap。
+9. `LockEngine.shared.lock(settings:allowsControlCUnlock:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap；strict duplicate 在创建资源前直接返回 already locked。
 10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
 
 `AgentService` 是 executable target 中的 adapter：它把 wire protocol 翻译成 `Service` 模块里的领域调用。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift`。
@@ -510,6 +513,7 @@ sequenceDiagram
 |---|---|---|---|
 | `serviceDescriptor` | `serviceDescriptor()` | `AgentService` | bootstrap query；返回 protocol、capability、bundled metadata 和 process instance ID |
 | `lockKeyboard` | `lock()` | `LockEngine` | 严格幂等地进入全局 locked 状态；已锁时直接成功且不修改设置、锁定起点或 auto-unlock deadline |
+| `lockKeyboardInteractively` | `lockInteractively()` | `LockEngine` | 原子返回本次请求是否创建全局锁；仅 acquired 的新锁临时接受 `Ctrl+C` 作为额外解锁手势 |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
 | `prepareForReplacement` | `prepareForReplacement(unlockIfNeeded:expectedAgentInstanceID:)` | `AgentService` | Agent 原子校验 expected instance,安装短期 prepared drain,可在同一 execution turn 解锁,返回同 generation ticket |
@@ -530,7 +534,7 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 - App 和 CLI 各有自己的 connection。
 - 某条 connection interruption 后，Client 会将其 invalidate 并清除缓存；invalidation 同样清除缓存。下一次调用创建新 connection 并重新握手。
 - App 退出、CLI 退出或 connection 断开，不会触发 unlock。
-- `klock lock` 当前会继续运行以打印后续的 `Unlocked.`，但它只是观察者；强制结束 CLI 不会解除锁。等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
+- `klock lock` 只有在 interactive request 返回 acquired 时才继续等待并打印后续的 `Unlocked.`；该轮锁由 Agent 额外识别并消费 `Ctrl+C` 解锁手势。already locked 表示严格 duplicate no-op,CLI 立即退出,不会解除或修改 App/其他 CLI 建立的锁。直接杀死 CLI 进程仍不会自动解除锁；等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
 - Agent 退出则不同：event tap 属于 Agent 进程，进程退出会由系统释放它，内存中的 locked 状态也会消失。
 
 因此项目刻意没有 `LockSession`、client ownership 或“连接释放时自动 unlock”之类的抽象。领域事实是一个物理键盘对应一个由 Agent 持有的全局状态。

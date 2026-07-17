@@ -11,7 +11,7 @@
 1. App 建立 connection 后先调用 `XPCClient.serviceDescriptor()`,验证 protocol version、required capabilities 和 bundled Agent build;只有兼容后才调用新增 selector。descriptor 在 fresh connection 上重试后仍失败、但旧 `status` 成功时，只能按 unverified base contract 处理，不能断言它一定是 legacy Agent。capability-gated Client API 会在同一条具体 connection generation 上重新握手并发送 feature selector，connection 变化后不能复用旧 grant。
 2. wrapper(App/CLI/……)通过异步的 `XPCClient` 发出一次**无状态一次性调用**:`lock` / `unlock` / `status` / `currentSettings`。App 还经同一边界查询 Agent 的 Accessibility 状态,并可由明确用户动作请求 Agent 触发权限 prompt。失败会抛错(Agent 挂掉时表现为抛出的错误,绝不挂起)。
 3. Client 与 Listener 都在 activate 前安装同 Team + 精确 signing identifier 的 XPC requirement；系统完成双向认证后，Agent 的 `ServiceDelegate` 才接受连接并路由到 `AgentService`。
-4. `AgentService` 拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`),并驱动 `LockEngine.shared.lock(settings:)` / `unlock()`。
+4. `AgentService` 拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`),并驱动 `LockEngine.shared.lock(settings:allowsControlCUnlock:)` / `unlock()`。
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
 6. wrapper 通过 `LockStateSubscriber.subscribe(initialState:_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态。subscriber 会在 observer 安装完成后立即拉取一次权威初始状态,后续信号串行合并并再次查询 —— 绝不从"我这次调用是否成功"或通知 payload 推断。
 
@@ -22,20 +22,20 @@
 只列出不那么显而易见的职责;签名请读源码。
 
 **Common**(`Core/Sources/Common/`)—— 所有 target 共享
-- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、锁操作、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。
+- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive 锁操作、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector,旧 `lockKeyboard` ABI 保持不变。
 - `ServiceDescriptor.swift`:`ServiceDescriptor`、protocol version、稳定字符串 capability、additive replacement phase、opaque `ServiceReplacementTicket` 与 ticket-specific status;以有大小上限的 JSON `Data` 跨 XPC。descriptor 显式 decode 永久 bootstrap 字段,为 additive 字段提供默认值,未知字段/capability 可由旧 Client 忽略。
 - `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成并预编译同 Team + 精确 identifier 的双向 XPC requirement；unsigned/ad-hoc 进程 fail closed。
 - `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`)+ `.default` + throwing `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界、有大小上限的 JSON 传输)。缺失、损坏或过大的 Agent payload 会显式失败，wrapper 不会伪造 `.default` 快照。
 - `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
 **Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`
-- `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条按需重建的连接;interruption 会主动 invalidate 当前 object，阻止它透明附着到另一代 Agent 后复用旧 capability grant。所有调用共享有界响应超时,超时只失效对应连接。`lock` / `unlock` 超时后重新查询权威状态,无法确认时明确报告 outcome unknown;optional method 在同一 connection 上完成 descriptor/capability gate；replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。
+- `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条按需重建的连接;interruption 会主动 invalidate 当前 object，阻止它透明附着到另一代 Agent 后复用旧 capability grant。所有调用共享有界响应超时,超时只失效对应连接。legacy `lock` / `unlock` 超时后重新查询权威状态,无法确认时明确报告 outcome unknown；`lockInteractively()` 在同一 connection 上完成 descriptor/capability gate 并原子返回 acquired/already locked,其 reply 丢失时不会用非原子的 `status()` 猜测 outcome。replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。
 - `ServiceCompatibility.swift`:纯值兼容性规则与任意精度 dotted-numeric `ServiceBuildVersion` —— major 必须相等、running minor 不得低于最低版本、required capabilities 必须齐全,且运行中 Agent 的 identifier/version/build 必须与 bundled Agent 一致。
 - `LockStateSubscriber.swift`:先安装 Darwin + Distributed observer,再立即拉取一次权威状态;后续把每个信号当作提示,通过 `XPCClient.status()` 串行校准(带重试、signal coalescing、去重和 cancellation fence)→ `ObserverToken`,另有会先产出当前权威状态的 `stateChanges`(`AsyncStream<Bool>`)。取消会丢弃尚未进入 handler 的结果,但不会回溯撤销已经开始执行的 handler。长命 UI 使用 snapshot seed 避免重复呈现相同状态;一次性面直接读 `status()`(见 architecture 的"状态同步")。
 - `UnlockStatusPoller.swift`:`XPCClient.waitUntilUnlocked()` 的可测试等待组合。notification stream 提供及时更新,内部 poller 周期性查询权威状态以恢复丢通知和 Agent 重启；transport failure 后 reset connection,连续三次失败则抛错,不把不可达猜成 unlocked。任一路径确认解锁后都会取消另一条路径,取消 polling 时主动失效本轮 connection,避免等待完整 XPC response timeout。
 
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
-- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、严格幂等的 `lock(settings:)`、显式 `updateSettings(_:)`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。重复 `lock` 不会修改活动设置或延长 deadline；资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
+- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、严格幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、显式 `updateSettings(_:)`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。重复 `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline；资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
 - `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
@@ -53,7 +53,7 @@
 
 ### 新增一个设置项
 1. 给 `KeyboardLockerSettings` 加一个 `Codable`/`Sendable` 属性,并更新 `.default`。
-2. 如果引擎会消费它,在 `LockEngine.lock(settings:)` / `updateSettings(_:)` 中读取。
+2. 如果引擎会消费它,在 `LockEngine.lock(settings:allowsControlCUnlock:)` / `updateSettings(_:)` 中读取。
 3. 目前 wrapper 只能通过 `XPCClient.currentSettings()` **读取**设置(由 Agent 经 `KeyboardLockerSettingsStore` 加载)。写入路径(`applySettings` + UI)尚未接线;要让用户改设置,先在 Agent + `KeyboardLockerServiceProtocol` 上补写入方法(见"新增一个 XPC 方法"),再由 Agent 持久化 —— wrapper **不得**拥有 store(见架构契约)。
 
 ### 新增一个 XPC 方法
@@ -83,6 +83,8 @@
 已构建的 App 也在 status menu 中提供 **Command Line Tool…**。该入口遵循同一所有权边界：只创建或移除指向当前 App bundle 的 link；需要配置 `PATH` 时仅提供可复制命令，不会静默修改 dotfile。
 
 `klock` 自身不注册后台 Agent。首次使用前必须至少启动一次 KeyboardLocker App；Agent 未注册时，CLI 会给出对应恢复提示。
+
+`klock lock` 只有在本次请求原子创建全局锁时才进入等待，并提示 `Ctrl+C`。这个按键由 Agent event tap 识别后直接解锁，不依赖 Terminal 先收到被锁定输入并生成 `SIGINT`。若 Agent 已被 App 或其他 CLI 锁定，命令会报告 `Already locked. This command did not create a new lock.` 后成功退出，不改变既有锁。
 
 ### Homebrew Cask 发布计划（尚未实现）
 

@@ -63,18 +63,34 @@ enum KlockCLI {
   // MARK: - Commands
 
   private static func executeLock() async {
+    let unlockHotkey: Result<String, Error>
     do {
-      try await XPCClient.shared.lock()
+      unlockHotkey = .success(
+        try await XPCClient.shared.currentSettings().unlockHotkey.displayString
+      )
+    } catch {
+      unlockHotkey = .failure(error)
+    }
+
+    let outcome: LockRequestOutcome
+    do {
+      outcome = try await XPCClient.shared.lockInteractively()
     } catch {
       reportFailure(error)
       exit(ExitCode.error)
     }
 
-    do {
-      let hotkey = try await XPCClient.shared.currentSettings().unlockHotkey.displayString
-      print("Locked. Press \(hotkey) to unlock.")
-    } catch {
-      print("Locked. Run `klock unlock` to unlock.")
+    guard outcome == .acquired else {
+      print("Already locked. This command did not create a new lock.")
+      exit(ExitCode.success)
+    }
+
+    switch unlockHotkey {
+    case let .success(hotkey):
+      print("Locked. Press \(hotkey) or Ctrl+C to unlock.")
+
+    case let .failure(error):
+      print("Locked. Press Ctrl+C to unlock, or run `klock unlock` from another Terminal.")
       printWarning("Could not read the configured unlock shortcut: \(error.localizedDescription)")
     }
 
@@ -145,7 +161,7 @@ enum KlockCLI {
       USAGE: klock <command>
 
       COMMANDS:
-        lock      Lock the keyboard and wait until it is unlocked.
+        lock      Lock the keyboard; Ctrl+C unlocks an acquired lock.
         unlock    Unlock the keyboard.
         status    Print the current lock state.
         help      Show this help message.

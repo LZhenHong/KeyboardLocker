@@ -3,6 +3,15 @@ import Foundation
 import os
 import ServiceManagement
 
+@MainActor
+protocol AgentRegistrationServing: AnyObject {
+  var status: SMAppService.Status { get }
+
+  func register() throws
+}
+
+extension SMAppService: AgentRegistrationServing {}
+
 /// Registers the Agent as a launchd-managed login item so `launchd` can start it on demand
 /// for any XPC client — even when this App is not running. This is the contract's
 /// "Agent Lifecycle Requirement": wrappers must not assume the Agent is already up.
@@ -56,7 +65,16 @@ enum AgentRegistrar {
 
   /// Ensures the Agent is registered and returns the user-visible lifecycle state.
   static func ensureEnabled() -> State {
-    let service = agent
+    ensureEnabled(
+      service: agent,
+      validateBundledRegistration: validateBundledRegistrationAssets
+    )
+  }
+
+  static func ensureEnabled(
+    service: any AgentRegistrationServing,
+    validateBundledRegistration: () throws -> Void
+  ) -> State {
     switch service.status {
     case .enabled:
       return .enabled
@@ -65,7 +83,14 @@ enum AgentRegistrar {
       return .approvalRequired
 
     case .notFound:
-      return .unavailable(.notFound)
+      do {
+        try validateBundledRegistration()
+      } catch let failure as Failure {
+        return .unavailable(failure)
+      } catch {
+        return .unavailable(.invalidBundle(error.localizedDescription))
+      }
+      fallthrough
 
     case .notRegistered:
       do {
@@ -164,11 +189,11 @@ enum AgentRegistrar {
     let service = agent
 
     switch service.status {
-    case .notRegistered:
-      return ensureEnabled()
-
-    case .notFound:
-      return .unavailable(.notFound)
+    case .notFound, .notRegistered:
+      return ensureEnabled(
+        service: service,
+        validateBundledRegistration: validateBundledRegistrationAssets
+      )
 
     case .enabled, .requiresApproval:
       do {
@@ -179,7 +204,10 @@ enum AgentRegistrar {
           return .unavailable(.restartFailed(error.localizedDescription))
         }
       }
-      return ensureEnabled()
+      return ensureEnabled(
+        service: service,
+        validateBundledRegistration: validateBundledRegistrationAssets
+      )
 
     @unknown default:
       return .unavailable(.restartFailed("The system returned an unsupported registration status."))
@@ -193,17 +221,41 @@ enum AgentRegistrar {
     switch status {
     case .enabled:
       .enabled
+
     case .requiresApproval:
       .approvalRequired
+
     case .notFound:
-      .unavailable(.notFound)
+      .unavailable(.registrationFailed(
+        error?.localizedDescription
+          ?? "Service Management still could not find the agent after registration."
+      ))
+
     case .notRegistered:
       .unavailable(.registrationFailed(error?.localizedDescription ?? "Registration did not complete."))
+
     @unknown default:
       .unavailable(.registrationFailed(
         error?.localizedDescription ?? "The system returned an unsupported registration status."
       ))
     }
+  }
+
+  private static func validateBundledRegistrationAssets() throws {
+    let plistURL = Bundle.main.bundleURL
+      .appendingPathComponent("Contents", isDirectory: true)
+      .appendingPathComponent("Library", isDirectory: true)
+      .appendingPathComponent("LaunchAgents", isDirectory: true)
+      .appendingPathComponent(plistName, isDirectory: false)
+
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: plistURL.path, isDirectory: &isDirectory),
+          !isDirectory.boolValue
+    else {
+      throw Failure.notFound
+    }
+
+    _ = try bundledCompatibilityRequirements()
   }
 
   private static func bundledCompatibilityRequirements() throws -> ServiceCompatibilityRequirements {

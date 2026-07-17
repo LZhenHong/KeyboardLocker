@@ -615,7 +615,7 @@ sequenceDiagram
 | `.notRegistered` | Agent 尚未注册 | 尝试 `register()`，然后重新读取状态 |
 | `.enabled` | 系统允许 Agent 运行 | 继续通过 XPC 查询真实 readiness |
 | `.requiresApproval` | 用户需要在 Login Items 批准 | 显示说明和 System Settings 入口 |
-| `.notFound` | bundle 内找不到声明的 Agent/plist | 报告安装或 bundle layout 错误 |
+| `.notFound` | Service Management 无法解析该 service；既可能是 bundled Agent/plist 缺失，也可能只是当前 App 尚无 Background Task Management 注册记录 | 先独立校验 bundled assets；完整时尝试 `register()` 并以注册后的状态或错误为准，缺失时才报告 bundle layout 错误 |
 | enabled + descriptor compatible | 当前进程理解所需 contract 且匹配 bundled Agent | 继续查询 lock / Accessibility readiness |
 | enabled + running build lower + same major + replacement capability | 安全自动 upgrade 候选 | unlocked 时每 bundled build 自动尝试一次；locked 时要求用户确认 |
 | enabled + running build higher | 旧 App 面对更新 Agent | 禁止自动降级；只提供明确用户 replacement |

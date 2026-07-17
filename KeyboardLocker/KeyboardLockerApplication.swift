@@ -73,9 +73,23 @@ enum KeyboardLockerApplication {
 
 @MainActor
 private final class KeyboardLockerApplicationDelegate: NSObject, NSApplicationDelegate {
+  private let automationController: ExternalAutomationController
+  private let servicesProvider: KeyboardLockerServicesProvider
   private var statusMenuController: StatusMenuController?
 
+  override init() {
+    let automationController = ExternalAutomationController()
+    self.automationController = automationController
+    servicesProvider = KeyboardLockerServicesProvider { action in
+      Task { @MainActor in
+        automationController.submit(action, source: .service)
+      }
+    }
+    super.init()
+  }
+
   func applicationDidFinishLaunching(_: Notification) {
+    NSApp.servicesProvider = servicesProvider
     statusMenuController = StatusMenuController(coordinator: AppCoordinator())
   }
 }

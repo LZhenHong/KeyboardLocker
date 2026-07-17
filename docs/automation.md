@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、Focus Filter、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、Services、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -32,6 +32,18 @@ Focus Filter 采用条件 ownership,不会把全局 lock 误当成自己的资�
 - 若原 generation 已经由显式 unlock、热键或 timeout 结束,迟到的 Focus 关闭事件不能解除之后新建的锁。
 
 Focus extension 保持 sandbox,只获得访问 KeyboardLocker Agent Mach service 的 lookup 权限；Agent 仍要求同 Team 与精确 extension signing identifier。Agent 或 Accessibility 不可用时,intent 会明确失败,不会伪造 Focus 已经应用。
+
+## Services
+
+KeyboardLocker 在 macOS 的 **Services** 菜单注册三个不依赖当前选中文本的原生 action：
+
+- `Lock Keyboard`
+- `Unlock Keyboard`
+- `Show Keyboard Lock Status`
+
+它们可以从其他 App 的 Services 菜单调用,也可以在 **System Settings > Keyboard > Keyboard Shortcuts > Services** 中绑定全局快捷键。三个入口都交给同一个串行 executor：lock/unlock 直接发送 desired state,status 从 Agent 读取权威 Boolean 后显示提示；并发到达的 action 按接收顺序执行。
+
+AppKit Services 的 handler 没有与异步 XPC 对应的 suspend/resume contract,因此 provider 只同步受理请求并立即返回,不会阻塞主线程等待 Agent。后续失败由 KeyboardLocker 激活并显示明确错误。需要调用方拿到事务级结果或 machine-readable status 时,使用 AppleScript、Shortcuts action 或 `klock status --json`,不要把 Services 的返回当作完成确认。
 
 ## Widget
 

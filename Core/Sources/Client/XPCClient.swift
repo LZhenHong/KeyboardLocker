@@ -41,7 +41,7 @@ public enum XPCClientError: Error, LocalizedError {
       "Open KeyboardLocker to update its background agent, then retry."
 
     case .operationOutcomeUnknown:
-      "Run `klock status` to inspect the authoritative state, then use `klock unlock` if needed."
+      "Inspect the current state, then repeat the intended lock or unlock action if needed."
 
     case .serviceUnavailable:
       "Open KeyboardLocker once to register its background agent, then retry. If KeyboardLocker is already running, choose Show Details… from its menu."

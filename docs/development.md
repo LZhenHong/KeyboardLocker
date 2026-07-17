@@ -15,14 +15,14 @@
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
 6. wrapper 通过 `LockStateSubscriber.subscribe(initialState:_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态。subscriber 会在 observer 安装完成后立即拉取一次权威初始状态,后续信号串行合并并再次查询 —— 绝不从"我这次调用是否成功"或通知 payload 推断。
 
-> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 是**严格幂等**的：已锁时重复调用会直接成功,不修改当前设置、锁定起点或 auto-unlock deadline。只有显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window。不存在客户端拥有的"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
+> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 对物理运行状态是**严格幂等**的：已锁时重复调用不会重建 event tap、修改当前设置、锁定起点或 auto-unlock deadline。唯一的 metadata 变化是普通 wrapper 的显式 `lock` 会接管 Focus 创建的当前 generation,使之后的 Focus disable 不再撤销这个更新的用户意图。只有显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window。不存在客户端持有的通用"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
 
 ## 组件地图
 
 只列出不那么显而易见的职责;签名请读源码。
 
 **Common**(`Core/Sources/Common/`)—— 所有 target 共享
-- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive 锁操作、lock status snapshot、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector；protocol 1.4 新增 capability-gated `lockStatusSnapshot`,旧 `status` / `lockKeyboard` ABI 保持不变。
+- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive/Focus 锁操作、lock status snapshot、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector；protocol 1.4 新增 capability-gated `lockStatusSnapshot`；protocol 1.5 新增 capability-gated `setFocusFilterLockEnabled`,旧 `status` / `lockKeyboard` ABI 保持不变。
 - `LockStatusSnapshot.swift`:`LockStatusSnapshot` format 1 和有大小上限的 JSON XPC 编解码。snapshot 原子携带 capture time、布尔状态、锁定起点、auto-unlock deadline 与 active settings；duration/countdown 由 consumer 根据权威时间点派生,不作为会迅速过期的 transport 字段。
 - `ServiceDescriptor.swift`:`ServiceDescriptor`、protocol version、稳定字符串 capability、additive replacement phase、opaque `ServiceReplacementTicket` 与 ticket-specific status;以有大小上限的 JSON `Data` 跨 XPC。descriptor 显式 decode 永久 bootstrap 字段,为 additive 字段提供默认值,未知字段/capability 可由旧 Client 忽略。
 - `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成并预编译同 Team + 精确 identifier 的双向 XPC requirement；unsigned/ad-hoc 进程 fail closed。
@@ -30,13 +30,13 @@
 - `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
 **Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`
-- `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条按需重建的连接;interruption 会主动 invalidate 当前 object，阻止它透明附着到另一代 Agent 后复用旧 capability grant。所有调用共享有界响应超时,超时只失效对应连接。legacy `lock` / `unlock` 超时后重新查询权威状态,无法确认时明确报告 outcome unknown；`lockInteractively()` 与 `lockStatusSnapshot()` 都在同一 connection 上完成 descriptor/capability gate 后调用对应 selector。replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。
+- `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条按需重建的连接;interruption 会主动 invalidate 当前 object，阻止它透明附着到另一代 Agent 后复用旧 capability grant。所有调用共享有界响应超时,超时只失效对应连接。`unlock` 超时后可用权威 Boolean 状态校准；普通 `lock` 与 Focus selector 的成功还包含本地状态看不到的 provenance,因此首次 timeout 后会在 fresh connection 上重发同一个幂等请求,第二次仍超时则明确报告 outcome unknown。`lockInteractively()`、`lockStatusSnapshot()` 与 `setFocusFilterLockEnabled()` 都在同一 connection 上完成 descriptor/capability gate 后调用对应 selector。replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。
 - `ServiceCompatibility.swift`:纯值兼容性规则与任意精度 dotted-numeric `ServiceBuildVersion` —— major 必须相等、running minor 不得低于最低版本、required capabilities 必须齐全,且运行中 Agent 的 identifier/version/build 必须与 bundled Agent 一致。
 - `LockStateSubscriber.swift`:先安装 Darwin + Distributed observer,再立即拉取一次权威状态;后续把每个信号当作提示,通过 `XPCClient.status()` 串行校准(带重试、signal coalescing、去重和 cancellation fence)→ `ObserverToken`,另有会先产出当前权威状态的 `stateChanges`(`AsyncStream<Bool>`)。取消会丢弃尚未进入 handler 的结果,但不会回溯撤销已经开始执行的 handler。长命 UI 使用 snapshot seed 避免重复呈现相同状态;一次性面直接读 `status()`(见 architecture 的"状态同步")。
 - `UnlockStatusPoller.swift`:`XPCClient.waitUntilUnlocked()` 的可测试等待组合。notification stream 提供及时更新,内部 poller 周期性查询权威状态以恢复丢通知和 Agent 重启；transport failure 后 reset connection,连续三次失败则抛错,不把不可达猜成 unlocked。任一路径确认解锁后都会取消另一条路径,取消 polling 时主动失效本轮 connection,避免等待完整 XPC response timeout。
 
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
-- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、严格幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。重复 `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline；资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
+- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、物理状态幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、Focus-owned generation、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。普通 duplicate `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline,但会清除当前 Focus ownership marker；Focus disable、timer 与热键回调都使用 generation fence,不能解除后续新锁。资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
 - `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
@@ -58,6 +58,11 @@
 - `KeyboardLockerWidgetTimeline.swift`:每次 timeline execution 经 `XPCClient.lockStatusSnapshot()` 读取 Agent 的权威原子快照。loader 把 transport failure 建模为显式 unavailable entry,并请求 regular refresh 或更早的 auto-unlock deadline reconciliation；不订阅长命通知、不维护第二份状态。
 - `KeyboardLockerStatusWidget.swift`:small/medium 状态 presentation,显示 locked/unlocked、deadline、解锁热键与 Agent unavailable。WidgetKit 可以合并 timeline policy,因此该 UI 不承诺实时刷新。
 - `KeyboardLockerWidgets.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent 仍以同 Team + 精确 extension identifier 的 listener requirement 独立认证调用方。
+
+**App Intents extension**(`KeyboardLockerFocusIntents/`)—— sandboxed、按需运行的 Focus Filter wrapper，只调用 Client
+- `KeyboardLockFocusFilterIntent.swift`:macOS 13+ `SetFocusFilterIntent`;参数默认值为 `false`,使 Focus 关闭时向 Agent 发送 disable。`perform()` 只调用 capability-gated `setFocusFilterLockEnabled`,不以普通 `unlock` 模拟条件释放。
+- `AppIntentsExtension.swift` / `Info.plist`:独立 `com.apple.appintents-extension` 入口,使主 App 未运行时系统仍可执行 Focus 生命周期事件。
+- `KeyboardLockerFocusIntents.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent allowlist 只新增 `io.lzhlovesjyq.keyboardlocker.focus-intents` 精确 signing identifier。
 
 ## 常见任务
 
@@ -96,7 +101,7 @@
 
 `klock lock` 只有在本次请求原子创建全局锁时才进入等待，并提示 `Ctrl+C`。这个按键由 Agent event tap 识别后直接解锁，不依赖 Terminal 先收到被锁定输入并生成 `SIGINT`。若 Agent 已被 App 或其他 CLI 锁定，命令会报告 `Already locked. This command did not create a new lock.` 后成功退出，不改变既有锁。自动化脚本应使用 `klock lock --no-wait`：它确认全局状态为 locked 后立即退出，不启用临时 `Ctrl+C` 手势，也不等待 unlock。
 
-Shortcuts、AppleScript、CLI、Widget 与 Control 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
+Shortcuts、Focus Filter、AppleScript、CLI、Widget 与 Control 的完整用法和跨 wrapper 语义见 [automation.md](automation.md)。
 
 ### Homebrew Cask 发布计划（尚未实现）
 

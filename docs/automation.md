@@ -1,12 +1,12 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
 
 所有入口共享以下语义：
 
 - `lock` 与 `unlock` 是幂等的 desired-state action。
 - `status` 每次都从 Agent 查询权威状态；wrapper 不维护本地副本。
-- lock 是全局状态,不属于发起它的 Shortcut、AppleScript 或 shell process。任意入口的 `unlock` 都会解开同一个全局锁。
+- lock 是全局状态,不属于发起它的 Shortcut、AppleScript 或 shell process。任意普通入口的显式 `unlock` 都会解开同一个全局锁。Focus Filter 的关闭事件使用更窄的条件释放规则,只解除它自己创建且未被后续显式 `lock` 接管的锁。
 - 当前没有暴露 client-side `toggle`。需要确定结果时,显式选择 `lock` 或 `unlock`。
 - Agent 不可达、权限不足或结果无法确认时,action wrapper 会明确失败,Widget 会显示 unavailable；任何入口都不会把失败猜成 unlocked。
 
@@ -18,7 +18,20 @@ KeyboardLocker 提供三个可组合 action：
 - `Unlock Keyboard`
 - `Get Keyboard Lock Status`
 
-`Get Keyboard Lock Status` 返回 typed Boolean,可直接接入 Shortcuts 的条件分支。当前版本没有声明 `AppShortcutsProvider`;这些 action 从 Shortcuts 的 action library 中选择,不会作为 promoted shortcut 自动出现,也没有预注册的 invocation phrase。
+`Get Keyboard Lock Status` 返回 typed Boolean,可直接接入 Shortcuts 的条件分支。当前版本没有声明 `AppShortcutsProvider`;这些 action 从 Shortcuts 的 action library 中选择。Apple 当前不在 macOS 支持 promoted App Shortcuts,因此应用不会注册 invocation phrase。
+
+## Focus Filter
+
+macOS 13 及以上可在 **System Settings > Focus** 中为某个 Focus 添加 KeyboardLocker 的 `Keyboard Lock` filter。启用该 Focus 时,系统把 `Lock Keyboard = true` 发送给独立的 App Intents extension；关闭时会用参数默认值 `false` 再次执行 intent,因此主 App 未运行时也能经 XPC 把 desired state 交给 Agent。
+
+Focus Filter 采用条件 ownership,不会把全局 lock 误当成自己的资源：
+
+- 若 Focus 启用时已经由其他入口锁定,它不会认领该锁；Focus 关闭时保持 locked。
+- 若 Focus 从 unlocked 创建锁,它只拥有该次 lock generation。
+- 若随后任一普通 wrapper 再次显式调用 `lock`,该用户意图会接管同一 generation 的持久性,但不会重建 event tap、改变活动设置或延长 auto-unlock deadline；Focus 关闭时保持 locked。
+- 若原 generation 已经由显式 unlock、热键或 timeout 结束,迟到的 Focus 关闭事件不能解除之后新建的锁。
+
+Focus extension 保持 sandbox,只获得访问 KeyboardLocker Agent Mach service 的 lookup 权限；Agent 仍要求同 Team 与精确 extension signing identifier。Agent 或 Accessibility 不可用时,intent 会明确失败,不会伪造 Focus 已经应用。
 
 ## Widget
 

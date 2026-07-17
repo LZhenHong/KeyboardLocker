@@ -8,6 +8,7 @@ final class XPCCodeSigningRequirementTests: XCTestCase {
       SharedConstants.authorizedClientBundleIdentifiers,
       [
         "io.lzhlovesjyq.keyboardlocker",
+        "io.lzhlovesjyq.keyboardlocker.focus-intents",
         "io.lzhlovesjyq.keyboardlocker.klock",
         "io.lzhlovesjyq.keyboardlocker.widgets",
       ]

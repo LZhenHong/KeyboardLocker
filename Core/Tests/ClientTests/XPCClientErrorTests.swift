@@ -35,7 +35,7 @@ final class XPCClientErrorTests: XCTestCase {
       XPCClientError.operationOutcomeUnknown.recoverySuggestion
     )
 
-    XCTAssertTrue(suggestion.contains("klock status"))
-    XCTAssertTrue(suggestion.contains("klock unlock"))
+    XCTAssertTrue(suggestion.contains("Inspect the current state"))
+    XCTAssertTrue(suggestion.contains("repeat the intended lock or unlock action"))
   }
 }

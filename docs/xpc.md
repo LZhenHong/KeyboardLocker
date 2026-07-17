@@ -41,6 +41,7 @@ Core
 KeyboardLocker      -> Client  -> Common
 klock               -> Client  -> Common
 KeyboardLockerWidgets -> Client -> Common
+KeyboardLockerFocusIntents -> Client -> Common
 KeyboardLockerAgent -> Service -> Common
 ```
 
@@ -72,9 +73,14 @@ flowchart LR
     Timeline["Timeline provider"] --> WidgetClient["XPCClient"]
   end
 
+  subgraph FocusProcess["App Intents extension process"]
+    Focus["Focus Filter intent"] --> FocusClient["XPCClient"]
+  end
+
   AppClient -->|"NSXPCConnection"| Mach["Mach service"]
   CLIClient -->|"NSXPCConnection"| Mach
   WidgetClient -->|"NSXPCConnection"| Mach
+  FocusClient -->|"NSXPCConnection"| Mach
   subgraph AgentProcess["KeyboardLockerAgent process"]
     Listener["NSXPCListener"] --> AgentService["AgentService"]
     AgentService --> Engine["LockEngine.shared"]
@@ -88,7 +94,7 @@ flowchart LR
 
 `Core` 不会作为第四个进程出现。它的代码分别被链接进上图中的 executable：
 
-- App、CLI 与按需启动的 WidgetKit extension 各自包含一份 `Client + Common` 代码。
+- App、CLI、按需启动的 WidgetKit extension 与 App Intents extension 各自包含一份 `Client + Common` 代码。
 - Agent 包含一份 `Service + Common` 代码。
 - 只有 Agent 的 executable 包含 `LockEngine`，因此 App/CLI 不可能绕过 XPC 直接操作 event tap。
 
@@ -103,6 +109,10 @@ public protocol KeyboardLockerServiceProtocol {
   func lockKeyboard(reply: @escaping (Error?) -> Void)
   func lockKeyboardInteractively(
     reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
+  func setFocusFilterLockEnabled(
+    _ enabled: Bool,
+    reply: @escaping (Error?) -> Void
   )
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
@@ -519,7 +529,7 @@ sequenceDiagram
 | Wire method | Client API | 权威执行方 | 语义 |
 |---|---|---|---|
 | `serviceDescriptor` | `serviceDescriptor()` | `AgentService` | bootstrap query；返回 protocol、capability、bundled metadata 和 process instance ID |
-| `lockKeyboard` | `lock()` | `LockEngine` | 严格幂等地进入全局 locked 状态；已锁时直接成功且不修改设置、锁定起点或 auto-unlock deadline |
+| `lockKeyboard` | `lock()` | `LockEngine` | 对物理状态幂等地进入全局 locked；已锁时不修改设置、锁定起点或 auto-unlock deadline,但会接管当前 Focus-owned generation 的持久性 |
 | `lockKeyboardInteractively` | `lockInteractively()` | `LockEngine` | 原子返回本次请求是否创建全局锁；仅 acquired 的新锁临时接受 `Ctrl+C` 作为额外解锁手势 |
 | `setFocusFilterLockEnabled` | `setFocusFilterLockEnabled(_:)` | `LockEngine` | capability-gated desired state；启用只认领自己新建的 lock generation,停用只条件性释放仍属 Focus 的同一代 |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
@@ -543,7 +553,7 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 - App 和 CLI 各有自己的 connection。
 - 某条 connection interruption 后，Client 会将其 invalidate 并清除缓存；invalidation 同样清除缓存。下一次调用创建新 connection 并重新握手。
 - App 退出、CLI 退出或 connection 断开，不会触发 unlock。
-- `klock lock` 只有在 interactive request 返回 acquired 时才继续等待并打印后续的 `Unlocked.`；该轮锁由 Agent 额外识别并消费 `Ctrl+C` 解锁手势。already locked 表示严格 duplicate no-op,CLI 立即退出,不会解除或修改 App/其他 CLI 建立的锁。直接杀死 CLI 进程仍不会自动解除锁；等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
+- `klock lock` 只有在 interactive request 返回 acquired 时才继续等待并打印后续的 `Unlocked.`；该轮锁由 Agent 额外识别并消费 `Ctrl+C` 解锁手势。already locked 表示 physical duplicate,CLI 立即退出,不会解除锁、改变 event tap 或修改活动设置；若当前 generation 由 Focus 创建,这次显式 desired-lock 会接管其持久性。直接杀死 CLI 进程仍不会自动解除锁；等待期间 notification subscriber 提供及时更新,周期性 `status()` 提供丢通知与 Agent 重启后的恢复;连续无法取得权威状态时 CLI 报错退出。
 - Agent 退出则不同：event tap 属于 Agent 进程，进程退出会由系统释放它，内存中的 locked 状态也会消失。
 
 因此项目刻意没有 `LockSession`、client ownership 或“连接释放时自动 unlock”之类的抽象。领域事实是一个物理键盘对应一个由 Agent 持有的全局状态。
@@ -613,14 +623,16 @@ sequenceDiagram
 
 身份认证是双向且由 XPC runtime 强制执行：
 
-- Agent 的 `NSXPCListener` 在 activate 前调用 `setConnectionCodeSigningRequirement`，只接受与 Agent 同 Team 且 signing identifier 精确匹配主 App、bundled CLI 或 WidgetKit extension 的 Client。系统在调用 delegate 前完成检查，因此未认证 peer 看不到任何 exported selector。
-- App、CLI 与 WidgetKit extension 的 `NSXPCConnection` 在 activate 前调用 `setCodeSigningRequirement`，只接受与 Client 同 Team 且 signing identifier 精确匹配 bundled Agent 的服务进程。
+- Agent 的 `NSXPCListener` 在 activate 前调用 `setConnectionCodeSigningRequirement`，只接受与 Agent 同 Team 且 signing identifier 精确匹配主 App、bundled CLI、WidgetKit extension 或 Focus App Intents extension 的 Client。系统在调用 delegate 前完成检查，因此未认证 peer 看不到任何 exported selector。
+- App、CLI、WidgetKit extension 与 Focus App Intents extension 的 `NSXPCConnection` 在 activate 前调用 `setCodeSigningRequirement`，只接受与 Client 同 Team 且 signing identifier 精确匹配 bundled Agent 的服务进程。
 - requirement 使用 `anchor apple generic`、Apple 签名证书 `subject.OU` 中的 Team ID 和精确 `identifier`；Team ID 从当前进程已经验证的签名动态读取，不在源码中重复硬编码。
 - Debug 和 Release 使用同一条安全边界。Xcode Debug target 已配置 Apple Development 签名；unsigned、ad-hoc、错误 Team 或仅伪造 identifier 的进程都会 fail closed。
 
-当前允许的调用方只有主 App、bundled CLI 与 `io.lzhlovesjyq.keyboardlocker.widgets` WidgetKit extension 的 namespaced signing identifier；不再接受通用的 `klock` identifier。仅仅知道 Mach service 名称，或在自己的签名中复制 bundle identifier，都不能调用 Agent。descriptor 中的 bundle/version/build 仍只用于兼容性判断，不参与身份认证。
+当前允许的调用方只有主 App、bundled CLI、`io.lzhlovesjyq.keyboardlocker.widgets` WidgetKit extension 与 `io.lzhlovesjyq.keyboardlocker.focus-intents` App Intents extension 的 namespaced signing identifier；不再接受通用的 `klock` identifier。仅仅知道 Mach service 名称，或在自己的签名中复制 bundle identifier，都不能调用 Agent。descriptor 中的 bundle/version/build 仍只用于兼容性判断，不参与身份认证。
 
 WidgetKit extension 保持 App Sandbox 与 `APPLICATION_EXTENSION_API_ONLY`;它的 entitlements 只为 `io.lzhlovesjyq.keyboardlocker.agent` 声明 global Mach lookup temporary exception。这个 sandbox permission 只允许发起 lookup,不能代替 Listener 的同 Team + 精确 identifier 检查；Client 仍会反向验证 Agent。Widget 与 macOS 26+ Control 共用这一 extension process 和 signing identity,但每次 timeline/value/action execution 都建立在 Agent 权威 snapshot/action 上,不共享另一份业务状态。
+
+Focus App Intents extension 同样保持 App Sandbox 与 `APPLICATION_EXTENSION_API_ONLY`,并只声明同一个 Agent Mach lookup exception。它使用独立 signing identity,不会与 WidgetKit extension 合并；Focus disable 调用专用 selector,由 Agent 在串行隔离域内比较 Focus-owned lock generation 后条件释放,而不是先读 `status()` 再调用普通 `unlock()`。
 
 `klock` 是裸 Mach-O command-line tool，因此 target 必须生成并嵌入 `__TEXT,__info_plist`；否则 `PRODUCT_BUNDLE_IDENTIFIER` 不会成为实际 code-signing identifier，`codesign` 会退回可执行文件名 `klock`，并被 Listener requirement 正确拒绝。`CREATE_INFOPLIST_SECTION_IN_BINARY` 和 `GENERATE_INFOPLIST_FILE` 属于 XPC 身份契约，不能当作无关构建设置移除。
 

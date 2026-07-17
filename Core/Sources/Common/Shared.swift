@@ -13,6 +13,10 @@ public enum SharedConstants {
 
   private static let commandLineToolBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.klock"
 
+  /// App Intents extension that applies Focus changes while the main App is not running.
+  private static let focusIntentsExtensionBundleIdentifier =
+    "io.lzhlovesjyq.keyboardlocker.focus-intents"
+
   /// One WidgetKit extension process hosts both the status Widget and macOS Control.
   private static let widgetKitExtensionBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.widgets"
 
@@ -23,6 +27,7 @@ public enum SharedConstants {
   public static let authorizedClientBundleIdentifiers: Set<String> = [
     appBundleIdentifier,
     commandLineToolBundleIdentifier,
+    focusIntentsExtensionBundleIdentifier,
     widgetKitExtensionBundleIdentifier,
   ]
 }
@@ -63,7 +68,8 @@ public protocol KeyboardLockerServiceProtocol {
   func lockKeyboard(reply: @escaping (Error?) -> Void)
 
   /// Requests a lock that treats Control-C as an additional unlock gesture only when this call
-  /// atomically creates the global lock. `didAcquireLock` is false for a strict duplicate no-op.
+  /// atomically creates the global lock. `didAcquireLock` is false when the global lock already
+  /// exists; the request may still take persistence over from a Focus-owned generation.
   func lockKeyboardInteractively(
     reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
   )

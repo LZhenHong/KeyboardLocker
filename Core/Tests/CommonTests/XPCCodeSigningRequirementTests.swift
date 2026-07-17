@@ -9,6 +9,7 @@ final class XPCCodeSigningRequirementTests: XCTestCase {
       [
         "io.lzhlovesjyq.keyboardlocker",
         "io.lzhlovesjyq.keyboardlocker.klock",
+        "io.lzhlovesjyq.keyboardlocker.widgets",
       ]
     )
     XCTAssertEqual(

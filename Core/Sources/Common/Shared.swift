@@ -3,19 +3,27 @@ import Foundation
 // MARK: - Shared Constants
 
 public enum SharedConstants {
-  /// Mach service name for XPC communication between App/Agent/CLI
+  /// Mach service name for XPC communication between the Agent and authorized wrappers.
   public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent"
+
+  private static let appBundleIdentifier = "io.lzhlovesjyq.keyboardlocker"
 
   /// Bundle identifier of the launchd-managed Agent bundled with the App.
   public static let agentBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.agent"
+
+  private static let commandLineToolBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.klock"
+
+  /// One WidgetKit extension process hosts both the status Widget and macOS Control.
+  private static let widgetKitExtensionBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.widgets"
 
   /// Default unlock key code for 'L' key (⌃⌘L)
   public static let defaultUnlockKeyCode: UInt16 = 37
 
   /// Exact code-signing identifiers allowed to talk to the Agent's Mach service.
   public static let authorizedClientBundleIdentifiers: Set<String> = [
-    "io.lzhlovesjyq.keyboardlocker",
-    "io.lzhlovesjyq.keyboardlocker.klock",
+    appBundleIdentifier,
+    commandLineToolBundleIdentifier,
+    widgetKitExtensionBundleIdentifier,
   ]
 }
 

@@ -94,7 +94,7 @@ App 必须区分 `SMAppService` 的 enabled、requires-approval、not-found 和 
 
 App 在调用新能力前必须先读取 `ServiceDescriptor`,分别验证 XPC protocol major/minor、required capabilities 和 bundled Agent 的 identifier/version/build。descriptor 中的身份字段只用于兼容性与更新判断,不能代替 XPC connection 的代码签名认证。descriptor 必须在 fresh connection 上重试后才能降级；若两次 descriptor 都失败而旧 `status` 成功，只能断言 base contract 可达，不能断言远端一定是 legacy Agent。此时只允许使用旧 `status` / `unlock` 做显式安全迁移，不得继续调用新 selector。
 
-XPC peer authentication 必须由系统双向执行。Agent Listener 在 activate 前安装同 Team + 主 App/CLI 精确 signing identifier 的 connection requirement；App/CLI connection 在 activate 前安装同 Team + 精确 Agent signing identifier 的 requirement。Debug 不得降级成 identifier-only，不能通过 PID 后查静态签名来代替 XPC runtime 的 requirement。Team ID 从各进程自身已验证的签名读取；unsigned/ad-hoc 进程 fail closed。
+XPC peer authentication 必须由系统双向执行。Agent Listener 在 activate 前安装同 Team + 每个 wrapper 精确 signing identifier 的 connection requirement；wrapper connection 在 activate 前安装同 Team + 精确 Agent signing identifier 的 requirement。WidgetKit extension 使用单独的 `io.lzhlovesjyq.keyboardlocker.widgets` 身份承载 Widget 与 Control；它保持 App Sandbox,并只通过 Mach lookup temporary exception 访问 KeyboardLocker Agent 的 global service。Debug 不得降级成 identifier-only，不能通过 PID 后查静态签名来代替 XPC runtime 的 requirement。Team ID 从各进程自身已验证的签名读取；unsigned/ad-hoc 进程 fail closed。
 
 capability grant 必须绑定到读取 descriptor 的同一条 client-side connection generation。所有 optional method 都要在一条具体 connection 上完成 handshake 与 capability check，再经同一个 `NSXPCConnection` 发出；connection 失效就同时失去 grant。named connection object 仍可能在 interruption 后面对新进程，因此 replacement wire request 必须携带 expected `agentInstanceID`，由 Agent 在副作用前原子验证，Client 也必须验证返回 ticket。
 

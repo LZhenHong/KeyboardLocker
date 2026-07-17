@@ -605,12 +605,14 @@ sequenceDiagram
 
 身份认证是双向且由 XPC runtime 强制执行：
 
-- Agent 的 `NSXPCListener` 在 activate 前调用 `setConnectionCodeSigningRequirement`，只接受与 Agent 同 Team 且 signing identifier 精确匹配主 App 或 bundled CLI 的 Client。系统在调用 delegate 前完成检查，因此未认证 peer 看不到任何 exported selector。
-- App/CLI 的 `NSXPCConnection` 在 activate 前调用 `setCodeSigningRequirement`，只接受与 Client 同 Team 且 signing identifier 精确匹配 bundled Agent 的服务进程。
+- Agent 的 `NSXPCListener` 在 activate 前调用 `setConnectionCodeSigningRequirement`，只接受与 Agent 同 Team 且 signing identifier 精确匹配主 App、bundled CLI 或 WidgetKit extension 的 Client。系统在调用 delegate 前完成检查，因此未认证 peer 看不到任何 exported selector。
+- App、CLI 与 WidgetKit extension 的 `NSXPCConnection` 在 activate 前调用 `setCodeSigningRequirement`，只接受与 Client 同 Team 且 signing identifier 精确匹配 bundled Agent 的服务进程。
 - requirement 使用 `anchor apple generic`、Apple 签名证书 `subject.OU` 中的 Team ID 和精确 `identifier`；Team ID 从当前进程已经验证的签名动态读取，不在源码中重复硬编码。
 - Debug 和 Release 使用同一条安全边界。Xcode Debug target 已配置 Apple Development 签名；unsigned、ad-hoc、错误 Team 或仅伪造 identifier 的进程都会 fail closed。
 
-当前允许的调用方只有主 App 和 bundled CLI 的 namespaced signing identifier；不再接受通用的 `klock` identifier。仅仅知道 Mach service 名称，或在自己的签名中复制 bundle identifier，都不能调用 Agent。descriptor 中的 bundle/version/build 仍只用于兼容性判断，不参与身份认证。
+当前允许的调用方只有主 App、bundled CLI 与 `io.lzhlovesjyq.keyboardlocker.widgets` WidgetKit extension 的 namespaced signing identifier；不再接受通用的 `klock` identifier。仅仅知道 Mach service 名称，或在自己的签名中复制 bundle identifier，都不能调用 Agent。descriptor 中的 bundle/version/build 仍只用于兼容性判断，不参与身份认证。
+
+WidgetKit extension 保持 App Sandbox 与 `APPLICATION_EXTENSION_API_ONLY`;它的 entitlements 只为 `io.lzhlovesjyq.keyboardlocker.agent` 声明 global Mach lookup temporary exception。这个 sandbox permission 只允许发起 lookup,不能代替 Listener 的同 Team + 精确 identifier 检查；Client 仍会反向验证 Agent。Widget 与 macOS 26+ Control 共用这一 extension process 和 signing identity,但每次 timeline/value/action execution 都建立在 Agent 权威 snapshot/action 上,不共享另一份业务状态。
 
 `klock` 是裸 Mach-O command-line tool，因此 target 必须生成并嵌入 `__TEXT,__info_plist`；否则 `PRODUCT_BUNDLE_IDENTIFIER` 不会成为实际 code-signing identifier，`codesign` 会退回可执行文件名 `klock`，并被 Listener requirement 正确拒绝。`CREATE_INFOPLIST_SECTION_IN_BINARY` 和 `GENERATE_INFOPLIST_FILE` 属于 XPC 身份契约，不能当作无关构建设置移除。
 

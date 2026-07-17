@@ -68,6 +68,28 @@
 
 ## 测试须知
 
+### 在 Terminal 中使用开发版 `klock`
+
+开发阶段可用脚本安装、检查或移除指向 Debug App 内已签名 `klock` 的 symbolic link：
+
+```bash
+./scripts/install-klock-dev.sh install
+./scripts/install-klock-dev.sh status
+./scripts/install-klock-dev.sh uninstall
+```
+
+默认目标是 `~/.local/bin/klock`，也可通过 `--bin-dir PATH` 或 `KLOCK_BIN_DIR` 指定其他用户可写目录。脚本会先验证 bundled executable 的 code signature、精确 signing identifier，以及 App、Agent、CLI 三者的 Team identifier 一致性；遇到已有文件或其他 link 时会拒绝覆盖。它不会复制 binary、修改 shell profile 或调用 `sudo`。若目标目录不在 `PATH`，脚本只打印需要添加的 `export PATH=...`，由用户决定写入哪个 shell 配置。
+
+已构建的 App 也在 status menu 中提供 **Command Line Tool…**。该入口遵循同一所有权边界：只创建或移除指向当前 App bundle 的 link；需要配置 `PATH` 时仅提供可复制命令，不会静默修改 dotfile。
+
+`klock` 自身不注册后台 Agent。首次使用前必须至少启动一次 KeyboardLocker App；Agent 未注册时，CLI 会给出对应恢复提示。
+
+### Homebrew Cask 发布计划（尚未实现）
+
+正式分发计划采用 Homebrew Cask，而不是把 `klock` 作为独立 Formula 重新编译。Cask 应安装同一个经过 Developer ID 签名和 notarization 的 `KeyboardLocker.app`，并用 `binary` artifact 暴露 App bundle 内的 `Contents/MacOS/klock`；这样 App、CLI 与 Agent 保持同一版本和签名来源。
+
+开始实现前需要先具备 versioned release artifact、稳定下载地址、SHA-256、Developer ID 签名及 notarization 验证。首个交付目标为项目自己的 tap，发布流程稳定且满足上游接收要求后，再评估提交到官方 Homebrew Cask 仓库。当前仓库尚未新增 Cask definition 或 release automation。
+
 ### 重置本地 Agent 注册
 
 需要复现首次启动或清理调试注册状态时，运行：

@@ -34,6 +34,16 @@ public enum XPCClientError: Error, LocalizedError {
       "The KeyboardLocker agent did not respond in time."
     }
   }
+
+  public var recoverySuggestion: String? {
+    switch self {
+    case .serviceUnavailable:
+      "Open KeyboardLocker once to register its background agent, then retry. If KeyboardLocker is already running, choose Show Details… from its menu."
+
+    default:
+      nil
+    }
+  }
 }
 
 /// Async client for the KeyboardLocker Agent.
@@ -380,7 +390,7 @@ public final class XPCClient: @unchecked Sendable {
       let proxy = connectionReference.value.remoteObjectProxyWithErrorHandler { error in
         once.run {
           timeoutTask.cancel()
-          continuation.resume(throwing: error)
+          continuation.resume(throwing: Self.normalizedProxyError(error))
         }
       }
 
@@ -403,6 +413,13 @@ public final class XPCClient: @unchecked Sendable {
         }
       }
     }
+  }
+
+  /// A proxy error means the request did not reach a callable XPC peer. Keep Foundation's
+  /// transport details behind the Client boundary so every wrapper can present one actionable
+  /// service-availability failure.
+  static func normalizedProxyError(_: Error) -> Error {
+    return XPCClientError.serviceUnavailable
   }
 }
 

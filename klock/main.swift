@@ -14,18 +14,45 @@ await KlockCLI.run()
 
 enum KlockCLI {
   static func run() async {
-    guard let command = CommandLine.arguments.dropFirst().first else {
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    guard let command = arguments.first else {
       printUsage()
-      exit(ExitCode.error)
+      exit(ExitCode.success)
     }
 
     switch command {
+    case "help", "--help", "-h":
+      guard arguments.count == 1 else {
+        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      }
+      printUsage()
+      exit(ExitCode.success)
+
+    case "version", "--version", "-v":
+      guard arguments.count == 1 else {
+        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      }
+      printVersion()
+      exit(ExitCode.success)
+
     case "lock":
+      guard arguments.count == 1 else {
+        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      }
       await executeLock()
+
     case "unlock":
+      guard arguments.count == 1 else {
+        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      }
       await executeUnlock()
+
     case "status":
+      guard arguments.count == 1 else {
+        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      }
       await executeStatus()
+
     default:
       printError("Unknown command: \(command)")
       printUsage()
@@ -88,20 +115,59 @@ enum KlockCLI {
   private static func reportFailure(_ error: Error) {
     printError(error.localizedDescription)
     if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
-      print("  \(suggestion)")
+      printStandardError("  \(suggestion)")
     }
   }
 
+  private static func reportUnexpectedArguments(_ arguments: [String]) -> Never {
+    printError("Unexpected argument\(arguments.count == 1 ? "" : "s"): \(arguments.joined(separator: " "))")
+    printUsage()
+    exit(ExitCode.error)
+  }
+
+  private static func printVersion() {
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+
+    guard let version, !version.isEmpty, let build, !build.isEmpty else {
+      printError("Version metadata is unavailable in this build.")
+      exit(ExitCode.error)
+    }
+
+    print("klock \(version) (\(build))")
+  }
+
   private static func printUsage() {
-    print("Usage: klock <lock|unlock|status>")
+    print(
+      """
+      OVERVIEW: Control KeyboardLocker from Terminal.
+
+      USAGE: klock <command>
+
+      COMMANDS:
+        lock      Lock the keyboard and wait until it is unlocked.
+        unlock    Unlock the keyboard.
+        status    Print the current lock state.
+        help      Show this help message.
+        version   Show the klock version.
+
+      OPTIONS:
+        -h, --help       Show this help message.
+        -v, --version    Show the klock version.
+      """
+    )
   }
 
   private static func printError(_ message: String) {
-    FileHandle.standardError.write(Data("Error: \(message)\n".utf8))
+    printStandardError("Error: \(message)")
   }
 
   private static func printWarning(_ message: String) {
-    FileHandle.standardError.write(Data("Warning: \(message)\n".utf8))
+    printStandardError("Warning: \(message)")
+  }
+
+  private static func printStandardError(_ message: String) {
+    FileHandle.standardError.write(Data("\(message)\n".utf8))
   }
 
   private enum ExitCode {

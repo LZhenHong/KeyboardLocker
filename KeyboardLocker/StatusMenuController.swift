@@ -5,14 +5,26 @@ import ServiceManagement
 /// It never reads or mutates lock/settings state outside the coordinator's Client boundary.
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
+  private let commandLineToolManager: CommandLineToolLinkManager
   private let coordinator: AppCoordinator
   private let menu = NSMenu()
   private let statusItem: NSStatusItem
   private var currentSnapshot: AppCoordinator.Snapshot
   private var detailMessage: String?
 
-  init(coordinator: AppCoordinator) {
+  convenience init(coordinator: AppCoordinator) {
+    self.init(
+      coordinator: coordinator,
+      commandLineToolManager: CommandLineToolLinkManager()
+    )
+  }
+
+  init(
+    coordinator: AppCoordinator,
+    commandLineToolManager: CommandLineToolLinkManager
+  ) {
     self.coordinator = coordinator
+    self.commandLineToolManager = commandLineToolManager
     currentSnapshot = coordinator.snapshot
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     super.init()
@@ -70,6 +82,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
       action: #selector(refresh),
       isEnabled: currentSnapshot.activity == nil
     )
+    menu.addItem(.separator())
+    addAction(title: "Command Line Tool…", action: #selector(manageCommandLineTool))
     menu.addItem(.separator())
     addAction(title: "Quit KeyboardLocker", action: #selector(quit))
   }
@@ -289,6 +303,135 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   @objc private func refresh() {
     coordinator.reconcile()
+  }
+
+  @objc private func manageCommandLineTool() {
+    NSApp.activate(ignoringOtherApps: true)
+
+    switch commandLineToolManager.state {
+    case let .installed(destination):
+      let canRemove = commandLineToolManager.canRemoveLink(at: destination)
+      let alert = NSAlert()
+      alert.messageText = "klock Command Is Installed"
+      alert.informativeText = if canRemove {
+        "Terminal command: \(commandLineToolManager.displayPath(destination)). If Terminal cannot find it, copy the PATH command."
+      } else {
+        "Terminal command: \(commandLineToolManager.displayPath(destination)). KeyboardLocker does not have permission to remove this link."
+      }
+      if canRemove {
+        alert.addButton(withTitle: "Uninstall")
+      }
+      alert.addButton(withTitle: "Copy PATH Command")
+      alert.addButton(withTitle: "Close")
+
+      switch alert.runModal() {
+      case .alertFirstButtonReturn where canRemove:
+        do {
+          _ = try commandLineToolManager.uninstall()
+          showCommandLineToolResult(
+            title: "klock Command Removed",
+            message: "The command link was removed. The bundled executable was not changed."
+          )
+        } catch {
+          showCommandLineToolError(error)
+        }
+
+      case .alertSecondButtonReturn where canRemove,
+           .alertFirstButtonReturn:
+        copyPathCommand(for: destination)
+
+      default:
+        return
+      }
+
+    case let .notInstalled(destination, requiresPathSetup):
+      let path = commandLineToolManager.displayPath(destination)
+      let alert = NSAlert()
+      alert.messageText = "Install the klock Command?"
+      alert.informativeText = if requiresPathSetup {
+        """
+        KeyboardLocker will create a symbolic link at \(path). It will not modify shell profiles. \
+        You may need to add its directory to PATH before Terminal can find klock.
+        """
+      } else {
+        "KeyboardLocker will create a symbolic link at \(path). The signed executable stays inside the App."
+      }
+      alert.addButton(withTitle: "Install")
+      alert.addButton(withTitle: "Cancel")
+      guard alert.runModal() == .alertFirstButtonReturn else {
+        return
+      }
+      do {
+        _ = try commandLineToolManager.install()
+        showCommandLineToolInstalled(
+          at: destination,
+          requiresPathSetup: requiresPathSetup
+        )
+      } catch {
+        showCommandLineToolError(error)
+      }
+
+    case let .conflict(destination):
+      showCommandLineToolResult(
+        title: "Cannot Install klock",
+        message: "A different item already exists at \(commandLineToolManager.displayPath(destination)). Nothing was changed."
+      )
+
+    case let .sourceUnavailable(source):
+      showCommandLineToolResult(
+        title: "klock Is Unavailable",
+        message: "The App bundle is incomplete. The expected executable was not found at \(commandLineToolManager.displayPath(source))."
+      )
+    }
+  }
+
+  private func showCommandLineToolInstalled(
+    at destination: URL,
+    requiresPathSetup: Bool
+  ) {
+    let alert = NSAlert()
+    alert.messageText = "klock Command Installed"
+    alert.informativeText = if requiresPathSetup {
+      """
+      Installed at \(commandLineToolManager.displayPath(destination)). Add its directory to PATH, \
+      then open a new Terminal and run klock --help.
+      """
+    } else {
+      "Installed at \(commandLineToolManager.displayPath(destination)). Open a new Terminal and run klock --help."
+    }
+    if requiresPathSetup {
+      alert.addButton(withTitle: "Copy PATH Command")
+      alert.addButton(withTitle: "Close")
+      if alert.runModal() == .alertFirstButtonReturn {
+        copyPathCommand(for: destination)
+      }
+    } else {
+      alert.addButton(withTitle: "OK")
+      alert.runModal()
+    }
+  }
+
+  private func copyPathCommand(for destination: URL) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(
+      commandLineToolManager.pathSetupCommand(for: destination),
+      forType: .string
+    )
+  }
+
+  private func showCommandLineToolError(_ error: Error) {
+    showCommandLineToolResult(
+      title: "Command Line Tool Error",
+      message: error.localizedDescription
+    )
+  }
+
+  private func showCommandLineToolResult(title: String, message: String) {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = message
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 
   @objc private func quit() {

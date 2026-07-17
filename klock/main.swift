@@ -36,10 +36,16 @@ enum KlockCLI {
       exit(ExitCode.success)
 
     case "lock":
-      guard arguments.count == 1 else {
-        reportUnexpectedArguments(Array(arguments.dropFirst()))
+      switch Array(arguments.dropFirst()) {
+      case []:
+        await executeInteractiveLock()
+
+      case ["--no-wait"]:
+        await executeNonInteractiveLock()
+
+      case let unexpectedArguments:
+        reportUnexpectedArguments(unexpectedArguments)
       }
-      await executeLock()
 
     case "unlock":
       guard arguments.count == 1 else {
@@ -62,7 +68,7 @@ enum KlockCLI {
 
   // MARK: - Commands
 
-  private static func executeLock() async {
+  private static func executeInteractiveLock() async {
     let unlockHotkey: Result<String, Error>
     do {
       unlockHotkey = .success(
@@ -97,6 +103,17 @@ enum KlockCLI {
     do {
       try await XPCClient.shared.waitUntilUnlocked()
       print("Unlocked.")
+      exit(ExitCode.success)
+    } catch {
+      reportFailure(error)
+      exit(ExitCode.error)
+    }
+  }
+
+  private static func executeNonInteractiveLock() async {
+    do {
+      try await XPCClient.shared.lock()
+      print("Locked.")
       exit(ExitCode.success)
     } catch {
       reportFailure(error)
@@ -158,18 +175,19 @@ enum KlockCLI {
       """
       OVERVIEW: Control KeyboardLocker from Terminal.
 
-      USAGE: klock <command>
+      USAGE: klock <command> [options]
 
       COMMANDS:
-        lock      Lock the keyboard; Ctrl+C unlocks an acquired lock.
-        unlock    Unlock the keyboard.
-        status    Print the current lock state.
-        help      Show this help message.
-        version   Show the klock version.
+        lock [--no-wait]    Lock the keyboard; by default, wait until it is unlocked.
+        unlock              Unlock the keyboard.
+        status              Print the current lock state.
+        help                Show this help message.
+        version             Show the klock version.
 
       OPTIONS:
-        -h, --help       Show this help message.
-        -v, --version    Show the klock version.
+        --no-wait          Return after lock is confirmed; do not enable Ctrl+C unlock.
+        -h, --help         Show this help message.
+        -v, --version      Show the klock version.
       """
     )
   }

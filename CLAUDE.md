@@ -17,7 +17,7 @@ Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…�
 
 **Before adding or changing any feature (App, CLI, Shortcuts, AppleScript, Widgets, …), read [docs/architecture.md](docs/architecture.md).** It defines the non-negotiable contract: the Agent is the single executor, all other surfaces are thin wrappers, the lock is one global state. When a change conflicts with it, the contract wins.
 
-For the process/module boundary and complete XPC call flow, see [docs/xpc.md](docs/xpc.md). For task workflows and component details, see [docs/development.md](docs/development.md).
+For the process/module boundary and complete XPC call flow, see [docs/xpc.md](docs/xpc.md). For task workflows and component details, see [docs/development.md](docs/development.md). For Shortcuts, AppleScript, and CLI usage, see [docs/automation.md](docs/automation.md).
 
 ## Project-Specific Rules
 

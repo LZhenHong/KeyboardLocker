@@ -73,6 +73,8 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 `klock lock` 先发出 atomic interactive lock request。只有 outcome 为 acquired 时,它才等待并报告后续解锁；本轮 event tap 会把 `Ctrl+C` 当作额外解锁手势并在 Agent 内消费该事件。若 outcome 为 already locked,CLI 必须说明本命令没有创建新锁并立即退出,不能把 App 或另一个 CLI 已建立的锁变成自己的可取消 session。acquired 后的等待同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 
+`klock lock --no-wait` 是独立的 one-shot desired-state action：它调用幂等 `lock()`,在 Agent 确认 locked 后立即退出,不启用临时 `Ctrl+C` 手势,也不等待后续 unlock。它同样不拥有 lock；之后执行的 `klock unlock` 会解开全局锁,而不是只撤销某个脚本创建的锁。
+
 ## 新增 wrapper 的规则(Widget、Shortcut、AppleScript……)
 
 编写 wrapper 之前,逐条确认以下几点:

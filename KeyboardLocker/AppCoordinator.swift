@@ -1,13 +1,10 @@
-import AppKit
 import Client
-import Combine
 import Foundation
 
-/// Observable view state for the App wrapper. Registration and Accessibility remain owned by
-/// their system boundaries; this controller only coordinates those facts for presentation.
+/// Coordinates App-side lock actions, readiness, and Agent replacement without owning domain state.
 @MainActor
-final class LockController: ObservableObject {
-  enum ViewState: Equatable {
+final class AppCoordinator {
+  enum State: Equatable {
     case checking(lastKnownLock: Bool?)
     case agentApprovalRequired
     case agentReplacementInProgress(message: String)
@@ -25,41 +22,9 @@ final class LockController: ObservableObject {
     case updatingAgent
   }
 
-  @Published private(set) var state: ViewState = .checking(lastKnownLock: nil)
-  @Published private(set) var activity: Activity?
-  @Published private(set) var lastError: String?
-
-  var agentUpdateUsesSafeReplacement: Bool {
-    pendingUpdatePlan?.supportsSafeReplacement ?? false
-  }
-
-  var systemImageName: String {
-    switch state {
-    case .checking(lastKnownLock: true):
-      "lock.fill"
-
-    case .checking:
-      "ellipsis.circle"
-
-    case .ready(isLocked: true),
-         .accessibilityRequired(isLocked: true),
-         .agentUpdateRequired(isLocked: true, message: _):
-      "lock.fill"
-
-    case .ready(isLocked: false):
-      "lock.open.fill"
-
-    case .agentApprovalRequired,
-         .agentReplacementInProgress,
-         .agentUpdateRequired(isLocked: false, message: _),
-         .accessibilityRequired(isLocked: false),
-         .unavailable:
-      "exclamationmark.triangle.fill"
-
-    case .agentUpdateRequired(isLocked: nil, message: _):
-      "questionmark.diamond.fill"
-    }
-  }
+  private(set) var state: State = .checking(lastKnownLock: nil)
+  private(set) var activity: Activity?
+  private(set) var lastError: String?
 
   private var reconciliationTask: Task<Void, Never>?
   private var needsFollowUpReconciliation = false
@@ -70,7 +35,6 @@ final class LockController: ObservableObject {
   private let lifecycle: any AgentLifecycleServing
   private let readinessCoordinator: AgentReadinessCoordinator
   private let replacementCoordinator: AgentReplacementCoordinator
-  private let usesLiveServices: Bool
 
   private static let replacementProgressPollInterval: Duration = .seconds(3)
 
@@ -78,27 +42,15 @@ final class LockController: ObservableObject {
     self.init(
       client: LiveAgentClient(),
       lifecycle: LiveAgentLifecycle(),
-      usesLiveServices: true,
       initialState: .checking(lastKnownLock: nil)
     )
     reconcile()
   }
 
-  /// Creates a static fixture without touching Service Management, XPC, or system settings.
-  convenience init(previewState: ViewState) {
-    self.init(
-      client: LiveAgentClient(),
-      lifecycle: LiveAgentLifecycle(),
-      usesLiveServices: false,
-      initialState: previewState
-    )
-  }
-
   init(
     client: any AgentClientServing,
     lifecycle: any AgentLifecycleServing,
-    usesLiveServices: Bool,
-    initialState: ViewState
+    initialState: State
   ) {
     self.client = client
     self.lifecycle = lifecycle
@@ -110,20 +62,19 @@ final class LockController: ObservableObject {
       client: client,
       lifecycle: lifecycle
     )
-    self.usesLiveServices = usesLiveServices
     state = initialState
   }
 
   /// Rebuilds the complete readiness snapshot from Service Management and the Agent.
   func reconcile() {
-    guard usesLiveServices, activity == nil else {
+    guard activity == nil else {
       return
     }
     startReconciliation()
   }
 
   func toggle() {
-    guard usesLiveServices, activity == nil else {
+    guard activity == nil else {
       return
     }
 
@@ -181,7 +132,7 @@ final class LockController: ObservableObject {
   }
 
   func requestAccessibilityPermission() {
-    guard usesLiveServices, case .accessibilityRequired = state, activity == nil else {
+    guard case .accessibilityRequired = state, activity == nil else {
       return
     }
 
@@ -207,29 +158,8 @@ final class LockController: ObservableObject {
     }
   }
 
-  func openAgentApprovalSettings() {
-    guard usesLiveServices else {
-      return
-    }
-    lifecycle.openApprovalSettings()
-  }
-
-  func openAccessibilitySettings() {
-    guard usesLiveServices else {
-      return
-    }
-    guard let url = URL(
-      string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-    ), NSWorkspace.shared.open(url) else {
-      lastError = "Unable to open Accessibility settings."
-      return
-    }
-    lastError = nil
-  }
-
   func restartAgent() {
-    guard usesLiveServices,
-          case .unavailable(message: _, canRestartAgent: true) = state,
+    guard case .unavailable(message: _, canRestartAgent: true) = state,
           activity == nil
     else {
       return
@@ -266,8 +196,7 @@ final class LockController: ObservableObject {
   }
 
   func updateAgent() {
-    guard usesLiveServices,
-          case .agentUpdateRequired = state,
+    guard case .agentUpdateRequired = state,
           let updatePlan = pendingUpdatePlan,
           activity == nil
     else {

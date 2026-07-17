@@ -35,7 +35,7 @@ protocol AgentReplacementServing {
   func resetConnection()
 }
 
-/// Complete live Client surface retained by `LockController`.
+/// Complete live Client surface retained by `AppCoordinator`.
 ///
 /// Coordinators depend on the narrower protocols above, so future fakes only implement the
 /// external capability under test instead of the entire App Client.
@@ -111,14 +111,11 @@ protocol AgentReplacementLifecycleServing {
   func restart() async -> AgentRegistrar.State
 }
 
-/// Complete lifecycle surface retained by `LockController`.
+/// Complete lifecycle surface retained by `AppCoordinator`.
 @MainActor
 protocol AgentLifecycleServing:
   AgentReadinessLifecycleServing,
-  AgentReplacementLifecycleServing
-{
-  func openApprovalSettings()
-}
+  AgentReplacementLifecycleServing {}
 
 @MainActor
 struct LiveAgentLifecycle: AgentLifecycleServing {
@@ -134,9 +131,5 @@ struct LiveAgentLifecycle: AgentLifecycleServing {
 
   func restart() async -> AgentRegistrar.State {
     await AgentRegistrar.restart()
-  }
-
-  func openApprovalSettings() {
-    AgentRegistrar.openApprovalSettings()
   }
 }

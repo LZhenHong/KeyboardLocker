@@ -3,8 +3,7 @@ import Foundation
 
 /// Resolves Service Management, XPC contract, replacement, lock, and Accessibility facts.
 ///
-/// This type deliberately returns domain outcomes instead of mutating SwiftUI state. The
-/// `LockController` remains the presentation façade and decides how each outcome is shown.
+/// This type returns domain outcomes so presentation code can remain outside the business layer.
 @MainActor
 struct AgentReadinessCoordinator {
   enum Outcome {

@@ -60,7 +60,7 @@ Xcode 会按 package 名把这些 dependency 都显示在 `Core` 下面，因此
 ```mermaid
 flowchart LR
   subgraph AppProcess["KeyboardLocker process"]
-    AppUI["SwiftUI + LockController"] --> AppClient["XPCClient"]
+    AppCoordinator["AppCoordinator"] --> AppClient["XPCClient"]
   end
 
   subgraph CLIProcess["klock process"]
@@ -188,7 +188,7 @@ SMAppService enabled
   -> serviceDescriptor()
   -> protocol/capability/bundled-build comparison
   -> status() + hasAccessibilityPermission()
-  -> ready UI
+  -> ready application state
 ```
 
 legacy Agent 没有 `serviceDescriptor`，但 descriptor 调用失败也可能只是 transport 或实现故障，不能仅凭一次失败断言远端版本：
@@ -490,7 +490,7 @@ sequenceDiagram
 
 对应源码中的实际步骤是：
 
-1. App 的 `LockController` 已在 readiness reconciliation 中完成 descriptor handshake,随后 App 或 CLI 调用 `XPCClient.shared.lock()`；CLI 使用的 lock/status/unlock 属于 legacy base selector。
+1. App 的 `AppCoordinator` 已在 readiness reconciliation 中完成 descriptor handshake,随后 App 或 CLI 调用 `XPCClient.shared.lock()`；CLI 使用的 lock/status/unlock 属于 legacy base selector。
 2. `XPCClient.currentConnection()` 创建或复用 `NSXPCConnection(machServiceName:)`。
 3. Client 把 `KeyboardLockerServiceProtocol` 设置成 `remoteObjectInterface`，再取得 remote proxy。
 4. Client 在 activate 前安装只接受同 Team、精确 Agent signing identifier 的 requirement；第一条实际 message 让 `launchd` 按需启动 Agent。
@@ -557,7 +557,7 @@ App 在动作结束后仍会做完整 reconciliation，因为跨进程系统中�
 
 ## 为什么还需要通知
 
-XPC request/reply 适合“现在执行”或“现在查询”，不会自动告诉其他 wrapper 状态后来发生了变化。例如 CLI 锁定后，App 需要更新菜单栏图标；自动解锁发生时，所有长命 UI 也需要刷新。
+XPC request/reply 适合“现在执行”或“现在查询”，不会自动告诉其他 wrapper 状态后来发生了变化。例如 CLI 锁定后，后续恢复的 App UI 需要更新状态；自动解锁发生时，所有长命 UI 也需要刷新。
 
 当前状态同步链路是：
 
@@ -590,7 +590,7 @@ sequenceDiagram
 - 通知可能重复、丢失或乱序，所以 subscriber 收到信号后必须再走 XPC `status()`。
 - 同一 subscription 内最多只有一个权威查询 worker；并发信号被合并为后续查询,取消后尚未进入 handler 的在途结果不再交付。
 - 两个通知通道是为了提高不同进程状态下的交付可靠性，不是两套状态源。
-- App 打开菜单或重新变为 active 时还会主动 reconcile，以弥补挂起期间错过的通知。
+- 后续 App UI 变为可见或 active 时还必须主动 reconcile，以弥补挂起期间错过的通知。
 - 一次性 `status` / `unlock` 命令直接查询 Agent，不需要为了读取当前状态先等待通知。
 
 ## Connection 访问控制
@@ -678,7 +678,7 @@ locked Agent 不能自动 restart,因为 Agent 退出本身会释放正在工作
 | App 的可注入 XPC/lifecycle adapter | [`KeyboardLocker/AgentCoordinationServices.swift`](../KeyboardLocker/AgentCoordinationServices.swift) |
 | Registration、handshake 与 readiness 快照 | [`KeyboardLocker/AgentReadinessCoordinator.swift`](../KeyboardLocker/AgentReadinessCoordinator.swift) |
 | Safe/forced Agent replacement 顺序 | [`KeyboardLocker/AgentReplacementCoordinator.swift`](../KeyboardLocker/AgentReplacementCoordinator.swift) |
-| App 视图状态、任务与订阅 façade | [`KeyboardLocker/LockController.swift`](../KeyboardLocker/LockController.swift) |
+| App 应用状态、任务与订阅协调 | [`KeyboardLocker/AppCoordinator.swift`](../KeyboardLocker/AppCoordinator.swift) |
 
 ## Apple 参考资料
 

@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 KeyboardLocker suppresses standard keyboard events via CGEventTap on macOS. Mouse input and system-defined media keys remain available. Three-tier architecture over XPC (Mach service `io.lzhlovesjyq.keyboardlocker.agent`):
 
-- **KeyboardLocker** (App, SwiftUI) — imports `Client`
+- **KeyboardLocker** (App, headless Agent-registration bootstrap; presentation layer intentionally absent) — imports `Client`
 - **KeyboardLockerAgent** (XPC service, runs the lock engine, holds Accessibility permission) — imports `Service`
 - **klock** (CLI) — imports `Client`
 - **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, App/CLI), `Service` (lock engine, Agent). `Client`/`Service` both `@_exported import Common`.

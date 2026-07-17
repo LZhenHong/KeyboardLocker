@@ -41,12 +41,12 @@
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
 - `AccessibilityManager.swift`(Agent 身份下的实时权限查询与 prompt 请求)、`XPCAccessControl.swift`(生成 Listener 的受信 Client requirement)、`XPCServerConnection.swift`。
 
-**App**(`KeyboardLocker/`)—— 薄 SwiftUI wrapper
+**App**(`KeyboardLocker/`)—— 无 presentation framework 的薄 wrapper；当前入口仅完成 Agent 注册
 - `AgentRegistrar.swift`:通过 `SMAppService.agent(plistName:)` 确保注册,读取 bundled Agent metadata 并比较运行中 descriptor;replacement 会等待旧 Agent 退出后重新注册 bundled 版本。
 - `AgentCoordinationServices.swift`:App 内部的可注入依赖边界。live adapter 把 `XPCClient` 与 `AgentRegistrar` 暴露为按用途拆分的最小 protocol,协调器无需依赖完整 Client/lifecycle surface。
 - `AgentReadinessCoordinator.swift`:一次性收集 registration、descriptor handshake/重连、兼容性、replacement phase、Accessibility 与权威锁状态,返回不含 UI 的 domain outcome。
 - `AgentReplacementCoordinator.swift`:执行 App 侧 Agent 替换顺序。`AgentUpdatePlan` 用类型区分已协商的 safe replacement 与需要用户授权的 forced fallback,所有自动/手动更新共用 prepare → commit → restart → reconnect 边界。
-- `LockController.swift`:`@MainActor ObservableObject` 视图 façade —— 持有 SwiftUI state、异步任务/订阅生命周期、单次自动更新策略和 replacement progress polling,把协调器 outcome 映射成 UI；不直接实现 handshake、replacement transaction、锁或设置逻辑。
+- `AppCoordinator.swift`:不依赖 presentation framework 的 `@MainActor` 应用协调器 —— 持有异步任务/订阅生命周期、单次自动更新策略和 replacement progress polling,把 domain outcome 收敛为应用状态；不直接实现 handshake、replacement transaction、锁或设置逻辑。
 
 ## 常见任务
 
@@ -73,4 +73,4 @@
 - `klock` target 必须保留 generated embedded Info.plist section；这是让实际 code-signing identifier 等于 `io.lzhlovesjyq.keyboardlocker.klock` 的载体。只设置 `PRODUCT_BUNDLE_IDENTIFIER` 而不嵌入 Info.plist 时，`codesign` 会退回裸名称 `klock`，Agent 会拒绝它。
 - 引擎操作会派发到主线程,以便访问 CFRunLoop。
 - 系统可能禁用 event tap(超时 / 用户输入);`LockEngine` 会尝试重新启用。
-- App 协调器通过 protocol injection 与 presentation state 解耦。当前 Xcode 工程没有安全的 non-hosted App-model test target；不要用 hosted App tests 覆盖它们，因为测试宿主会初始化 live `LockController` 并触碰 `SMAppService`/XPC。新增确定性协调器测试时应先建立独立的 non-hosted App-model target,再注入 fake Client/lifecycle。
+- App 协调器通过 protocol injection 与 presentation layer 解耦。当前 Xcode 工程没有独立的 App-model test target；新增确定性协调器测试时应先建立 non-hosted target,再注入 fake Client/lifecycle，避免测试触碰 live `SMAppService`/XPC。

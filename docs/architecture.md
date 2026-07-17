@@ -47,7 +47,7 @@ Widget ──┘            ├─ Settings ownership (source of truth)
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
 
-App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management、XPC 两个系统边界之间的应用层编排,不是第二份锁核心。它必须保持为无锁状态真相源的薄协调器：输入来自 Agent/系统查询,输出由 `LockController` 映射到 UI；任何 CGEventTap、设置持久化和 Accessibility 判定仍只在 Agent 内执行。
+App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management、XPC 两个系统边界之间的应用层编排,不是第二份锁核心。它必须保持为无锁状态真相源的薄协调器：`AppCoordinator` 只消费 Agent/系统查询并暴露应用状态与动作，不依赖 presentation framework；后续 UI 只能映射这些状态与动作。任何 CGEventTap、设置持久化和 Accessibility 判定仍只在 Agent 内执行。
 
 ## 全局锁语义
 
@@ -62,7 +62,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 因为状态只存在于唯一一处(Agent),wrapper 保持同步的方式就是始终以它为准。wrapper 有两种形态,读取状态的方式不同:
 
 - **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
-- **长命的状态反映面** —— App 菜单栏、未来的 Widgets。它们持续显示状态,因此必须既**订阅**(`LockStateSubscriber`),又在**变为可见 / 启动时校准**(拉取 `status()`)—— 因为进程被挂起期间可能错过某次广播。`LockStateSubscriber` 会先安装两个 observer,再立即做一次权威初始查询;只要初始查询成功或后续 signal 到达,snapshot 与 subscription 之间的变化就会被校准。调用方仍需在重新可见时做完整 readiness reconciliation。
+- **长命的状态反映面** —— 后续恢复的 App UI、未来的 Widgets。它们持续显示状态,因此必须既**订阅**(`LockStateSubscriber`),又在**变为可见 / 启动时校准**(拉取 `status()`)—— 因为进程被挂起期间可能错过某次广播。`LockStateSubscriber` 会先安装两个 observer,再立即做一次权威初始查询;只要初始查询成功或后续 signal 到达,snapshot 与 subscription 之间的变化就会被校准。调用方仍需在重新可见时做完整 readiness reconciliation。
 
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
 

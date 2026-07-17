@@ -81,10 +81,6 @@ enum AgentRegistrar {
     }
   }
 
-  static func openApprovalSettings() {
-    SMAppService.openSystemSettingsLoginItems()
-  }
-
   /// Compares the running Agent's self-reported contract with the Agent bundled in this App.
   /// This is lifecycle compatibility only and must not be treated as peer authentication.
   static func compatibility(of descriptor: ServiceDescriptor) -> Compatibility {

@@ -2,15 +2,15 @@
 <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
 <dictionary title="KeyboardLocker">
   <suite name="KeyboardLocker Suite" code="KBLR" description="Commands for controlling KeyboardLocker.">
-    <command name="lock keyboard" code="KBLRlock" description="Lock standard keyboard input.">
+    <command name="lock keyboard" code="KBLRlock" description="Lock keyboard input, including keyboard system controls.">
       <cocoa class="LockKeyboardScriptCommand"/>
     </command>
-    <command name="unlock keyboard" code="KBLRunlk" description="Unlock standard keyboard input.">
+    <command name="unlock keyboard" code="KBLRunlk" description="Unlock keyboard input and keyboard system controls.">
       <cocoa class="UnlockKeyboardScriptCommand"/>
     </command>
-    <command name="get keyboard lock status" code="KBLRstat" description="Return whether standard keyboard input is currently locked.">
+    <command name="get keyboard lock status" code="KBLRstat" description="Return whether keyboard input and keyboard system controls are currently locked.">
       <cocoa class="GetKeyboardLockStatusScriptCommand"/>
-      <result type="boolean" description="true when standard keyboard input is locked; otherwise false."/>
+      <result type="boolean" description="true when keyboard input and keyboard system controls are locked; otherwise false."/>
     </command>
   </suite>
 </dictionary>

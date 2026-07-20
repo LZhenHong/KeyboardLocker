@@ -5,6 +5,7 @@ KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScrip
 所有入口共享以下语义：
 
 - `lock` 与 `unlock` 是幂等的 desired-state action。
+- `lock` 会消费 macOS 交付给 Agent event tap 的标准按键和键盘 system control,包括音量、亮度、播放控制、eject 与 power；鼠标和触控板输入继续可用。macOS 没有交付给 event tap 的硬件或系统保留路径不在可保证范围内。
 - `status` 每次都从 Agent 查询权威状态；wrapper 不维护本地副本。
 - lock 是全局状态,不属于发起它的 Shortcut、AppleScript 或 shell process。任意普通入口的显式 `unlock` 都会解开同一个全局锁。Focus Filter 的关闭事件使用更窄的条件释放规则,只解除它自己创建且未被后续显式 `lock` 接管的锁。
 - 当前没有暴露 client-side `toggle`。需要确定结果时,显式选择 `lock` 或 `unlock`。

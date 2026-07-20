@@ -5,7 +5,7 @@ import Foundation
 struct LockKeyboardIntent: nonisolated AppIntent {
   nonisolated static let title: LocalizedStringResource = "Lock Keyboard"
   nonisolated static let description = IntentDescription(
-    "Locks standard keyboard input while keeping mouse and media keys available."
+    "Locks keyboard input, including volume, brightness, and media controls, while keeping mouse and trackpad input available."
   )
 
   private let client: any AgentLockActionServing
@@ -27,7 +27,9 @@ struct LockKeyboardIntent: nonisolated AppIntent {
 @MainActor
 struct UnlockKeyboardIntent: nonisolated AppIntent {
   nonisolated static let title: LocalizedStringResource = "Unlock Keyboard"
-  nonisolated static let description = IntentDescription("Unlocks standard keyboard input.")
+  nonisolated static let description = IntentDescription(
+    "Unlocks keyboard input and keyboard system controls."
+  )
 
   private let client: any AgentLockActionServing
 
@@ -49,7 +51,7 @@ struct UnlockKeyboardIntent: nonisolated AppIntent {
 struct GetKeyboardLockStatusIntent: nonisolated AppIntent {
   nonisolated static let title: LocalizedStringResource = "Get Keyboard Lock Status"
   nonisolated static let description = IntentDescription(
-    "Returns whether standard keyboard input is currently locked."
+    "Returns whether keyboard input and keyboard system controls are currently locked."
   )
 
   private let client: any AgentLockActionServing

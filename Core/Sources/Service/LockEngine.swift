@@ -3,6 +3,7 @@ import Carbon
 import Common
 @preconcurrency import CoreGraphics
 import Foundation
+import IOKit
 import os
 
 struct AutoUnlockSchedule: Equatable {
@@ -171,6 +172,49 @@ enum UnlockGestureMatcher {
   }
 }
 
+/// System-defined events share a channel with auxiliary mouse buttons. Classify them explicitly so
+/// keyboard controls are consumed without broadening the lock to pointer input.
+enum LockedKeyboardEventPolicy {
+  static let systemDefinedEventType: CGEventType = {
+    guard let type = CGEventType(rawValue: UInt32(NX_SYSDEFINED)) else {
+      preconditionFailure("NX_SYSDEFINED must map to a CGEventType")
+    }
+    return type
+  }()
+
+  private static let suppressibleSystemDefinedSubtypes: Set<Int16> = [
+    Int16(NX_SUBTYPE_AUX_CONTROL_BUTTONS),
+    Int16(NX_SUBTYPE_EJECT_KEY),
+    Int16(NX_SUBTYPE_POWER_KEY),
+  ]
+
+  static func shouldSuppress(
+    type: CGEventType,
+    systemDefinedSubtype: Int16? = nil
+  ) -> Bool {
+    switch type {
+    case .flagsChanged, .keyDown, .keyUp:
+      return true
+
+    case systemDefinedEventType:
+      guard let systemDefinedSubtype else {
+        return false
+      }
+      return suppressibleSystemDefinedSubtypes.contains(systemDefinedSubtype)
+
+    default:
+      return false
+    }
+  }
+
+  static func shouldSuppress(type: CGEventType, event: CGEvent) -> Bool {
+    let systemDefinedSubtype = type == systemDefinedEventType
+      ? NSEvent(cgEvent: event)?.subtype.rawValue
+      : nil
+    return shouldSuppress(type: type, systemDefinedSubtype: systemDefinedSubtype)
+  }
+}
+
 enum EventTapInstallationError: Error, Equatable {
   case eventTapCreationFailed
   case eventTapEnableFailed
@@ -285,11 +329,12 @@ public final class LockEngine {
     }
   }
 
-  /// Mouse and system-defined events remain available under the keyboard-only product contract.
+  /// Suppress standard keys and keyboard-originated system controls without observing pointer input.
   static let eventMasks: CGEventMask =
     (1 << CGEventType.keyDown.rawValue) |
     (1 << CGEventType.keyUp.rawValue) |
-    (1 << CGEventType.flagsChanged.rawValue)
+    (1 << CGEventType.flagsChanged.rawValue) |
+    (1 << LockedKeyboardEventPolicy.systemDefinedEventType.rawValue)
 
   private static let runLoopSourceOrder: CFIndex = 0
   private static let autoRepeatFlagValue: Int64 = 1
@@ -562,6 +607,10 @@ public final class LockEngine {
     event: CGEvent
   ) -> Unmanaged<CGEvent>? {
     guard runtimeState.isLocked else {
+      return Unmanaged.passUnretained(event)
+    }
+
+    guard LockedKeyboardEventPolicy.shouldSuppress(type: type, event: event) else {
       return Unmanaged.passUnretained(event)
     }
 

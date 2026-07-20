@@ -21,14 +21,14 @@ enum KlockCLI {
     }
 
     switch command {
-    case "help", "--help", "-h":
+    case "--help", "-h", "help":
       guard arguments.count == 1 else {
         reportUnexpectedArguments(Array(arguments.dropFirst()))
       }
       printUsage()
       exit(ExitCode.success)
 
-    case "version", "--version", "-v":
+    case "--version", "-v", "version":
       guard arguments.count == 1 else {
         reportUnexpectedArguments(Array(arguments.dropFirst()))
       }
@@ -77,8 +77,8 @@ enum KlockCLI {
   private static func executeInteractiveLock() async {
     let unlockHotkey: Result<String, Error>
     do {
-      unlockHotkey = .success(
-        try await XPCClient.shared.currentSettings().unlockHotkey.displayString
+      unlockHotkey = try await .success(
+        XPCClient.shared.currentSettings().unlockHotkey.displayString
       )
     } catch {
       unlockHotkey = .failure(error)

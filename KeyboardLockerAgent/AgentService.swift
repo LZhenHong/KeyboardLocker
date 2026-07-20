@@ -12,7 +12,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   @MainActor private var replacement = ReplacementTransaction()
   @MainActor private var replacementPreparationExpiration: DispatchWorkItem?
 
-  @MainActor override init() {
+  @MainActor
+  override init() {
     let loaded = KeyboardLockerSettingsStore().load()
     descriptorResult = Result {
       try Self.makeServiceDescriptor()
@@ -287,7 +288,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   // MARK: - Helpers
 
-  @MainActor private func performLock(
+  @MainActor
+  private func performLock(
     allowsControlCUnlock: Bool
   ) throws -> LockRequestOutcome {
     try ensureAcceptingLockRequests()
@@ -298,7 +300,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     )
   }
 
-  @MainActor private func ensureAcceptingLockRequests() throws {
+  @MainActor
+  private func ensureAcceptingLockRequests() throws {
     guard !replacement.isPending else {
       throw Self.replacementError(
         code: 1,
@@ -354,7 +357,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     return replacementError(code: code, description: error.localizedDescription)
   }
 
-  @MainActor private func scheduleExpiration(
+  @MainActor
+  private func scheduleExpiration(
     for preparation: ReplacementTransaction.Preparation
   ) {
     replacementPreparationExpiration?.cancel()
@@ -398,7 +402,8 @@ private final class MainActorOperation: @unchecked Sendable {
     self.body = body
   }
 
-  @MainActor func callAsFunction() {
+  @MainActor
+  func callAsFunction() {
     body()
   }
 }

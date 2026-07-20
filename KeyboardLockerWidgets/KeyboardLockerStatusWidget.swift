@@ -29,8 +29,7 @@ private struct KeyboardLockerWidgetEntryView: View {
       .modifier(KeyboardLockerWidgetBackground())
   }
 
-  @ViewBuilder
-  private var content: some View {
+  @ViewBuilder private var content: some View {
     switch entry.state {
     case let .available(snapshot):
       VStack(alignment: .leading, spacing: 8) {

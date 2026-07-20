@@ -1,9 +1,10 @@
+import AppIntents
 import Client
 import SwiftUI
 import WidgetKit
 
 struct KeyboardLockerStatusWidget: Widget {
-  nonisolated static let kind = "io.lzhlovesjyq.keyboardlocker.status"
+  nonisolated static let kind = KeyboardLockerWidgetKind.status
 
   var body: some WidgetConfiguration {
     StaticConfiguration(
@@ -55,6 +56,10 @@ private struct KeyboardLockerWidgetEntryView: View {
         } else {
           Label("Ready", systemImage: "checkmark.circle")
         }
+
+        if #available(macOS 14.0, *) {
+          KeyboardLockerWidgetActionButton(isLocked: snapshot.isLocked)
+        }
       }
 
     case let .unavailable(message):
@@ -69,6 +74,31 @@ private struct KeyboardLockerWidgetEntryView: View {
           .lineLimit(3)
       }
     }
+  }
+}
+
+@available(macOS 14.0, *)
+private struct KeyboardLockerWidgetActionButton: View {
+  let isLocked: Bool
+
+  var body: some View {
+    Group {
+      if isLocked {
+        Button(
+          intent: SetKeyboardLockWidgetIntent(desiredIsLocked: false)
+        ) {
+          Label("Unlock", systemImage: "lock.open")
+        }
+      } else {
+        Button(
+          intent: SetKeyboardLockWidgetIntent(desiredIsLocked: true)
+        ) {
+          Label("Lock", systemImage: "lock")
+        }
+      }
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
   }
 }
 

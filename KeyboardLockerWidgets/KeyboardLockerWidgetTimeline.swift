@@ -2,6 +2,10 @@ import Client
 import Foundation
 import WidgetKit
 
+enum KeyboardLockerWidgetKind {
+  static let status = "io.lzhlovesjyq.keyboardlocker.status"
+}
+
 struct KeyboardLockerWidgetEntry: TimelineEntry, Equatable {
   enum State: Equatable {
     case available(LockStatusSnapshot)

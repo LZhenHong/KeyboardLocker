@@ -98,6 +98,10 @@ struct LockRuntimeState: Equatable {
     focusOwnedLockGeneration = nil
   }
 
+  /// The generation to release on Focus deactivation, or nil. The `== lockGeneration` identity
+  /// check is the reason ownership is a generation and not a bool: a late Focus-off event may
+  /// arrive after arbitrary unlock/relock cycles, and it must release only the exact lock Focus
+  /// created — never a newer, unrelated global lock.
   var focusOwnedGenerationForRelease: UInt64? {
     guard isLocked,
           focusOwnedLockGeneration == lockGeneration

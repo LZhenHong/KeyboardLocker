@@ -95,19 +95,17 @@ public final class XPCClient: @unchecked Sendable {
   }
 
   public func lock() async throws {
-    do {
-      try await lockOnce()
-    } catch XPCClientError.timedOut {
-      // A general desired-lock can take persistence over from a Focus-created lock even when the
-      // physical state is already locked. Status cannot prove that this semantic mutation ran,
-      // so retry the idempotent request and require a reply from a fresh connection.
-      resetConnection()
-      do {
+    // A general desired-lock can take persistence over from a Focus-created lock even when the
+    // physical state is already locked. Status cannot prove that this semantic mutation ran,
+    // so retry the idempotent request and require a reply from a fresh connection.
+    try await IdempotentMutationRetrier.perform(
+      operation: { [self] in
         try await lockOnce()
-      } catch XPCClientError.timedOut {
-        throw XPCClientError.operationOutcomeUnknown
+      },
+      resetConnection: { [self] in
+        resetConnection()
       }
-    }
+    )
   }
 
   private func lockOnce() async throws {
@@ -142,18 +140,16 @@ public final class XPCClient: @unchecked Sendable {
 
   /// Applies the system Focus Filter state through an ownership-aware Agent operation.
   public func setFocusFilterLockEnabled(_ enabled: Bool) async throws {
-    do {
-      try await setFocusFilterLockEnabledOnce(enabled)
-    } catch XPCClientError.timedOut {
-      // Both enable and disable are idempotent, but status alone cannot reveal whether Focus owns
-      // the current generation. Re-negotiate and require one confirmed reply.
-      resetConnection()
-      do {
+    // Both enable and disable are idempotent, but status alone cannot reveal whether Focus owns
+    // the current generation. Re-negotiate and require one confirmed reply.
+    try await IdempotentMutationRetrier.perform(
+      operation: { [self] in
         try await setFocusFilterLockEnabledOnce(enabled)
-      } catch XPCClientError.timedOut {
-        throw XPCClientError.operationOutcomeUnknown
+      },
+      resetConnection: { [self] in
+        resetConnection()
       }
-    }
+    )
   }
 
   private func setFocusFilterLockEnabledOnce(_ enabled: Bool) async throws {

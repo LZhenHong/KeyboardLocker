@@ -70,8 +70,7 @@ final nonisolated class GetKeyboardLockStatusScriptCommand: AsyncKeyboardLockerS
 enum AppleScriptErrorPresentation {
   static func errorNumber(for error: Error) -> Int {
     if let clientError = error as? XPCClientError,
-       case .timedOut = clientError
-    {
+       case .timedOut = clientError {
       return Int(errAETimeout)
     }
     return Int(errAEEventFailed)

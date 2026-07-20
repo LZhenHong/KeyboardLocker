@@ -101,7 +101,7 @@ final class CommandLineToolLinkManager {
     self.preferredDestination = preferredDestination.standardizedFileURL
     self.managedDestinations = (managedDestinations ?? [preferredDestination])
       .map(\.standardizedFileURL)
-    pathDirectoryPaths = Set(pathDirectories.map { $0.standardizedFileURL.path })
+    pathDirectoryPaths = Set(pathDirectories.map(\.standardizedFileURL.path))
     self.fileManager = fileManager
   }
 

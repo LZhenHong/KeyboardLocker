@@ -90,7 +90,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   private func addStateActions(for state: AppCoordinator.State) {
     switch state {
-    case .checking, .agentReplacementInProgress:
+    case .agentReplacementInProgress, .checking:
       break
 
     case .agentApprovalRequired:
@@ -240,19 +240,23 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     return messages.isEmpty ? nil : messages.joined(separator: "\n\n")
   }
 
-  @objc private func toggleLock() {
+  @objc
+  private func toggleLock() {
     coordinator.toggle()
   }
 
-  @objc private func requestAccessibilityPermission() {
+  @objc
+  private func requestAccessibilityPermission() {
     coordinator.requestAccessibilityPermission()
   }
 
-  @objc private func openLoginItemsSettings() {
+  @objc
+  private func openLoginItemsSettings() {
     SMAppService.openSystemSettingsLoginItems()
   }
 
-  @objc private func updateAgent() {
+  @objc
+  private func updateAgent() {
     guard case let .agentUpdateRequired(isLocked, message) = currentSnapshot.state else {
       return
     }
@@ -274,7 +278,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
   }
 
-  @objc private func restartAgent() {
+  @objc
+  private func restartAgent() {
     let confirmation = NSAlert()
     confirmation.alertStyle = .warning
     confirmation.messageText = "Restart the KeyboardLocker Agent?"
@@ -288,7 +293,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
   }
 
-  @objc private func showDetails() {
+  @objc
+  private func showDetails() {
     guard let detailMessage else {
       return
     }
@@ -301,11 +307,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     alert.runModal()
   }
 
-  @objc private func refresh() {
+  @objc
+  private func refresh() {
     coordinator.reconcile()
   }
 
-  @objc private func manageCommandLineTool() {
+  @objc
+  private func manageCommandLineTool() {
     NSApp.activate(ignoringOtherApps: true)
 
     switch commandLineToolManager.state {
@@ -336,8 +344,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
           showCommandLineToolError(error)
         }
 
-      case .alertSecondButtonReturn where canRemove,
-           .alertFirstButtonReturn:
+      case .alertFirstButtonReturn,
+           .alertSecondButtonReturn where canRemove:
         copyPathCommand(for: destination)
 
       default:
@@ -434,7 +442,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     alert.runModal()
   }
 
-  @objc private func quit() {
+  @objc
+  private func quit() {
     NSApp.terminate(nil)
   }
 }

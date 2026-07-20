@@ -344,8 +344,7 @@ final class AppCoordinator {
     case let .updateAvailable(descriptor, message, bundledBuild, isLocked):
       if !isLocked,
          allowsAutomaticAgentUpdate,
-         !attemptedAutomaticUpdateBuilds.contains(bundledBuild)
-      {
+         !attemptedAutomaticUpdateBuilds.contains(bundledBuild) {
         attemptedAutomaticUpdateBuilds.insert(bundledBuild)
         await replaceAgentAutomatically(
           descriptor,
@@ -483,8 +482,7 @@ final class AppCoordinator {
     stopStateObservation()
 
     if let clientError = error as? XPCClientError,
-       case .peerAuthenticationUnavailable = clientError
-    {
+       case .peerAuthenticationUnavailable = clientError {
       pendingUpdatePlan = nil
       state = .unavailable(
         message: """
@@ -564,8 +562,7 @@ final class AppCoordinator {
 
     case .agentUpdateRequired:
       if let pendingUpdatePlan,
-         pendingUpdatePlan.canReadLockState
-      {
+         pendingUpdatePlan.canReadLockState {
         let updatedPlan = pendingUpdatePlan.updatingLockState(isLocked)
         self.pendingUpdatePlan = updatedPlan
         state = .agentUpdateRequired(

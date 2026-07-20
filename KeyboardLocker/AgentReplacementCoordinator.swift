@@ -132,8 +132,7 @@ struct AgentReplacementCoordinator {
       }
 
       if plan.supportsSafeReplacement,
-         let descriptor = await reportedReplacementInProgress()
-      {
+         let descriptor = await reportedReplacementInProgress() {
         return .replacementInProgress(descriptor)
       }
 

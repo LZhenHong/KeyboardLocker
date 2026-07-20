@@ -164,7 +164,7 @@ enum AgentRegistrar {
         supportsSafeReplacement: supportsSafeReplacement
       )
 
-    case .orderedAscending, .orderedSame, nil:
+    case nil, .orderedAscending, .orderedSame:
       return .updateRequired(
         message: """
         The running background agent does not match the version bundled with this app. \(details)
@@ -242,9 +242,11 @@ enum AgentRegistrar {
         switch service.status {
         case .notFound, .notRegistered:
           return
+
         case .enabled, .requiresApproval:
           logger.error("Failed to unregister agent: \(error.localizedDescription, privacy: .public)")
           throw error
+
         @unknown default:
           throw error
         }

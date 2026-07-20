@@ -32,7 +32,7 @@ enum KeyboardLockerApplication {
     }
 
     Task { @MainActor in
-      exit(await resetAgentRegistration())
+      await exit(resetAgentRegistration())
     }
     RunLoop.main.run()
     return true

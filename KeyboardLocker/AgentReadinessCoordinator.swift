@@ -68,8 +68,7 @@ struct AgentReadinessCoordinator {
       return .cancelled
     }
     if let expectedPreviousAgentInstanceID,
-       descriptor.agentInstanceID == expectedPreviousAgentInstanceID
-    {
+       descriptor.agentInstanceID == expectedPreviousAgentInstanceID {
       return .agentDidNotRestart
     }
 

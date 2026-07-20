@@ -1,5 +1,6 @@
 import AppIntents
 import Client
+import SystemSurfaces
 
 protocol AgentFocusLockServing: Sendable {
   func setFocusFilterLockEnabled(_ enabled: Bool) async throws
@@ -27,17 +28,21 @@ struct KeyboardLockFocusFilterIntent: SetFocusFilterIntent {
   }
 
   private let client: any AgentFocusLockServing
+  private let surfaceInvalidator: LockStateSurfaceInvalidator
 
   init() {
     client = LiveAgentFocusLockClient()
+    surfaceInvalidator = .live
     lockKeyboard = false
   }
 
   init(
     lockKeyboard: Bool,
-    client: any AgentFocusLockServing = LiveAgentFocusLockClient()
+    client: any AgentFocusLockServing = LiveAgentFocusLockClient(),
+    surfaceInvalidator: LockStateSurfaceInvalidator = .live
   ) {
     self.client = client
+    self.surfaceInvalidator = surfaceInvalidator
     self.lockKeyboard = lockKeyboard
   }
 
@@ -49,6 +54,7 @@ struct KeyboardLockFocusFilterIntent: SetFocusFilterIntent {
 
   func perform() async throws -> some IntentResult {
     try await client.setFocusFilterLockEnabled(lockKeyboard)
+    surfaceInvalidator.invalidate()
     return .result()
   }
 }

@@ -70,9 +70,11 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 - **一次性面(one-shot)** —— CLI 的 `status`/`unlock`、AppleScript、Shortcuts(App Intents)、Services、URL action 与任何脚本。它们在运行的那一刻向 Agent 发问(`XPCClient.status()` 或 `lockStatusSnapshot()`)并据此行动。它们不缓存任何状态,因此**天生就是同步的**,不需要订阅。不要给一次性面加通知处理。
 - **长命的状态反映面** —— menu-bar App 等持续运行的 UI。它们必须既接收状态变化 signal,又在**变为可见 / 启动时校准** —— 因为进程被挂起期间可能错过某次广播。只显示布尔状态的现有 App 可以继续使用 `LockStateSubscriber`；需要起点、deadline 与 active settings 的界面在 signal 或重新可见时重新拉取 `lockStatusSnapshot()`。通知与本地缓存都不是真相源。
-- **系统托管的 snapshot 面** —— Widget、Control 等由系统按需启动的 provider。它们不假定进程常驻,也不安装长命 subscription；每次生成 timeline/value 或处理 action 时读取 `lockStatusSnapshot()`,把本地值只当 presentation cache。
+- **系统托管的 snapshot 面** —— Widget、Control 等由系统按需启动的 provider。它们不假定进程常驻,也不安装长命 subscription；每次生成 timeline/value 时读取 `lockStatusSnapshot()`,把本地值只当 presentation cache。交互 action 发送明确的 desired state,不从 cache 做 client-side toggle；Agent 确认 mutation 后可以请求系统重新运行 provider。
 
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
+
+`SystemSurfaces` 的 reload request 是 presentation invalidation,不是领域状态广播：它不携带状态、不触碰 Agent,只请求 WidgetKit / ControlCenter 重新执行 provider。主 App、Widget 与 Focus extension 可以在 Agent 确认 mutation 后请求刷新；主 App 运行时还把已经由 `LockStateSubscriber` 回拉并去重的外部变化桥接为刷新提示。CLI 与 Agent 不链接 presentation module。主 App 未运行时,CLI、热键或 event-tap failure 造成的变化只能等待 WidgetKit 的下一次 provider execution；系统始终可以合并或延后 reload,因此任何 wrapper 都不得承诺即时 UI 同步。
 
 `klock lock` 先发出 atomic interactive lock request。只有 outcome 为 acquired 时,它才等待并报告后续解锁；本轮 event tap 会把 `Ctrl+C` 当作额外解锁手势并在 Agent 内消费该事件。若 outcome 为 already locked,CLI 必须说明本命令没有创建新锁并立即退出,不能把 App 或另一个 CLI 已建立的锁变成自己的可取消 session。acquired 后的等待同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 
@@ -85,9 +87,9 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 1. **只 import `Client`,绝不 import `Service`。** wrapper 只通过 XPC 客户端与核心通信。把 `Service`(LockEngine、event tap)引入 wrapper 是违约。
 2. **不新增领域逻辑。** 如果 wrapper 需要核心尚未暴露的行为,先把它加到 Agent + `KeyboardLockerServiceProtocol`,再调用;不要在 wrapper 侧实现。
 3. **不持有独立状态。** 没有私有 `UserDefaults`,没有本地锁标志。设置和锁状态都从核心读取。
-4. **不向其他进程发出任何东西。** 只有 Agent 广播状态。
+4. **不广播业务状态。** 只有 Agent 发出状态变化 signal；wrapper 不得发送带 payload 的状态通知或把本地值当真相。containing App / extension 在 Agent 确认 mutation 后可以通过 `SystemSurfaces` 请求系统刷新 Widget / Control,但该请求只是无状态 presentation hint。
 5. **Agent 不可达时诚实降级。** 每个 wrapper 都必须处理"核心不可达"(见下方 Agent 生命周期要求),而不是假定调用成功。
-6. **按自身形态读取状态。** 判断这个 wrapper 属于"状态同步"里的哪一种形态:一次性面直接 query,**不加**任何通知处理;长命 UI 订阅 signal 并重新 query；系统托管的 snapshot 面则在每次 provider/action execution 中读取 `lockStatusSnapshot()`。
+6. **按自身形态读取状态。** 判断这个 wrapper 属于"状态同步"里的哪一种形态:一次性面直接 query,**不加**任何通知处理;长命 UI 订阅 signal 并重新 query；系统托管的 snapshot provider 每次 execution 读取 `lockStatusSnapshot()`,交互 action 则发送 explicit desired state。
 
 ## Agent 生命周期要求
 

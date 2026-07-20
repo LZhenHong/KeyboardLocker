@@ -1,5 +1,6 @@
 import Client
 import Foundation
+import SystemSurfaces
 
 @MainActor
 protocol AgentControlServing: Sendable {
@@ -64,32 +65,71 @@ protocol AgentClientServing:
 
 @MainActor
 struct LiveAgentClient: AgentClientServing {
-  nonisolated init() {}
+  typealias Mutation = @Sendable () async throws -> Void
+  typealias StatusQuery = @Sendable () async throws -> Bool
+
+  private let lockMutation: Mutation
+  private let statusQuery: StatusQuery
+  private let surfaceInvalidator: LockStateSurfaceInvalidator
+  private let unlockMutation: Mutation
+
+  nonisolated init() {
+    self.init(
+      lock: {
+        try await XPCClient.shared.lock()
+      },
+      unlock: {
+        try await XPCClient.shared.unlock()
+      },
+      status: {
+        try await XPCClient.shared.status()
+      },
+      surfaceInvalidator: .live
+    )
+  }
+
+  nonisolated init(
+    lock: @escaping Mutation,
+    unlock: @escaping Mutation,
+    status: @escaping StatusQuery,
+    surfaceInvalidator: LockStateSurfaceInvalidator
+  ) {
+    lockMutation = lock
+    unlockMutation = unlock
+    statusQuery = status
+    self.surfaceInvalidator = surfaceInvalidator
+  }
 
   func serviceDescriptor() async throws -> ServiceDescriptor {
     try await XPCClient.shared.serviceDescriptor()
   }
 
   func lock() async throws {
-    try await XPCClient.shared.lock()
+    try await lockMutation()
+    surfaceInvalidator.invalidate()
   }
 
   func unlock() async throws {
-    try await XPCClient.shared.unlock()
+    try await unlockMutation()
+    surfaceInvalidator.invalidate()
   }
 
   func status() async throws -> Bool {
-    try await XPCClient.shared.status()
+    try await statusQuery()
   }
 
   func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID
   ) async throws -> ServiceReplacementTicket {
-    try await XPCClient.shared.prepareForReplacement(
+    let ticket = try await XPCClient.shared.prepareForReplacement(
       unlockIfNeeded: unlockIfNeeded,
       expectedAgentInstanceID: expectedAgentInstanceID
     )
+    if unlockIfNeeded {
+      surfaceInvalidator.invalidate()
+    }
+    return ticket
   }
 
   func cancelReplacementPreparation(
@@ -119,6 +159,43 @@ struct LiveAgentClient: AgentClientServing {
 
 @MainActor
 struct LiveAgentLockStateObserver: AgentLockStateObserving {
+  private let observer: any AgentLockStateObserving
+  private let surfaceInvalidator: LockStateSurfaceInvalidator
+
+  init() {
+    self.init(
+      observer: LockStateSubscriberObserver(),
+      surfaceInvalidator: .live
+    )
+  }
+
+  init(
+    observer: any AgentLockStateObserving,
+    surfaceInvalidator: LockStateSurfaceInvalidator
+  ) {
+    self.observer = observer
+    self.surfaceInvalidator = surfaceInvalidator
+  }
+
+  func subscribe(
+    initialState: Bool?,
+    _ handler: @escaping (Bool) -> Void
+  ) -> ObserverToken {
+    // A fresh App observation lifetime calibrates the system-owned surfaces even when the
+    // authoritative Boolean matches the App's seed and the subscriber emits no callback.
+    surfaceInvalidator.invalidate()
+    return observer.subscribe(initialState: initialState) { isLocked in
+      // The underlying subscriber already coalesces signals and re-queries the Agent. This is a
+      // presentation refresh hint only; the Boolean forwarded to the coordinator remains the
+      // authoritative state.
+      surfaceInvalidator.invalidate()
+      handler(isLocked)
+    }
+  }
+}
+
+@MainActor
+private struct LockStateSubscriberObserver: AgentLockStateObserving {
   func subscribe(
     initialState: Bool?,
     _ handler: @escaping (Bool) -> Void

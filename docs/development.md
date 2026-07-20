@@ -45,7 +45,7 @@
 **SystemSurfaces**(`Core/Sources/SystemSurfaces/`)—— 仅 containing App、Widget 与 Focus extension 使用的 presentation adapter
 - `LockStateSurfaceInvalidator.swift`:集中定义稳定的 Widget / Control kind,并把 `WidgetCenter` 与 macOS 26+ `ControlCenter` 包装成 nonthrowing reload request。它不 import `Client` / `Service`,不查询或携带锁状态,也不链接到 Agent / CLI；系统可以延后或合并请求,因此它不是状态广播或第二份真相源。
 
-**App**(`KeyboardLocker/`)—— 长命的 menu-bar 薄 wrapper，并承载一次性系统 action；两者都只调用 Client
+**App**(`KeyboardLocker/`)—— 长命的 menu-bar 薄 wrapper，并承载一次性系统 action；领域操作只调用 Client,presentation refresh 只调用 SystemSurfaces
 - `AgentRegistrar.swift`:通过 `SMAppService.agent(plistName:)` 确保注册,读取 bundled Agent metadata 并比较运行中 descriptor;replacement 会等待旧 Agent 退出后重新注册 bundled 版本。
 - `KeyboardLockerApplication.swift` / `StatusMenuController.swift`:进程级 AppKit 生命周期与 status-menu presentation。它们只渲染 `AppCoordinator.Snapshot` 并把用户动作转发给 coordinator,不直接读取或持有锁/设置状态。
 - `AppIntents/KeyboardLockAppIntents.swift`:可在 Shortcuts 中组合的 `Lock Keyboard`、`Unlock Keyboard` 与返回 `Bool` 的 `Get Keyboard Lock Status` action。它们是 one-shot wrapper，每次执行只经 `AgentLockActionServing` 调用 Agent，不缓存状态、不订阅通知。当前没有声明 `AppShortcutsProvider`,因此不会生成 promoted App Shortcuts 或 invocation phrases。
@@ -54,21 +54,21 @@
 - `Automation/KeyboardLockerServicesProvider.swift`:将 `NSServices` 的三个 Objective-C selector 适配成 `.lock` / `.unlock` / `.status`。Services handler 只同步受理,不把短生命周期的 error pointer 或 pasteboard 捕获进异步 Task,也不阻塞 AppKit 线程等待 XPC。
 - `Automation/KeyboardLockerURLRoute.swift`:只把 `keyboardlocker://lock|unlock|status` 的严格 canonical URL 映射为 action。它拒绝额外 URL component,不回显原始输入,并把多个 URL 转成保序的 action/failure request；custom scheme 不声称 caller authentication。
 - `Automation/AppKitExternalAutomationPresenter.swift`:主 App 内统一呈现外部 automation 的 status 与异步 failure；显示 alert 前激活 accessory App,避免提示留在后台。
-- `AgentCoordinationServices.swift`:App 内部的可注入依赖边界。live adapter 把 `XPCClient`、`LockStateSubscriber` 与 `AgentRegistrar` 暴露为按用途拆分的最小 protocol；`AgentLockActionServing` 只提供 one-shot wrapper 所需的 `lock` / `unlock` / `status`,协调器和系统 action 都无需依赖无关 Client surface。
+- `AgentCoordinationServices.swift`:App 内部的可注入依赖边界。live adapter 把 `XPCClient`、`LockStateSubscriber` 与 `AgentRegistrar` 暴露为按用途拆分的最小 protocol；`AgentLockActionServing` 只提供 one-shot wrapper 所需的 `lock` / `unlock` / `status`,协调器和系统 action 都无需依赖无关 Client surface。live lock/unlock 在 Agent 确认后请求 system-surface reload,status 不请求；live state observer 在新 observation lifetime 和每个已回拉、去重的权威变化上提交 presentation hint,从而覆盖 App 运行期间的 CLI、timer、热键与 fail-open 变化。
 - `AgentReadinessCoordinator.swift`:一次性收集 registration、descriptor handshake/重连、兼容性、replacement phase、Accessibility 与权威锁状态,返回不含 UI 的 domain outcome。
 - `AgentReplacementCoordinator.swift`:执行 App 侧 Agent 替换顺序。`AgentUpdatePlan` 用类型区分已协商的 safe replacement 与需要用户授权的 forced fallback,所有自动/手动更新共用 prepare → commit → restart → reconnect 边界。
 - `AppCoordinator.swift`:不依赖 presentation framework 的 `@MainActor` 应用协调器 —— 持有异步任务/订阅生命周期、单次自动更新策略和 replacement progress polling,把 domain outcome 收敛为可观察的应用 snapshot；不直接实现 handshake、replacement transaction、锁或设置逻辑。
 
-**WidgetKit extension**(`KeyboardLockerWidgets/`)—— sandboxed、按需运行的 Widget/Control wrapper，只调用 Client
+**WidgetKit extension**(`KeyboardLockerWidgets/`)—— sandboxed、按需运行的 Widget/Control wrapper；领域操作只调用 Client,presentation refresh 只调用 SystemSurfaces
 - `KeyboardLockerControlModel.swift`:Widget/Control 共用的可测试纯协调模型。Control value loader 直接返回 Agent 查询结果；desired-state action 只在 XPC lock/unlock 成功后请求 reload,不做 client-side toggle。
 - `KeyboardLockerControl.swift`:macOS 26+ `Keyboard Lock` Control、XPC live adapters 与 `SetValueIntent`。on/off 分别映射到幂等 `lock`/`unlock`,成功后刷新 Control value 和状态 Widget timeline。
 - `KeyboardLockerWidgetAction.swift`:macOS 14+ 状态 Widget 的内部、不可发现 `AppIntent`;`Lock` / `Unlock` 映射到明确 desired state,成功后请求刷新 timeline,失败则原样传播。
-- `KeyboardLockerWidgetTimeline.swift`:每次 timeline execution 经 `XPCClient.lockStatusSnapshot()` 读取 Agent 的权威原子快照。loader 把 transport failure 建模为显式 unavailable entry,并请求 regular refresh 或更早的 auto-unlock deadline reconciliation；不订阅长命通知、不维护第二份状态。
+- `KeyboardLockerWidgetTimeline.swift`:每次 timeline execution 经 `XPCClient.lockStatusSnapshot()` 读取 Agent 的权威原子快照。loader 把 transport failure 建模为显式 unavailable entry,并请求 15 分钟 regular fallback 或更早的 auto-unlock deadline reconciliation；不订阅长命通知、不维护第二份状态。
 - `KeyboardLockerStatusWidget.swift`:small/medium 状态 presentation,显示 locked/unlocked、deadline、解锁热键与 Agent unavailable；macOS 14+ 提供 explicit desired-state action,macOS 13 保持只读。WidgetKit 可以合并 timeline policy,因此该 UI 不承诺实时刷新。
 - `KeyboardLockerWidgets.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent 仍以同 Team + 精确 extension identifier 的 listener requirement 独立认证调用方。
 
-**App Intents extension**(`KeyboardLockerFocusIntents/`)—— sandboxed、按需运行的 Focus Filter wrapper，只调用 Client
-- `KeyboardLockFocusFilterIntent.swift`:macOS 13+ `SetFocusFilterIntent`;参数默认值为 `false`,使 Focus 关闭时向 Agent 发送该 activation generation 的条件 disable。`true` 是一次 activation-triggered acquisition,不是 while-active keep-alive；`perform()` 只调用 capability-gated `setFocusFilterLockEnabled`,不以普通 `unlock` 模拟条件释放,也不在 Agent restart 后查询或 replay 当前 Focus。
+**App Intents extension**(`KeyboardLockerFocusIntents/`)—— sandboxed、按需运行的 Focus Filter wrapper；领域操作只调用 Client,presentation refresh 只调用 SystemSurfaces
+- `KeyboardLockFocusFilterIntent.swift`:macOS 13+ `SetFocusFilterIntent`;参数默认值为 `false`,使 Focus 关闭时向 Agent 发送该 activation generation 的条件 disable。`true` 是一次 activation-triggered acquisition,不是 while-active keep-alive；`perform()` 只调用 capability-gated `setFocusFilterLockEnabled`,成功后请求 system-surface reload,不以普通 `unlock` 模拟条件释放,也不在 Agent restart 后查询或 replay 当前 Focus。
 - `AppIntentsExtension.swift` / `Info.plist`:独立 `com.apple.appintents-extension` 入口,使主 App 未运行时系统仍可执行 Focus 生命周期事件。
 - `KeyboardLockerFocusIntents.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent allowlist 只新增 `io.lzhlovesjyq.keyboardlocker.focus-intents` 精确 signing identifier。
 

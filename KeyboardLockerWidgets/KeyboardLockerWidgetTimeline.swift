@@ -30,7 +30,7 @@ struct KeyboardLockerWidgetEntry: TimelineEntry, Equatable {
 struct KeyboardLockerWidgetSnapshotLoader: Sendable {
   typealias FetchSnapshot = @Sendable () async throws -> LockStatusSnapshot
 
-  static let regularRefreshInterval: TimeInterval = 60
+  static let regularRefreshInterval: TimeInterval = 15 * 60
 
   private let fetchSnapshot: FetchSnapshot
 

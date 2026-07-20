@@ -5,6 +5,13 @@ import XCTest
 final class KeyboardLockerWidgetTimelineTests: XCTestCase {
   private let now = Date(timeIntervalSinceReferenceDate: 10000)
 
+  func testRegularRefreshUsesBudgetFriendlyFallbackInterval() {
+    XCTAssertEqual(
+      KeyboardLockerWidgetSnapshotLoader.regularRefreshInterval,
+      15 * 60
+    )
+  }
+
   func testLoaderPublishesAuthoritativeSnapshot() async {
     let snapshot = LockStatusSnapshot(
       capturedAt: now,

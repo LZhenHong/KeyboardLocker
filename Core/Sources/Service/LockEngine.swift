@@ -14,12 +14,11 @@ struct AutoUnlockSchedule: Equatable {
     referenceDate: Date,
     currentDate: Date
   ) -> Self? {
-    guard
-      let timeout,
-      timeout.isFinite,
-      timeout > 0,
-      referenceDate.timeIntervalSinceReferenceDate.isFinite,
-      currentDate.timeIntervalSinceReferenceDate.isFinite
+    guard let timeout,
+          timeout.isFinite,
+          timeout > 0,
+          referenceDate.timeIntervalSinceReferenceDate.isFinite,
+          currentDate.timeIntervalSinceReferenceDate.isFinite
     else {
       return nil
     }
@@ -143,7 +142,7 @@ struct LockRuntimeState: Equatable {
   }
 }
 
-struct UnlockGestureMatcher {
+enum UnlockGestureMatcher {
   static let controlCKeyCode = CGKeyCode(kVK_ANSI_C)
 
   private static let controlCHotkey = KeyboardLockerSettings.Hotkey(
@@ -456,13 +455,12 @@ public final class LockEngine {
     // An explicit settings update starts a fresh timeout window without changing when the
     // authoritative lock began. A duplicate lock request never reaches this path.
     let referenceDate = Date()
-    guard
-      runtimeState.isLocked,
-      let schedule = AutoUnlockSchedule.make(
-        timeout: timeout,
-        referenceDate: referenceDate,
-        currentDate: Date()
-      )
+    guard runtimeState.isLocked,
+          let schedule = AutoUnlockSchedule.make(
+            timeout: timeout,
+            referenceDate: referenceDate,
+            currentDate: Date()
+          )
     else {
       return
     }

@@ -44,7 +44,7 @@ public struct ServiceBuildVersion: Comparable, Sendable {
     _ lhs: ServiceBuildVersion,
     _ rhs: ServiceBuildVersion
   ) -> Int {
-    for index in 0 ..< max(lhs.components.count, rhs.components.count) {
+    for index in 0..<max(lhs.components.count, rhs.components.count) {
       let left = index < lhs.components.count ? lhs.components[index] : "0"
       let right = index < rhs.components.count ? rhs.components[index] : "0"
 

@@ -1,6 +1,6 @@
+@testable import Client
 import Foundation
 import XCTest
-@testable import Client
 
 final class XPCClientErrorTests: XCTestCase {
   func testProxyErrorsNormalizeToServiceUnavailable() {

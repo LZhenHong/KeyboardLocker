@@ -245,8 +245,7 @@ public final class XPCClient: @unchecked Sendable {
         try await commitReplacementOnce(ticket: ticket)
       } catch let retryError {
         if let status = try? await replacementStatus(ticket: ticket),
-           status.phase == .committed
-        {
+           status.phase == .committed {
           return
         }
         throw retryError
@@ -350,8 +349,7 @@ public final class XPCClient: @unchecked Sendable {
     let descriptor = try await serviceDescriptor(using: connection)
 
     if let expectedAgentInstanceID,
-       descriptor.agentInstanceID != expectedAgentInstanceID
-    {
+       descriptor.agentInstanceID != expectedAgentInstanceID {
       throw XPCClientError.agentChanged(
         expected: expectedAgentInstanceID,
         actual: descriptor.agentInstanceID
@@ -360,8 +358,7 @@ public final class XPCClient: @unchecked Sendable {
     if let missingCapability = capabilities
       .subtracting(descriptor.capabilities)
       .sorted(by: { $0.rawValue < $1.rawValue })
-      .first
-    {
+      .first {
       throw XPCClientError.missingCapability(missingCapability)
     }
     return connection
@@ -493,7 +490,7 @@ public final class XPCClient: @unchecked Sendable {
   /// transport details behind the Client boundary so every wrapper can present one actionable
   /// service-availability failure.
   static func normalizedProxyError(_: Error) -> Error {
-    return XPCClientError.serviceUnavailable
+    XPCClientError.serviceUnavailable
   }
 }
 

@@ -208,7 +208,7 @@ final class StateReconciler: @unchecked Sendable {
   }
 
   private func fetchAuthoritativeState() async -> Bool? {
-    for attempt in 1 ... Self.fetchAttempts {
+    for attempt in 1...Self.fetchAttempts {
       guard shouldContinue else {
         return nil
       }

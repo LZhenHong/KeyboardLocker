@@ -354,14 +354,6 @@ public final class LockEngine {
     runtimeState.statusSnapshot(capturedAt: Date())
   }
 
-  var lockStartedAt: Date? {
-    runtimeState.startedAt
-  }
-
-  var autoUnlockTargetDate: Date? {
-    runtimeState.autoUnlockTargetDate
-  }
-
   private init() {}
 
   @discardableResult
@@ -637,19 +629,5 @@ public final class LockEngine {
       configuredHotkey: runtimeState.activeSettings.unlockHotkey,
       allowsControlCUnlock: runtimeState.allowsControlCUnlock
     )
-  }
-
-  func lockDuration(at date: Date = Date()) -> TimeInterval? {
-    guard let start = runtimeState.startedAt else {
-      return nil
-    }
-    return max(0, date.timeIntervalSince(start))
-  }
-
-  func remainingAutoUnlockTime(at date: Date = Date()) -> TimeInterval? {
-    guard let deadline = runtimeState.autoUnlockTargetDate else {
-      return nil
-    }
-    return max(0, deadline.timeIntervalSince(date))
   }
 }

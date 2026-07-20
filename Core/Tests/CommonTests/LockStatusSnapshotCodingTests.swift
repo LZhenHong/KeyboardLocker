@@ -26,11 +26,9 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
     let decoded = try LockStatusSnapshot.decodedFromXPC(snapshot.encodedForXPC())
 
     XCTAssertEqual(decoded, snapshot)
-    XCTAssertEqual(decoded.lockDuration(at: capturedAt), 10)
-    XCTAssertEqual(decoded.remainingAutoUnlockTime(at: capturedAt), 50)
   }
 
-  func testUnlockedSnapshotHasNoDerivedTimingValues() throws {
+  func testUnlockedSnapshotRoundTrip() throws {
     let snapshot = LockStatusSnapshot(
       capturedAt: capturedAt,
       isLocked: false,
@@ -41,8 +39,7 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
 
     let decoded = try LockStatusSnapshot.decodedFromXPC(snapshot.encodedForXPC())
 
-    XCTAssertNil(decoded.lockDuration(at: capturedAt))
-    XCTAssertNil(decoded.remainingAutoUnlockTime(at: capturedAt))
+    XCTAssertEqual(decoded, snapshot)
   }
 
   func testMissingPayloadIsRejected() {

@@ -31,22 +31,6 @@ public struct LockStatusSnapshot: Codable, Equatable, Sendable {
     self.settings = settings
   }
 
-  /// Duration derived from the authoritative start time rather than a stale transported counter.
-  public func lockDuration(at date: Date = Date()) -> TimeInterval? {
-    guard isLocked, let startedAt else {
-      return nil
-    }
-    return max(0, date.timeIntervalSince(startedAt))
-  }
-
-  /// Remaining time derived from the authoritative deadline rather than a stale transported value.
-  public func remainingAutoUnlockTime(at date: Date = Date()) -> TimeInterval? {
-    guard isLocked, let autoUnlockTargetDate else {
-      return nil
-    }
-    return max(0, autoUnlockTargetDate.timeIntervalSince(date))
-  }
-
   fileprivate var hasConsistentLockState: Bool {
     if isLocked {
       return startedAt != nil

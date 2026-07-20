@@ -8,15 +8,19 @@
 
 /* Begin PBXBuildFile section */
 		A1000000000000000000000B /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000A /* Client */; };
+		A1000000000000000000000D /* SystemSurfaces in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000E /* SystemSurfaces */; };
 		B2000000000000000000000B /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = B2000000000000000000000A /* Client */; };
 		B2000000000000000000000C /* KeyboardLockerWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* KeyboardLockerWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B20000000000000000000012 /* SystemSurfaces in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000013 /* SystemSurfaces */; };
 		D4000000000000000000000B /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = D4000000000000000000000A /* Client */; };
 		D4000000000000000000000C /* KeyboardLockerFocusIntents.appex in Embed App Intents Extensions */ = {isa = PBXBuildFile; fileRef = D40000000000000000000001 /* KeyboardLockerFocusIntents.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D40000000000000000000012 /* SystemSurfaces in Frameworks */ = {isa = PBXBuildFile; productRef = D40000000000000000000013 /* SystemSurfaces */; };
 		F21304CF2ECDC2E200735580 /* KeyboardLockerAgent.app in Copy Agent App */ = {isa = PBXBuildFile; fileRef = F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F21304D32ECDC51F00735580 /* klock in Copy CLI */ = {isa = PBXBuildFile; fileRef = F21304B42ECDC26400735580 /* klock */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		F2BFFCFF2EEFAF0B0065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFCFE2EEFAF0B0065F041 /* Client */; };
 		F2BFFD012EEFAF1A0065F041 /* Service in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD002EEFAF1A0065F041 /* Service */; };
 		F2BFFD032EEFAF200065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD022EEFAF200065F041 /* Client */; };
+		F2BFFD042EEFAF210065F041 /* SystemSurfaces in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD052EEFAF210065F041 /* SystemSurfaces */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -260,6 +264,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000000B /* Client in Frameworks */,
+				A1000000000000000000000D /* SystemSurfaces in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -268,6 +273,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B2000000000000000000000B /* Client in Frameworks */,
+				B20000000000000000000012 /* SystemSurfaces in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -276,6 +282,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D4000000000000000000000B /* Client in Frameworks */,
+				D40000000000000000000012 /* SystemSurfaces in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,6 +291,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F2BFFCFF2EEFAF0B0065F041 /* Client in Frameworks */,
+				F2BFFD042EEFAF210065F041 /* SystemSurfaces in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,6 +366,7 @@
 			name = KeyboardLockerModelTests;
 			packageProductDependencies = (
 				A1000000000000000000000A /* Client */,
+				A1000000000000000000000E /* SystemSurfaces */,
 			);
 			productName = KeyboardLockerModelTests;
 			productReference = A10000000000000000000001 /* KeyboardLockerModelTests.xctest */;
@@ -381,6 +390,7 @@
 			name = KeyboardLockerWidgets;
 			packageProductDependencies = (
 				B2000000000000000000000A /* Client */,
+				B20000000000000000000013 /* SystemSurfaces */,
 			);
 			productName = KeyboardLockerWidgets;
 			productReference = B20000000000000000000001 /* KeyboardLockerWidgets.appex */;
@@ -404,6 +414,7 @@
 			name = KeyboardLockerFocusIntents;
 			packageProductDependencies = (
 				D4000000000000000000000A /* Client */,
+				D40000000000000000000013 /* SystemSurfaces */,
 			);
 			productName = KeyboardLockerFocusIntents;
 			productReference = D40000000000000000000001 /* KeyboardLockerFocusIntents.appex */;
@@ -436,6 +447,7 @@
 			name = KeyboardLocker;
 			packageProductDependencies = (
 				F2BFFCFE2EEFAF0B0065F041 /* Client */,
+				F2BFFD052EEFAF210065F041 /* SystemSurfaces */,
 			);
 			productName = KeyboardLocker;
 			productReference = F21304282ECDAD3500735580 /* KeyboardLocker.app */;
@@ -1181,13 +1193,25 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
 		};
+		A1000000000000000000000E /* SystemSurfaces */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SystemSurfaces;
+		};
 		B2000000000000000000000A /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
 		};
+		B20000000000000000000013 /* SystemSurfaces */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SystemSurfaces;
+		};
 		D4000000000000000000000A /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
+		};
+		D40000000000000000000013 /* SystemSurfaces */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SystemSurfaces;
 		};
 		F2BFFCFE2EEFAF0B0065F041 /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -1200,6 +1224,10 @@
 		F2BFFD022EEFAF200065F041 /* Client */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Client;
+		};
+		F2BFFD052EEFAF210065F041 /* SystemSurfaces */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SystemSurfaces;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

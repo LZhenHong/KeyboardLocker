@@ -1,10 +1,11 @@
 import AppIntents
 import Client
 import SwiftUI
+import SystemSurfaces
 import WidgetKit
 
 struct KeyboardLockerStatusWidget: Widget {
-  nonisolated static let kind = KeyboardLockerWidgetKind.status
+  nonisolated static let kind = KeyboardLockerSurfaceKind.statusWidget
 
   var body: some WidgetConfiguration {
     StaticConfiguration(

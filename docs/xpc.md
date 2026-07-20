@@ -19,7 +19,7 @@
 
 | 名字 | 实际含义 |
 |---|---|
-| `Core` | 容纳三种 library product 的 Swift Package；不是“正在运行的核心” |
+| `Core` | 容纳四种 library product 的 Swift Package；不是“正在运行的核心” |
 | `Common` | Client/Agent 两侧共同理解的 wire contract 与 value definitions |
 | `Client` | wrapper 侧的 outgoing XPC adapter |
 | `Service` | Agent 侧的 domain/runtime library；它本身不是进程 |
@@ -28,34 +28,39 @@
 
 ## 构建依赖和运行进程是两张不同的图
 
-### 构建时：`Core` 提供三个 library product
+### 构建时：`Core` 提供四个 library product
 
-`Core/Package.swift` 定义三个独立 product：
+`Core/Package.swift` 定义四个独立 product：
 
 ```text
 Core
 ├── Common
 ├── Client  -> Common
-└── Service -> Common
+├── Service -> Common
+└── SystemSurfaces
 
-KeyboardLocker      -> Client  -> Common
-klock               -> Client  -> Common
-KeyboardLockerWidgets -> Client -> Common
+KeyboardLocker             -> Client -> Common
+KeyboardLocker             -> SystemSurfaces
+klock                      -> Client -> Common
+KeyboardLockerWidgets      -> Client -> Common
+KeyboardLockerWidgets      -> SystemSurfaces
 KeyboardLockerFocusIntents -> Client -> Common
-KeyboardLockerAgent -> Service -> Common
+KeyboardLockerFocusIntents -> SystemSurfaces
+KeyboardLockerAgent        -> Service -> Common
 ```
 
-Xcode 会按 package 名把这些 dependency 都显示在 `Core` 下面，因此看起来像 App 和 Agent “都引用了 Core”。但 target 实际链接的是不同 product：主 App 和 `klock` 只链接 `Client`，Agent 只链接 `Service`；没有 target 把整个 package 的全部代码一起引入。
+Xcode 会按 package 名把这些 dependency 都显示在 `Core` 下面，因此看起来像 App 和 Agent “都引用了 Core”。但 target 实际链接的是不同 product：主 App、Widget 与 Focus extension 链接 `Client` 和 `SystemSurfaces`,`klock` 只链接 `Client`,Agent 只链接 `Service`；没有 target 把整个 package 的全部代码一起引入。
 
 它们的职责是：
 
 | Product | 被谁链接 | 内容 | 不包含什么 |
 |---|---|---|---|
 | `Common` | `Client`、`Service` | XPC 协议、Mach service 名、通知名、跨进程值类型 | connection、listener、锁状态、event tap |
-| `Client` | App、CLI | `NSXPCConnection`、async 封装、状态订阅 | `LockEngine`、设置存储、Accessibility 执行 |
+| `Client` | App、CLI、Widget、Focus extension | `NSXPCConnection`、async 封装、状态订阅 | `LockEngine`、设置存储、Accessibility 执行 |
 | `Service` | Agent | listener connection 配置、访问控制、锁引擎、设置真相源、状态广播 | App UI、CLI 命令、客户端 connection |
+| `SystemSurfaces` | App、Widget、Focus extension | Widget / Control kind 与 nonthrowing presentation reload adapter | XPC、锁状态、状态广播、Agent 领域逻辑 |
 
-`Client/Exports.swift` 和 `Service/Exports.swift` 使用 `@_exported import Common`，所以 App 只写 `import Client`、Agent 只写 `import Service`，也能看到 `Common` 中的类型。这只是 import 便利，不会让 App 获得 `Service`，也不会让两边共享内存。
+`Client/Exports.swift` 和 `Service/Exports.swift` 使用 `@_exported import Common`，所以 wrapper 的 XPC 代码只写 `import Client`、Agent 只写 `import Service`,也能看到 `Common` 中的类型。这只是 import 便利，不会让 wrapper 获得 `Service`,也不会让两边共享内存。
 
 ### 运行时：各 wrapper 与 Agent 是独立进程
 
@@ -92,9 +97,9 @@ flowchart LR
   Mach --> Listener
 ```
 
-`Core` 不会作为第四个进程出现。它的代码分别被链接进上图中的 executable：
+`Core` 不会作为额外进程出现。它的代码分别被链接进上图中的 executable：
 
-- App、CLI、按需启动的 WidgetKit extension 与 App Intents extension 各自包含一份 `Client + Common` 代码。
+- App、按需启动的 WidgetKit extension 与 Focus App Intents extension 各自包含一份 `Client + Common + SystemSurfaces` 代码；CLI 只包含 `Client + Common`。
 - Agent 包含一份 `Service + Common` 代码。
 - 只有 Agent 的 executable 包含 `LockEngine`，因此 App/CLI 不可能绕过 XPC 直接操作 event tap。
 

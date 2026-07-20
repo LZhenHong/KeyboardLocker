@@ -1,11 +1,12 @@
 import AppIntents
 import Client
 import SwiftUI
+import SystemSurfaces
 import WidgetKit
 
 @available(macOS 26.0, *)
 struct KeyboardLockerControl: ControlWidget {
-  nonisolated static let kind = "io.lzhlovesjyq.keyboardlocker.control"
+  nonisolated static let kind = KeyboardLockerSurfaceKind.keyboardLockControl
 
   var body: some ControlWidgetConfiguration {
     StaticControlConfiguration(
@@ -67,23 +68,5 @@ private extension KeyboardLockerControlValueLoader {
     Self {
       try await XPCClient.shared.status()
     }
-  }
-}
-
-@available(macOS 26.0, *)
-private extension KeyboardLockerControlAction {
-  static var live: Self {
-    Self(
-      lock: {
-        try await XPCClient.shared.lock()
-      },
-      unlock: {
-        try await XPCClient.shared.unlock()
-      },
-      reload: {
-        WidgetCenter.shared.reloadTimelines(ofKind: KeyboardLockerStatusWidget.kind)
-        ControlCenter.shared.reloadControls(ofKind: KeyboardLockerControl.kind)
-      }
-    )
   }
 }

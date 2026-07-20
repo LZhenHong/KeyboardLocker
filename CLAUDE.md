@@ -6,11 +6,12 @@ Guidance for Claude Code when working in this repository.
 
 KeyboardLocker suppresses standard keyboard events via CGEventTap on macOS. Mouse input and system-defined media keys remain available. Three-tier architecture over XPC (Mach service `io.lzhlovesjyq.keyboardlocker.agent`):
 
-- **KeyboardLocker** (menu-bar App, Agent lifecycle coordinator, and one-shot system actions) — imports `Client`
+- **KeyboardLocker** (menu-bar App, Agent lifecycle coordinator, and one-shot system actions) — imports `Client` and `SystemSurfaces`
 - **KeyboardLockerAgent** (XPC service, runs the lock engine, holds Accessibility permission) — imports `Service`
 - **klock** (CLI) — imports `Client`
-- **KeyboardLockerWidgets** (WidgetKit extension hosting Widget and macOS Control) — imports `Client`
-- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent). `Client`/`Service` both `@_exported import Common`.
+- **KeyboardLockerWidgets** (WidgetKit extension hosting Widget and macOS Control) — imports `Client` and `SystemSurfaces`
+- **KeyboardLockerFocusIntents** (Focus Filter App Intents extension) — imports `Client` and `SystemSurfaces`
+- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent), `SystemSurfaces` (presentation-only Widget/Control identifiers and invalidation). `Client`/`Service` both `@_exported import Common`; `SystemSurfaces` is linked only by the containing App and its extensions, never by the Agent or CLI.
 
 Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`, WidgetKit extension `…​.widgets`.
 

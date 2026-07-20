@@ -1,4 +1,6 @@
+import Client
 import Foundation
+import SystemSurfaces
 
 struct KeyboardLockerControlValueLoader: Sendable {
   typealias FetchValue = @Sendable () async throws -> Bool
@@ -40,5 +42,21 @@ struct KeyboardLockerControlAction: Sendable {
     }
 
     await reload()
+  }
+}
+
+extension KeyboardLockerControlAction {
+  static var live: Self {
+    Self(
+      lock: {
+        try await XPCClient.shared.lock()
+      },
+      unlock: {
+        try await XPCClient.shared.unlock()
+      },
+      reload: {
+        LockStateSurfaceInvalidator.live.invalidate()
+      }
+    )
   }
 }

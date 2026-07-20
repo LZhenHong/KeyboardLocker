@@ -1,6 +1,10 @@
 import XCTest
 
 final class KeyboardLockFocusFilterIntentTests: XCTestCase {
+  func testDefaultFilterDoesNotRequestALock() {
+    XCTAssertFalse(KeyboardLockFocusFilterIntent().lockKeyboard)
+  }
+
   func testEnabledFilterForwardsTrueToAgent() async throws {
     let client = FakeAgentFocusLockClient()
 

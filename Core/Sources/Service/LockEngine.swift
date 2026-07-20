@@ -36,6 +36,11 @@ struct AutoUnlockSchedule: Equatable {
   }
 }
 
+enum LockRequestSource {
+  case focusFilter
+  case general
+}
+
 struct LockRuntimeState: Equatable {
   private(set) var activeSettings: KeyboardLockerSettings = .default
   private(set) var allowsControlCUnlock = false
@@ -71,10 +76,39 @@ struct LockRuntimeState: Equatable {
     focusOwnedLockGeneration = lockGeneration
   }
 
+  /// Handles a request that arrives while the physical lock already exists. Focus observes an
+  /// existing lock without claiming it; an explicit general request takes persistence over from
+  /// a Focus-created generation without changing the physical runtime state.
+  mutating func handleDuplicateLockRequest(
+    from source: LockRequestSource
+  ) -> LockRequestOutcome? {
+    guard isLocked else {
+      return nil
+    }
+
+    if source == .general {
+      takeOverFocusOwnedLock()
+    }
+    return .alreadyLocked
+  }
+
   /// Converts a Focus-created lock into an ordinary global desired lock without changing any
   /// physical runtime state. A later Focus deactivation must no longer release it.
   mutating func takeOverFocusOwnedLock() {
     focusOwnedLockGeneration = nil
+  }
+
+  var focusOwnedGenerationForRelease: UInt64? {
+    guard isLocked,
+          focusOwnedLockGeneration == lockGeneration
+    else {
+      return nil
+    }
+    return focusOwnedLockGeneration
+  }
+
+  func matchesCurrentLockGeneration(_ generation: UInt64) -> Bool {
+    isLocked && lockGeneration == generation
   }
 
   mutating func updateSettings(_ settings: KeyboardLockerSettings) {
@@ -263,11 +297,6 @@ public final class LockEngine {
   private var autoUnlockTimer: DispatchSourceTimer?
   private var runtimeState = LockRuntimeState()
 
-  private enum LockRequestSource {
-    case focusFilter
-    case general
-  }
-
   public var isLocked: Bool {
     runtimeState.isLocked
   }
@@ -311,7 +340,7 @@ public final class LockEngine {
         allowsControlCUnlock: false,
         source: .focusFilter
       )
-    } else if let generation = runtimeState.focusOwnedLockGeneration {
+    } else if let generation = runtimeState.focusOwnedGenerationForRelease {
       unlock(ifLockGeneration: generation)
     }
   }
@@ -324,11 +353,8 @@ public final class LockEngine {
     // A duplicate never mutates the physical lock, its settings, gestures, start time, or
     // deadline. An explicit non-Focus desired-lock does take over persistence from Focus so a
     // later Focus deactivation cannot undo the user's newer intent.
-    if runtimeState.isLocked {
-      if source == .general {
-        runtimeState.takeOverFocusOwnedLock()
-      }
-      return .alreadyLocked
+    if let duplicateOutcome = runtimeState.handleDuplicateLockRequest(from: source) {
+      return duplicateOutcome
     }
 
     // Verify Accessibility permission before attempting to create event tap.
@@ -469,7 +495,7 @@ public final class LockEngine {
   }
 
   private func unlock(ifLockGeneration generation: UInt64) {
-    guard runtimeState.lockGeneration == generation else {
+    guard runtimeState.matchesCurrentLockGeneration(generation) else {
       return
     }
     unlock()

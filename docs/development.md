@@ -15,7 +15,7 @@
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
 6. wrapper 通过 `LockStateSubscriber.subscribe(initialState:_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态。subscriber 会在 observer 安装完成后立即拉取一次权威初始状态,后续信号串行合并并再次查询 —— 绝不从"我这次调用是否成功"或通知 payload 推断。
 
-> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 对物理运行状态是**严格幂等**的：已锁时重复调用不会重建 event tap、修改当前设置、锁定起点或 auto-unlock deadline。唯一的 metadata 变化是普通 wrapper 的显式 `lock` 会接管 Focus 创建的当前 generation,使之后的 Focus disable 不再撤销这个更新的用户意图。只有显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window。不存在客户端持有的通用"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
+> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 对物理运行状态是**严格幂等**的：已锁时重复调用不会重建 event tap、修改当前设置、锁定起点或 auto-unlock deadline。唯一的 metadata 变化是普通 wrapper 的显式 `lock` 会接管 Focus 创建的当前 generation,使之后的 Focus disable 不再撤销这个更新的用户意图。Focus 本身是 activation-triggered：一次 activation 最多创建一个 Focus-owned generation,不承诺在 Focus active 期间持续 relock；显式 unlock、热键、timeout、event-tap failure 或 Agent restart 都可以让它提前结束。只有显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window。不存在客户端持有的通用"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
 
 ## 组件地图
 
@@ -36,7 +36,7 @@
 - `UnlockStatusPoller.swift`:`XPCClient.waitUntilUnlocked()` 的可测试等待组合。notification stream 提供及时更新,内部 poller 周期性查询权威状态以恢复丢通知和 Agent 重启；transport failure 后 reset connection,连续三次失败则抛错,不把不可达猜成 unlocked。任一路径确认解锁后都会取消另一条路径,取消 polling 时主动失效本轮 connection,避免等待完整 XPC response timeout。
 
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
-- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、物理状态幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、Focus-owned generation、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。普通 duplicate `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline,但会清除当前 Focus ownership marker；Focus disable、timer 与热键回调都使用 generation fence,不能解除后续新锁。资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
+- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、物理状态幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、Focus-owned generation、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。Focus activation 最多创建并标记一个 generation；普通 duplicate `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline,但会清除当前 Focus ownership marker；Focus disable、timer 与热键回调都使用 generation fence,不能解除后续新锁。marker 只存在于 Agent 进程内,显式 unlock、热键、timeout、event-tap failure 或 Agent restart 可以提前结束 generation,且不会因 Focus 仍 active 而自动 relock。资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
 - `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
@@ -64,7 +64,7 @@
 - `KeyboardLockerWidgets.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent 仍以同 Team + 精确 extension identifier 的 listener requirement 独立认证调用方。
 
 **App Intents extension**(`KeyboardLockerFocusIntents/`)—— sandboxed、按需运行的 Focus Filter wrapper，只调用 Client
-- `KeyboardLockFocusFilterIntent.swift`:macOS 13+ `SetFocusFilterIntent`;参数默认值为 `false`,使 Focus 关闭时向 Agent 发送 disable。`perform()` 只调用 capability-gated `setFocusFilterLockEnabled`,不以普通 `unlock` 模拟条件释放。
+- `KeyboardLockFocusFilterIntent.swift`:macOS 13+ `SetFocusFilterIntent`;参数默认值为 `false`,使 Focus 关闭时向 Agent 发送该 activation generation 的条件 disable。`true` 是一次 activation-triggered acquisition,不是 while-active keep-alive；`perform()` 只调用 capability-gated `setFocusFilterLockEnabled`,不以普通 `unlock` 模拟条件释放,也不在 Agent restart 后查询或 replay 当前 Focus。
 - `AppIntentsExtension.swift` / `Info.plist`:独立 `com.apple.appintents-extension` 入口,使主 App 未运行时系统仍可执行 Focus 生命周期事件。
 - `KeyboardLockerFocusIntents.entitlements`:保留 App Sandbox,只增加 Agent Mach service 的 global lookup temporary exception。Agent allowlist 只新增 `io.lzhlovesjyq.keyboardlocker.focus-intents` 精确 signing identifier。
 

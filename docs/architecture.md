@@ -60,7 +60,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 - 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
 - `lock` 对物理运行状态是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改 event tap、当前设置、输入手势、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。唯一的内部 metadata 变化是：若该代锁由 Focus Filter 创建,之后来自普通 wrapper 的显式 `lock` 会接管其持久性,使 Focus 关闭时不再解除这个更新的用户意图。
 - interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。
-- Focus Filter 使用 Agent 内部的 lock generation fence,而不是通用 client lease：Focus 只在自己完成 `unlocked → locked` 时记录该代锁；Focus 关闭只条件性解除仍由它创建且未被普通 `lock` 接管的同一代。已有普通锁不会被 Focus 认领,自动解锁、热键、显式 unlock 或 event-tap failure 都会清除 generation marker。这个 marker 不暴露给 wrapper,也不改变“任意入口可显式 unlock 同一个全局锁”的契约。
+- Focus Filter 是 **activation-triggered acquisition**,不是“Focus active 期间持续保持 locked”的 policy。Focus 激活时的 `true` 最多尝试一次 `unlocked → locked`,并只在成功创建锁时记录该 Focus-owned generation；Focus 关闭时的 `false` 只条件性解除仍由它创建且未被普通 `lock` 接管的同一代。已有普通锁不会被 Focus 认领。显式 unlock、解锁热键、auto-unlock timeout、event-tap failure 或 Agent 退出 / 重启都可以在 Focus 仍 active 时提前结束该 generation；实现不会查询当前 Focus 后自动重建锁,也不会在同一次 Focus activation 内持续 relock。这个进程内 marker 不暴露给 wrapper,也不改变“任意入口可显式 unlock 同一个全局锁”的契约。
 - `status()` 保留为兼容旧 wrapper 的最小布尔查询；需要呈现锁定时长、auto-unlock deadline 或 active settings 的 wrapper 使用 capability-gated `lockStatusSnapshot()`。snapshot 传输权威时间点,不传会立即过期的 duration/countdown counter。
 - 要对状态变化做出反应,订阅全局广播(`LockStateSubscriber`)。绝不从"我这次调用是否成功"去推断状态。
 

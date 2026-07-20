@@ -22,14 +22,15 @@ KeyboardLocker 提供三个可组合 action：
 
 ## Focus Filter
 
-macOS 13 及以上可在 **System Settings > Focus** 中为某个 Focus 添加 KeyboardLocker 的 `Keyboard Lock` filter。启用该 Focus 时,系统把 `Lock Keyboard = true` 发送给独立的 App Intents extension；关闭时会用参数默认值 `false` 再次执行 intent,因此主 App 未运行时也能经 XPC 把 desired state 交给 Agent。
+macOS 13 及以上可在 **System Settings > Focus** 中为某个 Focus 添加 KeyboardLocker 的 `Keyboard Lock` filter。启用该 Focus 时,系统把 `Lock Keyboard = true` 发送给独立的 App Intents extension,触发一次 lock acquisition；关闭时会用参数默认值 `false` 再次执行 intent,对该次 activation 创建的 generation 做条件清理。因此主 App 未运行时,系统交付的 Focus 生命周期事件仍能经 XPC 到达 Agent。
 
-Focus Filter 采用条件 ownership,不会把全局 lock 误当成自己的资源：
+Focus Filter 是 activation-triggered wrapper,不是“只要 Focus active 就持续保持 locked”的 policy。它采用条件 ownership,不会把全局 lock 误当成自己的资源：
 
 - 若 Focus 启用时已经由其他入口锁定,它不会认领该锁；Focus 关闭时保持 locked。
-- 若 Focus 从 unlocked 创建锁,它只拥有该次 lock generation。
+- 若 Focus 从 unlocked 创建锁,它只拥有该次 activation 创建的一个 lock generation；使用 Agent 当前 settings,包括现有 auto-unlock policy。
 - 若随后任一普通 wrapper 再次显式调用 `lock`,该用户意图会接管同一 generation 的持久性,但不会重建 event tap、改变活动设置或延长 auto-unlock deadline；Focus 关闭时保持 locked。
-- 若原 generation 已经由显式 unlock、热键或 timeout 结束,迟到的 Focus 关闭事件不能解除之后新建的锁。
+- 显式 unlock、解锁热键、auto-unlock timeout、event-tap failure 或 Agent 退出 / 重启都可以在 Focus 仍 active 时提前结束原 generation；迟到的 Focus 关闭事件不能解除之后新建的锁。
+- generation 提前结束后,KeyboardLocker 不会因为同一个 Focus 仍 active 而自动 relock；Agent 重启也不会查询或 replay 当前 Focus。需要重新触发时,切换 Focus 或从任一普通 wrapper 显式执行 `lock`。
 
 Focus extension 保持 sandbox,只获得访问 KeyboardLocker Agent Mach service 的 lookup 权限；Agent 仍要求同 Team 与精确 extension signing identifier。Agent 或 Accessibility 不可用时,intent 会明确失败,不会伪造 Focus 已经应用。
 

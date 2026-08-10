@@ -25,7 +25,7 @@
 - `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive/Focus 锁操作、lock status snapshot、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector；protocol 1.4 新增 capability-gated `lockStatusSnapshot`；protocol 1.5 新增 capability-gated `setFocusFilterLockEnabled`,旧 `status` / `lockKeyboard` ABI 保持不变。
 - `LockStatusSnapshot.swift`:`LockStatusSnapshot` format 1 和有大小上限的 JSON XPC 编解码。snapshot 原子携带 capture time、布尔状态、锁定起点、auto-unlock deadline 与 active settings；duration/countdown 由 consumer 根据权威时间点派生,不作为会迅速过期的 transport 字段。
 - `ServiceDescriptor.swift`:`ServiceDescriptor`、protocol version、稳定字符串 capability、additive replacement phase、opaque `ServiceReplacementTicket` 与 ticket-specific status;以有大小上限的 JSON `Data` 跨 XPC。descriptor 显式 decode 永久 bootstrap 字段,为 additive 字段提供默认值,未知字段/capability 可由旧 Client 忽略。
-- `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成并预编译同 Team + 精确 identifier 的双向 XPC requirement；unsigned/ad-hoc 进程 fail closed。
+- `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成同 Team + 精确 identifier 的双向 XPC requirement 字符串,并用 `SecRequirementCreateWithString` 校验其可编译(编译结果仅作一次性校验后丢弃;安装到连接时由系统重新解析字符串);unsigned/ad-hoc 进程 fail closed。
 - `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`)+ `.default` + throwing `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界、有大小上限的 JSON 传输)。缺失、损坏或过大的 Agent payload 会显式失败，wrapper 不会伪造 `.default` 快照。
 - `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
 
@@ -136,3 +136,15 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 - `AgentService` 是 nonisolated XPC adapter；它把所有 Agent 可变状态与引擎操作切到 `MainActor`,以便在同一隔离域维护 CFRunLoop、timer、settings 和 replacement transaction。
 - 系统可能禁用 event tap(超时 / 用户输入);`LockEngine` 会尝试重新启用。若重新启用仍失败，会清理 tap/timer、切换为 unlocked 并广播，绝不继续报告虚假的 locked 状态。
 - App 协调器通过 protocol injection 与 presentation layer 解耦。`KeyboardLockerModelTests` 是 non-hosted test target,通过 fake Client/lifecycle/state observer 覆盖确定性协调流程,不触碰 live `SMAppService`/XPC。
+
+### 覆盖边界与已知限制
+
+测试覆盖有意停止在需要真实系统边界的层面;以下是当前接受的残余风险与实现特性,排查问题时先对照,不要重新"发现"它们:
+
+- `AgentService` 的 XPC wiring(replacement barrier、instance-ID fence、locked refusal、错误码映射、30 秒 prepare 过期定时器)直接命中 `LockEngine.shared`,无注入缝,未被单测覆盖;`ReplacementTransaction` 纯状态机(exclusivity、stale ticket/timer、cancel、expiry、committed fail-closed)已在 `ServiceTests` 覆盖。
+- `LockEngine` 依赖真实 CGEventTap 与时钟的路径(auto-unlock 触发、tap-disable fail-open、热键分发、`updateSettings` 重新排程、Accessibility 预检)未单测;纯策略部分(event policy、schedule 计算、runtime state、tap 安装事务)已覆盖。
+- App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 虽按 protocol injection 设计,目前无单测;`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)同样未覆盖,`KlockStatusOutput` 渲染已覆盖。
+- auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
+- `KeyboardLockerSettingsStore` 在本地持久化数据损坏时静默回退 `.default`(仅 Agent 写该 key,风险有界);跨进程的 wire codec 保持严格显式失败,不受影响。
+- Client 任意调用的超时或 `waitUntilUnlocked` 取消会失效进程内**共享**的缓存 connection:并发的无关在途调用会收到一次 `serviceUnavailable`,下一次调用自愈,这不是 Agent 故障。
+- unsigned/ad-hoc 进程 fail closed 的运行路径(测试 bundle 本身已签名,难以构造)与 CI 自动化(`.github/workflows/` 只有 Claude 机器人,无 macOS 构建/测试门禁)是当前验证体系的边界;合并前必须本地跑过 `CLAUDE.md` 的 build 与两套 test 命令。

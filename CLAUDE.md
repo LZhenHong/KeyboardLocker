@@ -13,7 +13,7 @@ KeyboardLocker suppresses keyboard-originated events exposed through CGEventTap 
 - **KeyboardLockerFocusIntents** (Focus Filter App Intents extension) — imports `Client` and `SystemSurfaces`
 - **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent), `SystemSurfaces` (presentation-only Widget/Control identifiers and invalidation). `Client`/`Service` both `@_exported import Common`; `SystemSurfaces` is linked only by the containing App and its extensions, never by the Agent or CLI.
 
-Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`, WidgetKit extension `…​.widgets`.
+Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`, WidgetKit extension `…​.widgets`, Focus App Intents extension `…​.focus-intents`.
 
 ## Architecture Contract — read first
 
@@ -33,8 +33,9 @@ These override the model's defaults — the rest of Swift style is left to stand
 ## Build & Format
 
 ```bash
-xcodebuild -scheme KeyboardLocker -configuration Debug build   # or KeyboardLockerAgent / klock / Core
+xcodebuild -scheme KeyboardLocker -configuration Debug build   # or KeyboardLockerAgent / klock (Core has no shared Xcode scheme; use the SwiftPM commands below)
 xcrun swift test --package-path Core   # xcrun pins the Xcode toolchain; a bare `swift` may resolve to swiftly's older default, which cannot consume the current SDK
+xcodebuild -scheme KeyboardLocker -configuration Debug -destination 'platform=macOS' test -only-testing:KeyboardLockerModelTests   # app-level coordination tests (fake Client/lifecycle; no live SMAppService/XPC)
 ```
 
 `Core/Package.swift` keeps Swift 5.10 source semantics. Code style is 2-space indent with

@@ -573,7 +573,7 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 |---|---|
 | Agent reply 成功 | async 方法正常返回 |
 | Agent reply 领域错误 | 抛出 Agent 返回的错误，例如缺少 Accessibility 权限 |
-| proxy 创建或传输失败 | 抛出 transport error / `serviceUnavailable` |
+| proxy 创建或传输失败 | 归一化为 `serviceUnavailable`(Foundation transport 细节不跨出 Client 边界) |
 | 5 秒内没有任何结果 | connection 失效并抛出 `timedOut`，或由 mutation API 转换为 outcome unknown |
 
 对 mutation 而言，timeout 不等于“Agent 没执行”。请求可能已经到达 Agent，只是 reply 没有及时返回。因此：

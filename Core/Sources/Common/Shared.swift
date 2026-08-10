@@ -48,7 +48,8 @@ public enum LockRequestOutcome: Equatable, Sendable {
 /// Shared notification identifiers for cross-process communication.
 public enum NotificationNames {
   /// Notification name for lock state changes.
-  /// Used by Darwin (lightweight, no payload) and Distributed (with payload) notifications.
+  /// Posted on both the Darwin and Distributed centers without any payload; the signal is only
+  /// a hint, and subscribers always re-query the Agent for the authoritative state.
   public static let stateChanged = "io.lzhlovesjyq.keyboardlocker.state.changed"
 }
 

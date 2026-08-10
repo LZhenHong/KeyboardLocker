@@ -98,7 +98,7 @@ tell application "/absolute/path/to/KeyboardLocker.app"
 end tell
 ```
 
-命令会等待异步 Agent 调用完成后再回复 Apple event。XPC timeout 返回 Apple event timeout (`-1712`),其余 Agent 调用失败返回 Apple event failed (`-10000`),并保留 Client 提供的恢复建议。
+命令会等待异步 Agent 调用完成后再回复 Apple event。只有原始 `status()` 查询(如 `get keyboard lock status`)的 XPC timeout 返回 Apple event timeout (`-1712`);`lock keyboard` / `unlock keyboard` 在 Client 内会先做一次幂等重试,最终超时以 outcome unknown 归入 Apple event failed (`-10000`),其余 Agent 调用失败同样返回 `-10000`,并保留 Client 提供的恢复建议。
 
 ## CLI
 

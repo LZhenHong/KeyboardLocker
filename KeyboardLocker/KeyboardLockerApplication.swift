@@ -75,6 +75,7 @@ enum KeyboardLockerApplication {
 private final class KeyboardLockerApplicationDelegate: NSObject, NSApplicationDelegate {
   private let automationController: ExternalAutomationController
   private let servicesProvider: KeyboardLockerServicesProvider
+  private let lockNotificationController: LockNotificationController
   private var statusMenuController: StatusMenuController?
 
   override init() {
@@ -85,12 +86,22 @@ private final class KeyboardLockerApplicationDelegate: NSObject, NSApplicationDe
         automationController.submit(action, source: .service)
       }
     }
+    // Constructed before launch completes so its UNUserNotificationCenter delegate catches an
+    // Unlock Now response that relaunched the App.
+    let client = LiveAgentClient()
+    lockNotificationController = LockNotificationController(
+      notifications: LiveLockNotificationService(),
+      lockStateObserver: LiveAgentLockStateObserver(),
+      snapshotQuery: { try await XPCClient.shared.lockStatusSnapshot() },
+      unlock: { try await client.unlock() }
+    )
     super.init()
   }
 
   func applicationDidFinishLaunching(_: Notification) {
     NSApp.servicesProvider = servicesProvider
     statusMenuController = StatusMenuController(coordinator: AppCoordinator())
+    lockNotificationController.start()
   }
 
   func application(_: NSApplication, open urls: [URL]) {

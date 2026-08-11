@@ -1,6 +1,6 @@
 # 核心架构契约
 
-**这是项目的根本规则。每一个功能面 —— App、`klock`、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets 以及后续新增的任何形态 —— 都必须遵守它。当某个改动与本契约冲突时,契约优先;修改的是那个改动,而不是契约。**
+**这是项目的根本规则。每一个功能面 —— App、`klock`、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、Notifications 以及后续新增的任何形态 —— 都必须遵守它。当某个改动与本契约冲突时,契约优先;修改的是那个改动,而不是契约。**
 
 ## 为什么是单核(从旧方案学到的)
 
@@ -19,7 +19,7 @@
 
 ## 单核原则
 
-**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、扩展)都是**薄 wrapper**,职责仅限两件事:
+**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、Notifications、扩展)都是**薄 wrapper**,职责仅限两件事:
 
 1. 把用户意图翻译成对 Agent 的一次 XPC 调用;
 2. 通过通知观察全局状态。
@@ -33,8 +33,8 @@ Shortcut ────┤
 Services/URL ┤
 Focus ───────┼── XPC ──▶ Agent  ◀── the ONLY executor
 AppleScript ─┤              ├─ LockEngine        (event tap, lock lifecycle)
-Widget ──────┘              ├─ Settings ownership (source of truth)
-                            └─ Accessibility      (permission gate)
+Notifications┤              ├─ Settings ownership (source of truth)
+Widget ──────┘              └─ Accessibility      (permission gate)
 ```
 
 这里的 `Core`、SwiftPM product、运行进程和 XPC connection 是不同层次。完整的构建依赖图、进程图和调用时序见 [XPC 实现与使用指南](xpc.md)。

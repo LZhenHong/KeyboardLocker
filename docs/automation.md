@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget、Control 与 Notifications 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -79,6 +79,14 @@ Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则�
 macOS 26 及以上提供 `Keyboard Lock` Control。Control 的 value provider 每次经 XPC 查询 Agent 的权威 Boolean；用户操作产生的是明确的 desired state：on 调用 `lock`,off 调用 `unlock`。它不会先读取旧值再做 client-side toggle,因此并发状态变化不会把一次操作翻译成错误方向。
 
 Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` Widget timeline 和 Control value。调用失败会由 App Intent 明确返回错误,也不会先刷新出未经确认的 UI 状态。Control API 在当前 macOS SDK 中从 macOS 26 起可用；macOS 13–15 不注册 Control,其中 macOS 14–15 的状态 Widget 可交互,macOS 13 的状态 Widget 只读。
+
+## Notifications
+
+主 App 运行期间,任一入口使键盘进入 locked 时,App 会发布一条 `Keyboard Locked` 通知:内容来自该时刻向 Agent 重新查询的 `LockStatusSnapshot`,展示当前解锁热键,并在 timed auto-unlock policy 下附带截止时间。通知使用固定 identifier,重复锁定只替换内容,不会堆叠;任一入口解开同一个全局锁后,通知被移除。
+
+通知携带 `Unlock Now` 操作按钮。键盘被锁时鼠标与触控板仍然可用,点击按钮经 XPC 执行幂等 `unlock`;它不依据通知内容做 client-side 状态判断,调用失败时锁与通知都保持原样。点击按钮时 App 未在运行,系统会先拉起 App 再交付该操作。
+
+通知是 presentation-only 的便利面:首次发布前向系统请求通知权限,被拒绝或未授予时不发送、不报错;通知内容永远不是状态源。主 App 未运行时,锁状态变化不会产生通知。
 
 ## AppleScript
 

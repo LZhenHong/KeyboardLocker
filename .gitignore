@@ -97,6 +97,9 @@ iOSInjectionProject/
 # macOS
 .DS_Store
 
+# LLVM coverage data dropped into the working directory by xcodebuild test runs
+*.profraw
+
 # xcode-build-server files
 buildServer.json
 .compile

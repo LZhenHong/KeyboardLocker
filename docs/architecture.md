@@ -76,7 +76,7 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
 
-`SystemSurfaces` 的 reload request 是 presentation invalidation,不是领域状态广播：它不携带状态、不触碰 Agent,只请求 WidgetKit / ControlCenter 重新执行 provider。主 App、Widget 与 Focus extension 可以在 Agent 确认 mutation 后请求刷新；主 App 运行时还把已经由 `LockStateSubscriber` 回拉并去重的外部变化桥接为刷新提示。CLI 与 Agent 不链接 presentation module。主 App 未运行时,CLI、热键或 event-tap failure 造成的变化只能等待 WidgetKit 的下一次 provider execution；系统始终可以合并或延后 reload,因此任何 wrapper 都不得承诺即时 UI 同步。
+`SystemSurfaces` 的 reload request 是 presentation invalidation,不是领域状态广播：它不携带状态、不触碰 Agent,只请求 WidgetKit / ControlCenter 重新执行 provider。主 App、Widget 与 Focus extension 可以在 Agent 确认 mutation 后请求刷新；主 App 运行时还把已经由 `LockStateSubscriber` 回拉并去重的外部变化桥接为刷新提示。CLI 与 Agent 不链接 presentation module——这不只是边界约定：实测(macOS 26)`chronod` 会把非 extension 容器进程的 reload 请求按 `Ignoring restricted or unknown extension` 忽略,因此 `klock` 即使链接 `SystemSurfaces` 也无法真正触发刷新。主 App 未运行时,CLI、热键或 event-tap failure 造成的变化只能等待 WidgetKit 的下一次 provider execution；系统始终可以合并或延后 reload,因此任何 wrapper 都不得承诺即时 UI 同步。
 
 `klock lock` 先发出 atomic interactive lock request。只有 outcome 为 acquired 时,它才等待并报告后续解锁；本轮 event tap 会把 `Ctrl+C` 当作额外解锁手势并在 Agent 内消费该事件。若 outcome 为 already locked,CLI 必须说明本命令没有创建新锁并立即退出,不能把 App 或另一个 CLI 已建立的锁变成自己的可取消 session。acquired 后的等待同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 

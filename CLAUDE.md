@@ -11,7 +11,7 @@ KeyboardLocker suppresses keyboard-originated events exposed through CGEventTap 
 - **klock** (CLI) — imports `Client`
 - **KeyboardLockerWidgets** (WidgetKit extension hosting Widget and macOS Control) — imports `Client` and `SystemSurfaces`
 - **KeyboardLockerFocusIntents** (Focus Filter App Intents extension) — imports `Client` and `SystemSurfaces`
-- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent), `SystemSurfaces` (presentation-only Widget/Control identifiers and invalidation). `Client`/`Service` both `@_exported import Common`; `SystemSurfaces` is linked only by the containing App and its extensions, never by the Agent or CLI.
+- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent), `SystemSurfaces` (presentation-only Widget/Control identifiers and invalidation). `Client`/`Service` both `@_exported import Common`; `SystemSurfaces` is linked only by the containing App and its extensions, never by the Agent or CLI. (Verified on macOS 26: `chronod` ignores reload requests from processes that are not a registered extension container — `Ignoring restricted or unknown extension` — so linking `SystemSurfaces` from `klock` cannot actually refresh widgets.)
 
 Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`, WidgetKit extension `…​.widgets`, Focus App Intents extension `…​.focus-intents`.
 

@@ -72,7 +72,7 @@ Parser 对 scheme 与 host 使用 URL 规定的大小写不敏感比较,但只�
 
 macOS 14 及以上的 Widget 提供 `Lock` / `Unlock` 按钮。按钮把当前展示的 snapshot 翻译成明确的 desired state：`Lock` 只调用幂等 `lock`,`Unlock` 只调用幂等 `unlock`,不会先重新读取状态再执行 client-side toggle。即使用户点击时 snapshot 已过期,action 也不会被翻译成相反方向。Agent 确认成功后才请求刷新 timeline；调用失败会由 App Intent 明确返回错误,不做 optimistic update。macOS 13 上保持只读。
 
-Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则请求在 deadline 后立即校准。主 App、Shortcuts、AppleScript、Services、URL、Focus、Widget 与 Control 在 Agent 确认 mutation 后都会请求刷新状态 Widget 和可用的 Control；主 App 运行时,其权威状态订阅还会把 CLI、auto-unlock、解锁热键与 event-tap fail-open 的变化桥接成 presentation reload。主 App 未运行时,CLI、热键或 event-tap failure 只能等待下一次 WidgetKit provider execution。timeline 与显式 reload 都只是系统调度提示；WidgetKit 可以根据刷新预算合并或延后执行,因此 Widget 是系统级状态概览,不是实时监视器。倒计时文本仍由系统持续渲染。
+Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则请求在 deadline 后立即校准。主 App、Shortcuts、AppleScript、Services、URL、Focus、Widget 与 Control 在 Agent 确认 mutation 后都会请求刷新状态 Widget 和可用的 Control；主 App 运行时,其权威状态订阅还会把 CLI、auto-unlock、解锁热键与 event-tap fail-open 的变化桥接成 presentation reload。主 App 未运行时,CLI、热键或 event-tap failure 只能等待下一次 WidgetKit provider execution——CLI 自身无法请求刷新：实测(macOS 26)`chronod` 会把非 extension 容器进程的 reload 请求按 `Ignoring restricted or unknown extension` 忽略。timeline 与显式 reload 都只是系统调度提示；WidgetKit 可以根据刷新预算合并或延后执行,因此 Widget 是系统级状态概览,不是实时监视器。倒计时文本仍由系统持续渲染。
 
 ## Control
 

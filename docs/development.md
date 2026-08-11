@@ -45,7 +45,7 @@
 - `AccessibilityManager.swift`(Agent 身份下的实时权限查询与 prompt 请求)、`XPCAccessControl.swift`(生成 Listener 的受信 Client requirement)、`XPCServerConnection.swift`。
 
 **SystemSurfaces**(`Core/Sources/SystemSurfaces/`)—— 仅 containing App、Widget 与 Focus extension 使用的 presentation adapter
-- `LockStateSurfaceInvalidator.swift`:集中定义稳定的 Widget / Control kind,并把 `WidgetCenter` 与 macOS 26+ `ControlCenter` 包装成 nonthrowing reload request。它不 import `Client` / `Service`,不查询或携带锁状态,也不链接到 Agent / CLI；系统可以延后或合并请求,因此它不是状态广播或第二份真相源。
+- `LockStateSurfaceInvalidator.swift`:集中定义稳定的 Widget / Control kind,并把 `WidgetCenter` 与 macOS 26+ `ControlCenter` 包装成 nonthrowing reload request。它不 import `Client` / `Service`,不查询或携带锁状态,也不链接到 Agent / CLI；系统可以延后或合并请求,因此它不是状态广播或第二份真相源。(CLI 不链接还有实证依据:`chronod` 会忽略来自非 extension 容器进程的 reload 请求——`Ignoring restricted or unknown extension io.lzhlovesjyq.keyboardlocker.klock`,macOS 26 实测。)
 
 **App**(`KeyboardLocker/`)—— 长命的 menu-bar 薄 wrapper，并承载一次性系统 action；领域操作只调用 Client,presentation refresh 只调用 SystemSurfaces
 - `AgentRegistrar.swift`:通过 `SMAppService.agent(plistName:)` 确保注册,读取 bundled Agent metadata 并比较运行中 descriptor;replacement 会等待旧 Agent 退出后重新注册 bundled 版本。

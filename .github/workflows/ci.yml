@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          xcrun swift --version
+
+      - name: Core package tests
+        run: xcrun swift test --package-path Core
+
+      # CI runners carry no signing identities, so the app build and the app-level tests run
+      # with code signing disabled. The mutual XPC code-signing requirement is a runtime
+      # property exercised by signed local builds; its construction rules are covered by
+      # XPCCodeSigningRequirementTests in the Core package above.
+      - name: Build app, agent, CLI, and extensions
+        run: >-
+          xcodebuild -scheme KeyboardLocker -configuration Debug build
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: App-level model tests
+        run: >-
+          xcodebuild -scheme KeyboardLocker -configuration Debug
+          -destination 'platform=macOS'
+          test -only-testing:KeyboardLockerModelTests
+          CODE_SIGNING_ALLOWED=NO

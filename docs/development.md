@@ -147,4 +147,5 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
 - `KeyboardLockerSettingsStore` 在本地持久化数据损坏时回退 `.default` 并记录 `os.Logger` 错误(仅 Agent 写该 key,风险有界;该路径已由 `ServiceTests` 覆盖);跨进程的 wire codec 保持严格显式失败,不受影响。
 - Client 任意调用的超时或 `waitUntilUnlocked` 取消会失效进程内**共享**的缓存 connection:并发的无关在途调用会收到一次 `serviceUnavailable`,下一次调用自愈,这不是 Agent 故障。
-- unsigned/ad-hoc 进程 fail closed 的运行路径(测试 bundle 本身已签名,难以构造)与 CI 自动化(`.github/workflows/` 只有 Claude 机器人,无 macOS 构建/测试门禁)是当前验证体系的边界;合并前必须本地跑过 `CLAUDE.md` 的 build 与两套 test 命令。
+- unsigned/ad-hoc 进程 fail closed 的运行路径未自动化覆盖:测试 bundle 本身已签名,难以在单测中构造未签名进程。
+- CI 由 `.github/workflows/ci.yml` 承载(macOS runner,依次跑 Core 测试、全量 build、`KeyboardLockerModelTests`)。runner 没有签名身份,app build 与 ModelTests 以 `CODE_SIGNING_ALLOWED=NO` 运行;因此签名认证的**运行时**行为不属于 CI 门禁,发布前仍需本地签名构建验证。

@@ -16,6 +16,8 @@ protocol AgentLockActionServing: Sendable {
   func lock() async throws
   func unlock() async throws
   func status() async throws -> Bool
+  /// Atomically flips the global lock in the Agent and returns the resulting state.
+  func toggle() async throws -> Bool
 }
 
 @MainActor
@@ -67,10 +69,12 @@ protocol AgentClientServing:
 struct LiveAgentClient: AgentClientServing {
   typealias Mutation = @Sendable () async throws -> Void
   typealias StatusQuery = @Sendable () async throws -> Bool
+  typealias ToggleMutation = @Sendable () async throws -> Bool
 
   private let lockMutation: Mutation
   private let statusQuery: StatusQuery
   private let surfaceInvalidator: LockStateSurfaceInvalidator
+  private let toggleMutation: ToggleMutation
   private let unlockMutation: Mutation
 
   nonisolated init() {
@@ -84,6 +88,9 @@ struct LiveAgentClient: AgentClientServing {
       status: {
         try await XPCClient.shared.status()
       },
+      toggle: {
+        try await XPCClient.shared.toggle()
+      },
       surfaceInvalidator: .live
     )
   }
@@ -92,11 +99,13 @@ struct LiveAgentClient: AgentClientServing {
     lock: @escaping Mutation,
     unlock: @escaping Mutation,
     status: @escaping StatusQuery,
+    toggle: @escaping ToggleMutation,
     surfaceInvalidator: LockStateSurfaceInvalidator
   ) {
     lockMutation = lock
     unlockMutation = unlock
     statusQuery = status
+    toggleMutation = toggle
     self.surfaceInvalidator = surfaceInvalidator
   }
 
@@ -116,6 +125,12 @@ struct LiveAgentClient: AgentClientServing {
 
   func status() async throws -> Bool {
     try await statusQuery()
+  }
+
+  func toggle() async throws -> Bool {
+    let isLocked = try await toggleMutation()
+    surfaceInvalidator.invalidate()
+    return isLocked
   }
 
   func prepareForReplacement(

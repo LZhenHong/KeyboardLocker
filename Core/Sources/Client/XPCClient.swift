@@ -178,6 +178,24 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
+  /// Atomically flips the global lock inside the Agent and returns the resulting state.
+  ///
+  /// Toggle is not idempotent: after a lost reply, re-sending it could flip the state twice,
+  /// and the current status alone cannot prove whether this call ran. Keep the outcome
+  /// explicitly unknown instead.
+  public func toggle() async throws -> Bool {
+    let connection = try await negotiatedConnection(
+      requiring: [.lockToggle]
+    )
+    do {
+      return try await withProxyReturning(using: connection) { service, resume in
+        service.toggleKeyboard { resume($0, $1) }
+      }
+    } catch XPCClientError.timedOut {
+      throw XPCClientError.operationOutcomeUnknown
+    }
+  }
+
   /// One authoritative point-in-time snapshot of the global lock and its active settings.
   public func lockStatusSnapshot() async throws -> LockStatusSnapshot {
     let connection = try await negotiatedConnection(

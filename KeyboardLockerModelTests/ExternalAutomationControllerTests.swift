@@ -159,6 +159,12 @@ private final class RecordingExternalAutomationClient: AgentLockActionServing {
     return isLocked
   }
 
+  func toggle() async throws -> Bool {
+    try throwConfiguredError()
+    isLocked.toggle()
+    return isLocked
+  }
+
   private func throwConfiguredError() throws {
     if let error {
       throw error

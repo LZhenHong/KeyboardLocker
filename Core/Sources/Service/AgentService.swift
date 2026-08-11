@@ -147,6 +147,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
+  public func toggleKeyboard(reply: @escaping (Bool, Error?) -> Void) {
+    executeOnMainActor {
+      do {
+        reply(try self.performToggle(), nil)
+      } catch {
+        reply(false, error)
+      }
+    }
+  }
+
   public func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void) {
     executeOnMainActor {
       do {
@@ -333,6 +343,19 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       settings: settings,
       allowsControlCUnlock: allowsControlCUnlock
     )
+  }
+
+  /// The flip is atomic because the state read and the mutation run in one MainActor turn; no
+  /// other client call can interleave and translate the request into the wrong direction.
+  @MainActor
+  private func performToggle() throws -> Bool {
+    if engine.isLocked {
+      // Symmetric with an explicit unlock: releases any generation, including a Focus-owned one.
+      engine.unlock()
+      return false
+    }
+
+    return try performLock(allowsControlCUnlock: false) == .acquired
   }
 
   @MainActor

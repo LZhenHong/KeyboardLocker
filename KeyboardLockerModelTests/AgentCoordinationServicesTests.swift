@@ -39,6 +39,10 @@ final class AgentCoordinationServicesTests: XCTestCase {
         recorder.record(.status)
         return false
       },
+      toggle: {
+        recorder.record(.toggle)
+        return true
+      },
       surfaceInvalidator: makeInvalidator(recorder: recorder)
     )
 
@@ -67,6 +71,10 @@ final class AgentCoordinationServicesTests: XCTestCase {
         recorder.record(.status)
         return false
       },
+      toggle: {
+        recorder.record(.toggle)
+        return true
+      },
       surfaceInvalidator: makeInvalidator(recorder: recorder)
     )
 
@@ -89,6 +97,48 @@ final class AgentCoordinationServicesTests: XCTestCase {
 
     XCTAssertTrue(isLocked)
     XCTAssertEqual(recorder.calls, [.status])
+  }
+
+  @MainActor
+  func testSuccessfulToggleInvalidatesWidgetThenControl() async throws {
+    let recorder = CallRecorder()
+    let client = makeClient(recorder: recorder)
+
+    let isLocked = try await client.toggle()
+
+    XCTAssertTrue(isLocked)
+    XCTAssertEqual(recorder.calls, [.toggle, .widget, .control])
+  }
+
+  @MainActor
+  func testFailedToggleDoesNotInvalidateSurfaces() async {
+    let recorder = CallRecorder()
+    let client = LiveAgentClient(
+      lock: {
+        recorder.record(.lock)
+      },
+      unlock: {
+        recorder.record(.unlock)
+      },
+      status: {
+        recorder.record(.status)
+        return false
+      },
+      toggle: {
+        recorder.record(.toggle)
+        throw TestError.expected
+      },
+      surfaceInvalidator: makeInvalidator(recorder: recorder)
+    )
+
+    do {
+      _ = try await client.toggle()
+      XCTFail("Expected the Agent failure to propagate.")
+    } catch {
+      XCTAssertEqual(error as? TestError, .expected)
+    }
+
+    XCTAssertEqual(recorder.calls, [.toggle])
   }
 
   @MainActor
@@ -131,6 +181,10 @@ final class AgentCoordinationServicesTests: XCTestCase {
         recorder.record(.status)
         return status
       },
+      toggle: {
+        recorder.record(.toggle)
+        return true
+      },
       surfaceInvalidator: makeInvalidator(recorder: recorder)
     )
   }
@@ -158,6 +212,7 @@ private final class CallRecorder: @unchecked Sendable {
     case control
     case lock
     case status
+    case toggle
     case unlock
     case widget
   }

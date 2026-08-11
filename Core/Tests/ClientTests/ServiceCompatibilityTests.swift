@@ -118,6 +118,13 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 5)
   }
 
+  func testCurrentContractRequiresLockToggleSelector() {
+    XCTAssertTrue(
+      ServiceContract.requiredCapabilities.contains(.lockToggle)
+    )
+    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 6)
+  }
+
   func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(

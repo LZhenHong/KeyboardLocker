@@ -58,7 +58,8 @@ App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management�
 
 - 任何 wrapper 都可以锁;任何 wrapper 都可以解锁。CLI 发起的锁,App 可以解开,反之亦然。
 - locked 的输入范围是 macOS 交付给 `CGEventTap` 的键盘来源事件：标准 `keyDown` / `keyUp` / `flagsChanged`,以及 `NX_SUBTYPE_AUX_CONTROL_BUTTONS`、`NX_SUBTYPE_EJECT_KEY`、`NX_SUBTYPE_POWER_KEY` 这三类 system-defined keyboard control。音量、亮度和播放控制因此必须被消费；鼠标 / 触控板 pointer event(包括 `NX_SUBTYPE_AUX_MOUSE_BUTTONS`)必须继续可用。macOS 没有交付给 event tap 的硬件或系统保留路径不在可保证范围内。
-- 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
+- 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `toggle` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
+- `toggle` 是同一全局锁的原子翻转:在 Agent 的串行执行边界内于同一 execution turn 完成"读当前状态 + 反向 mutation",并向调用方返回翻转后的布尔值。锁定方向使用普通非交互 `lock` 语义(含 Focus persistence takeover),解锁方向等价于显式 `unlock`;wrapper 不得先读 `status()` 再自行决定方向来模拟 toggle。
 - `lock` 对物理运行状态是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改 event tap、当前设置、输入手势、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。唯一的内部 metadata 变化是：若该代锁由 Focus Filter 创建,之后来自普通 wrapper 的显式 `lock` 会接管其持久性,使 Focus 关闭时不再解除这个更新的用户意图。
 - interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。
 - Focus Filter 是 **activation-triggered acquisition**,不是“Focus active 期间持续保持 locked”的 policy。Focus 激活时的 `true` 最多尝试一次 `unlocked → locked`,并只在成功创建锁时记录该 Focus-owned generation；Focus 关闭时的 `false` 只条件性解除仍由它创建且未被普通 `lock` 接管的同一代。已有普通锁不会被 Focus 认领。显式 unlock、解锁热键、auto-unlock timeout、event-tap failure 或 Agent 退出 / 重启都可以在 Focus 仍 active 时提前结束该 generation；实现不会查询当前 Focus 后自动重建锁,也不会在同一次 Focus activation 内持续 relock。这个进程内 marker 不暴露给 wrapper,也不改变“任意入口可显式 unlock 同一个全局锁”的契约。

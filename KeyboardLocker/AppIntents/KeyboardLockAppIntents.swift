@@ -48,6 +48,28 @@ struct UnlockKeyboardIntent: nonisolated AppIntent {
 }
 
 @MainActor
+struct ToggleKeyboardLockIntent: nonisolated AppIntent {
+  nonisolated static let title: LocalizedStringResource = "Toggle Keyboard Lock"
+  nonisolated static let description = IntentDescription(
+    "Atomically flips the keyboard lock state in the Agent — locking when unlocked and unlocking when locked — and returns the resulting state."
+  )
+
+  private let client: any AgentLockActionServing
+
+  nonisolated init() {
+    client = LiveAgentClient()
+  }
+
+  nonisolated init(client: any AgentLockActionServing) {
+    self.client = client
+  }
+
+  nonisolated func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+    try await .result(value: client.toggle())
+  }
+}
+
+@MainActor
 struct GetKeyboardLockStatusIntent: nonisolated AppIntent {
   nonisolated static let title: LocalizedStringResource = "Get Keyboard Lock Status"
   nonisolated static let description = IntentDescription(

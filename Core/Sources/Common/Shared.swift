@@ -86,6 +86,11 @@ public protocol KeyboardLockerServiceProtocol {
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 
+  /// Atomically flips the global lock inside the Agent's serial execution boundary and replies
+  /// with the resulting state. The lock direction uses plain (non-interactive) lock semantics;
+  /// the unlock direction is an explicit unlock that releases any generation.
+  func toggleKeyboard(reply: @escaping (_ isLocked: Bool, _ error: Error?) -> Void)
+
   /// Returns one authoritative point-in-time lock snapshot as JSON-encoded
   /// `LockStatusSnapshot`. This is additive; legacy clients continue using `status`.
   func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void)

@@ -154,6 +154,11 @@ private final class FakeAgentClient: AgentClientServing {
     isLocked
   }
 
+  func toggle() async throws -> Bool {
+    isLocked.toggle()
+    return isLocked
+  }
+
   func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID

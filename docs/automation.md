@@ -8,18 +8,21 @@ KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScrip
 - `lock` 会消费 macOS 交付给 Agent event tap 的标准按键和键盘 system control,包括音量、亮度、播放控制、eject 与 power；鼠标和触控板输入继续可用。macOS 没有交付给 event tap 的硬件或系统保留路径不在可保证范围内。
 - `status` 每次都从 Agent 查询权威状态；wrapper 不维护本地副本。
 - lock 是全局状态,不属于发起它的 Shortcut、AppleScript 或 shell process。任意普通入口的显式 `unlock` 都会解开同一个全局锁。Focus Filter 的关闭事件使用更窄的条件释放规则,只解除它自己创建且未被后续显式 `lock` 接管的锁。
-- 当前没有暴露 client-side `toggle`。需要确定结果时,显式选择 `lock` 或 `unlock`。
+- `toggle` 在 Agent 的串行执行边界内原子翻转全局锁并返回翻转后的状态;它不是 wrapper 先读 `status()` 再决定方向的 client-side 组合,因此不存在并发竞态。自动化需要确定终态时,仍应显式选择 `lock` 或 `unlock`。
 - Agent 不可达、权限不足或结果无法确认时,action wrapper 会明确失败,Widget 会显示 unavailable；任何入口都不会把失败猜成 unlocked。
 
 ## Shortcuts
 
-KeyboardLocker 提供三个可组合 action：
+KeyboardLocker 提供四个可组合 action：
 
 - `Lock Keyboard`
 - `Unlock Keyboard`
+- `Toggle Keyboard Lock`
 - `Get Keyboard Lock Status`
 
-`Get Keyboard Lock Status` 返回 typed Boolean,可直接接入 Shortcuts 的条件分支。当前版本没有声明 `AppShortcutsProvider`;这些 action 从 Shortcuts 的 action library 中选择。Apple 当前不在 macOS 支持 promoted App Shortcuts,因此应用不会注册 invocation phrase。
+`Toggle Keyboard Lock` 把翻转交给 Agent 原子执行,并返回翻转后的 Boolean;`Get Keyboard Lock Status` 返回当前权威 Boolean,两者都可直接接入 Shortcuts 的条件分支。
+
+macOS 26 及以上,应用声明了 `AppShortcutsProvider`,为 lock / unlock / toggle 注册 promoted App Shortcuts,无需手动配置即可从 Spotlight、Quick Keys 与 Siri 调用。更早的 macOS 版本不生成 promoted App Shortcuts 或 invocation phrase,这些 action 从 Shortcuts 的 action library 中选择。
 
 ## Focus Filter
 

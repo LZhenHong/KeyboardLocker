@@ -289,6 +289,70 @@ final class AgentServiceTests: XCTestCase {
     XCTAssertEqual(engine.focusCalls.first?.settings, customSettings)
   }
 
+  // MARK: - Toggle
+
+  func testToggleLocksUnlockedEngineWithPersistedSettings() {
+    let service = makeService()
+
+    var isLocked: Bool?
+    var toggleError: Error?
+    service.toggleKeyboard { locked, error in
+      isLocked = locked
+      toggleError = error
+    }
+
+    XCTAssertNil(toggleError)
+    XCTAssertEqual(isLocked, true)
+    XCTAssertEqual(engine.lockCalls.count, 1)
+    XCTAssertEqual(engine.lockCalls.first?.settings, customSettings)
+    XCTAssertEqual(engine.lockCalls.first?.allowsControlCUnlock, false)
+    XCTAssertEqual(engine.unlockCallCount, 0)
+  }
+
+  func testToggleUnlocksLockedEngine() {
+    let lockedEngine = FakeLockEngine(isLocked: true)
+    let service = makeService(engineOverride: lockedEngine)
+
+    var isLocked: Bool?
+    var toggleError: Error?
+    service.toggleKeyboard { locked, error in
+      isLocked = locked
+      toggleError = error
+    }
+
+    XCTAssertNil(toggleError)
+    XCTAssertEqual(isLocked, false)
+    XCTAssertEqual(lockedEngine.unlockCallCount, 1)
+    XCTAssertTrue(lockedEngine.lockCalls.isEmpty)
+  }
+
+  func testTogglePropagatesLockFailureWithoutChangingState() {
+    engine.lockError = StubError.descriptorUnavailable
+    let service = makeService()
+
+    var isLocked: Bool?
+    var toggleError: Error?
+    service.toggleKeyboard { locked, error in
+      isLocked = locked
+      toggleError = error
+    }
+
+    XCTAssertEqual(toggleError as? StubError, .descriptorUnavailable)
+    XCTAssertEqual(isLocked, false)
+    XCTAssertFalse(engine.isLocked)
+  }
+
+  func testPreparedDrainRejectsOnlyTheLockDirectionOfToggle() {
+    let service = makeService()
+    prepareTicket(on: service, instanceID: instanceID)
+
+    var toggleError: Error?
+    service.toggleKeyboard { _, error in toggleError = error }
+    assertReplacementError(toggleError, code: 1)
+    XCTAssertTrue(engine.lockCalls.isEmpty)
+    XCTAssertEqual(engine.unlockCallCount, 0)
+  }
+
   // MARK: - Fixtures
 
   private func makeService(
@@ -382,6 +446,7 @@ private enum StubError: Error {
 @MainActor
 private final class FakeLockEngine: LockEngineServing {
   var isLocked: Bool
+  var lockError: Error?
   var onUnlock: (() -> Void)?
 
   private let snapshot: LockStatusSnapshot
@@ -411,6 +476,9 @@ private final class FakeLockEngine: LockEngineServing {
     allowsControlCUnlock: Bool
   ) throws -> LockRequestOutcome {
     lockCalls.append((settings, allowsControlCUnlock))
+    if let lockError {
+      throw lockError
+    }
     isLocked = true
     return .acquired
   }

@@ -390,6 +390,133 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     XCTAssertEqual(failure, .invalidBundle("Corrupt bundle."))
     XCTAssertEqual(client.statusCallCount, 0)
   }
+
+  @MainActor
+  func testCancellationAfterEnsureEnabledReturnsCancelled() async {
+    let client = FakeAgentReadinessClient(
+      descriptorResults: [.success(makeDescriptor())]
+    )
+    let lifecycle = FakeAgentReadinessLifecycle()
+    let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
+
+    let inspection = Task { await coordinator.inspect() }
+    inspection.cancel()
+    let outcome = await inspection.value
+
+    guard case .cancelled = outcome else {
+      XCTFail("Expected .cancelled, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(client.descriptorCallCount, 0)
+  }
+
+  @MainActor
+  func testCancellationDuringInitialDescriptorFetchReturnsCancelled() async {
+    let descriptorGate = ReadinessTestGate()
+    let descriptorStarted = expectation(description: "Descriptor fetch started.")
+    descriptorGate.onEntered = { descriptorStarted.fulfill() }
+    let client = FakeAgentReadinessClient(
+      descriptorResults: [.success(makeDescriptor())]
+    )
+    client.descriptorGate = descriptorGate
+    let lifecycle = FakeAgentReadinessLifecycle()
+    let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
+
+    let inspection = Task { await coordinator.inspect() }
+    await fulfillment(of: [descriptorStarted], timeout: 5)
+    inspection.cancel()
+    descriptorGate.open()
+    let outcome = await inspection.value
+
+    guard case .cancelled = outcome else {
+      XCTFail("Expected .cancelled, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(client.descriptorCallCount, 1)
+    XCTAssertTrue(lifecycle.checkedDescriptors.isEmpty)
+  }
+
+  @MainActor
+  func testCancellationAfterDescriptorFailureSkipsRetryAndReturnsCancelled() async {
+    let descriptorGate = ReadinessTestGate()
+    let descriptorStarted = expectation(description: "Descriptor fetch started.")
+    descriptorGate.onEntered = { descriptorStarted.fulfill() }
+    let client = FakeAgentReadinessClient(
+      descriptorResults: [.failure(TestError.handshake)]
+    )
+    client.descriptorGate = descriptorGate
+    let lifecycle = FakeAgentReadinessLifecycle()
+    let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
+
+    let inspection = Task { await coordinator.inspect() }
+    await fulfillment(of: [descriptorStarted], timeout: 5)
+    inspection.cancel()
+    descriptorGate.open()
+    let outcome = await inspection.value
+
+    guard case .cancelled = outcome else {
+      XCTFail("Expected .cancelled, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(client.descriptorCallCount, 1)
+    XCTAssertEqual(client.resetConnectionCallCount, 0)
+  }
+
+  @MainActor
+  func testCancellationDuringCompatibleStatusFetchReturnsCancelled() async {
+    let statusGate = ReadinessTestGate()
+    let statusStarted = expectation(description: "Status fetch started.")
+    statusGate.onEntered = { statusStarted.fulfill() }
+    let client = FakeAgentReadinessClient(
+      descriptorResults: [.success(makeDescriptor())],
+      statusResult: .success(true)
+    )
+    client.statusGate = statusGate
+    let lifecycle = FakeAgentReadinessLifecycle(compatibilityResult: .compatible)
+    let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
+
+    let inspection = Task { await coordinator.inspect() }
+    await fulfillment(of: [statusStarted], timeout: 5)
+    inspection.cancel()
+    statusGate.open()
+    let outcome = await inspection.value
+
+    guard case .cancelled = outcome else {
+      XCTFail("Expected .cancelled, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(client.statusCallCount, 1)
+  }
+
+  @MainActor
+  func testCancellationDuringUnverifiedAgentStatusFetchReturnsCancelled() async {
+    let statusGate = ReadinessTestGate()
+    let statusStarted = expectation(description: "Status fetch started.")
+    statusGate.onEntered = { statusStarted.fulfill() }
+    let client = FakeAgentReadinessClient(
+      descriptorResults: [
+        .failure(TestError.handshake),
+        .failure(TestError.handshake),
+      ],
+      statusResult: .success(true)
+    )
+    client.statusGate = statusGate
+    let lifecycle = FakeAgentReadinessLifecycle()
+    let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
+
+    let inspection = Task { await coordinator.inspect() }
+    await fulfillment(of: [statusStarted], timeout: 5)
+    inspection.cancel()
+    statusGate.open()
+    let outcome = await inspection.value
+
+    guard case .cancelled = outcome else {
+      XCTFail("Expected .cancelled, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(client.descriptorCallCount, 2)
+    XCTAssertEqual(client.statusCallCount, 1)
+  }
 }
 
 @MainActor
@@ -404,6 +531,8 @@ private final class FakeAgentReadinessClient: AgentReadinessServing {
   private var descriptorResults: [Result<ServiceDescriptor, Error>]
   var statusResult: Result<Bool, Error>
   var permissionResult: Result<Bool, Error>
+  var descriptorGate: ReadinessTestGate?
+  var statusGate: ReadinessTestGate?
 
   private(set) var events: [Event] = []
   private(set) var descriptorCallCount = 0
@@ -427,6 +556,9 @@ private final class FakeAgentReadinessClient: AgentReadinessServing {
   func serviceDescriptor() async throws -> ServiceDescriptor {
     events.append(.serviceDescriptor)
     descriptorCallCount += 1
+    if let descriptorGate {
+      await descriptorGate.wait()
+    }
     let result = descriptorResults.count > 1
       ? descriptorResults.removeFirst()
       : descriptorResults[0]
@@ -436,6 +568,9 @@ private final class FakeAgentReadinessClient: AgentReadinessServing {
   func status() async throws -> Bool {
     events.append(.status)
     statusCallCount += 1
+    if let statusGate {
+      await statusGate.wait()
+    }
     return try statusResult.get()
   }
 
@@ -473,6 +608,33 @@ private final class FakeAgentReadinessLifecycle: AgentReadinessLifecycleServing 
   ) -> AgentRegistrar.Compatibility {
     checkedDescriptors.append(descriptor)
     return compatibilityResult
+  }
+}
+
+/// Holds a fake XPC response until the test releases it, so cancellation can land while
+/// the coordinator is suspended at a specific call.
+@MainActor
+private final class ReadinessTestGate {
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+  private var isOpen = false
+
+  var onEntered: (() -> Void)?
+
+  func wait() async {
+    onEntered?()
+    guard !isOpen else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      waiters.append(continuation)
+    }
+  }
+
+  func open() {
+    isOpen = true
+    let pending = waiters
+    waiters.removeAll()
+    pending.forEach { $0.resume() }
   }
 }
 

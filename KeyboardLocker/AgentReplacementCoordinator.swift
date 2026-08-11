@@ -86,44 +86,30 @@ struct AgentReplacementCoordinator {
   }
 
   func replace(_ plan: AgentUpdatePlan) async -> Outcome {
+    switch plan.mode {
+    case let .safe(descriptor, isLocked):
+      return await replaceWithTransaction(descriptor: descriptor, isLocked: isLocked)
+    case let .forced(descriptor, isLocked):
+      return await replaceForced(descriptor: descriptor, isLocked: isLocked)
+    }
+  }
+
+  private func replaceWithTransaction(
+    descriptor: ServiceDescriptor,
+    isLocked: Bool
+  ) async -> Outcome {
     var replacementTicket: ServiceReplacementTicket?
     var didCommitReplacement = false
 
     do {
-      switch plan.mode {
-      case let .safe(descriptor, isLocked):
-        replacementTicket = try await client.prepareForReplacement(
-          unlockIfNeeded: isLocked,
-          expectedAgentInstanceID: descriptor.agentInstanceID
-        )
-        if let replacementTicket {
-          try await client.commitReplacement(ticket: replacementTicket)
-          didCommitReplacement = true
-        }
-
-      case let .forced(_, isLocked):
-        if isLocked != nil {
-          // The legacy path has no cross-client drain. The explicit user action authorizes
-          // releasing the known lock immediately before the shortest possible restart window.
-          try await client.unlock()
-        }
-      }
-
-      let registrationState = await lifecycle.restart()
-      guard case .enabled = registrationState else {
-        if let replacementTicket, !didCommitReplacement {
-          try? await client.cancelReplacementPreparation(
-            ticket: replacementTicket
-          )
-        }
-        client.resetConnection()
-        return .registration(registrationState)
-      }
-
-      client.resetConnection()
-      return .restarted(
-        previousAgentInstanceID: plan.descriptor?.agentInstanceID
+      replacementTicket = try await client.prepareForReplacement(
+        unlockIfNeeded: isLocked,
+        expectedAgentInstanceID: descriptor.agentInstanceID
       )
+      if let replacementTicket {
+        try await client.commitReplacement(ticket: replacementTicket)
+        didCommitReplacement = true
+      }
     } catch {
       if let replacementTicket, !didCommitReplacement {
         try? await client.cancelReplacementPreparation(
@@ -131,18 +117,62 @@ struct AgentReplacementCoordinator {
         )
       }
 
-      if plan.supportsSafeReplacement,
-         let descriptor = await reportedReplacementInProgress() {
+      if let descriptor = await reportedReplacementInProgress() {
         return .replacementInProgress(descriptor)
       }
 
-      let currentLockState: Bool? = if plan.canReadLockState {
-        try? await client.status()
-      } else {
-        nil
-      }
-      return .failed(error: error, currentLockState: currentLockState)
+      return .failed(error: error, currentLockState: try? await client.status())
     }
+
+    return await restart(
+      reporting: descriptor,
+      cancellingUncommittedTicket: replacementTicket,
+      didCommit: didCommitReplacement
+    )
+  }
+
+  /// The forced path has no transaction to roll back and no trusted replacement to re-detect.
+  /// A plan without a readable lock state performs no throwing call at all, so it can never
+  /// produce `.failed`.
+  private func replaceForced(
+    descriptor: ServiceDescriptor?,
+    isLocked: Bool?
+  ) async -> Outcome {
+    if isLocked != nil {
+      // The legacy path has no cross-client drain. The explicit user action authorizes
+      // releasing the known lock immediately before the shortest possible restart window.
+      do {
+        try await client.unlock()
+      } catch {
+        return .failed(error: error, currentLockState: try? await client.status())
+      }
+    }
+
+    return await restart(
+      reporting: descriptor,
+      cancellingUncommittedTicket: nil,
+      didCommit: false
+    )
+  }
+
+  private func restart(
+    reporting descriptor: ServiceDescriptor?,
+    cancellingUncommittedTicket replacementTicket: ServiceReplacementTicket?,
+    didCommit didCommitReplacement: Bool
+  ) async -> Outcome {
+    let registrationState = await lifecycle.restart()
+    guard case .enabled = registrationState else {
+      if let replacementTicket, !didCommitReplacement {
+        try? await client.cancelReplacementPreparation(
+          ticket: replacementTicket
+        )
+      }
+      client.resetConnection()
+      return .registration(registrationState)
+    }
+
+    client.resetConnection()
+    return .restarted(previousAgentInstanceID: descriptor?.agentInstanceID)
   }
 
   private func reportedReplacementInProgress() async -> ServiceDescriptor? {

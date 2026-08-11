@@ -240,6 +240,35 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
   }
 
   @MainActor
+  func testForcedPlanWithKnownLockStateRestartFailureReturnsRegistration() async {
+    let log = ReplacementCallLog()
+    let descriptor = makeDescriptor()
+    let ticket = ServiceReplacementTicket(
+      id: UUID(),
+      agentInstanceID: descriptor.agentInstanceID
+    )
+    let client = FakeAgentReplacementClient(log: log, ticket: ticket)
+    let lifecycle = FakeAgentReplacementLifecycle(log: log)
+    lifecycle.restartResult = .approvalRequired
+    let coordinator = AgentReplacementCoordinator(client: client, lifecycle: lifecycle)
+    let plan = AgentUpdatePlan(
+      mode: .forced(descriptor: descriptor, isLocked: true),
+      message: "Update required."
+    )
+
+    let outcome = await coordinator.replace(plan)
+
+    guard case let .registration(state) = outcome else {
+      XCTFail("Expected .registration, got \(outcome).")
+      return
+    }
+    XCTAssertEqual(state, .approvalRequired)
+    XCTAssertEqual(client.unlockCallCount, 1)
+    XCTAssertTrue(client.cancelledTickets.isEmpty)
+    XCTAssertEqual(log.steps, [.unlock, .restart, .resetConnection])
+  }
+
+  @MainActor
   func testForcedPlanWithUnknownLockStateSkipsUnlock() async {
     let log = ReplacementCallLog()
     let ticket = ServiceReplacementTicket(id: UUID(), agentInstanceID: UUID())

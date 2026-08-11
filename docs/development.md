@@ -144,7 +144,7 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 测试覆盖有意停止在需要真实系统边界的层面;以下是当前接受的残余风险与实现特性,排查问题时先对照,不要重新"发现"它们:
 
 - `LockEngine` 的纯策略(event policy、schedule 计算、runtime state、tap 安装事务)与引擎语义(Accessibility 预检、tap 安装/拆除、auto-unlock 排程/触发/陈旧代际拒绝、热键与 Control-C 分发、tap-disable re-enable/fail-open、Focus 代际所有权)均已单测 —— 后者由 `LockEngineTests` 经注入缝(`InstalledEventTap`、`MainActorTimerScheduler`、权限/广播/时钟闭包)确定性驱动;剩余不可单测的只有 Quartz 对真实硬件事件的拦截本身(平台集成事实,靠真机验证)。
-- App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 已由 `KeyboardLockerModelTests` 经 fake client/lifecycle 覆盖(handshake 重试、unverified fallback、safe/forced 计划、prepare→commit→restart 顺序、cancel/redetection);`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)未覆盖,`KlockStatusOutput` 渲染已覆盖。
+- App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 已由 `KeyboardLockerModelTests` 经 fake client/lifecycle 覆盖(handshake 重试、unverified fallback、safe/forced 计划、prepare→commit→restart 顺序、cancel/redetection、Task 取消路径);forced 且无锁态可读的计划结构上不可能产生 `.failed`(该路径不存在任何可抛错调用)。`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)未覆盖,`KlockStatusOutput` 渲染已覆盖。
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
 - `KeyboardLockerSettingsStore` 在本地持久化数据损坏时回退 `.default` 并记录 `os.Logger` 错误(仅 Agent 写该 key,风险有界;该路径已由 `ServiceTests` 覆盖);跨进程的 wire codec 保持严格显式失败,不受影响。
 - Client 任意调用的超时或 `waitUntilUnlocked` 取消会失效进程内**共享**的缓存 connection:并发的无关在途调用会收到一次 `serviceUnavailable`,下一次调用自愈,这不是 Agent 故障。

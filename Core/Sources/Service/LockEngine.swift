@@ -267,6 +267,37 @@ struct EventTapInstallation<Tap, Source> {
   }
 }
 
+/// The installed-tap operations `LockEngine` relies on. The live implementation wraps the real
+/// `CFMachPort` tap and its run-loop source; tests substitute a fake to drive the tap-disable
+/// and teardown paths deterministically.
+protocol InstalledEventTap: AnyObject {
+  var isEnabled: Bool { get }
+  func setEnabled(_ enabled: Bool)
+  /// Disables the tap, detaches its run-loop source, and invalidates the port.
+  func teardown()
+}
+
+/// Every side effect `LockEngine` performs on the outside world, injected so `ServiceTests`
+/// can drive the engine without Quartz, TCC, real timers, or system notifications.
+/// `LockEngine.shared` runs on `.live`.
+struct LockEngineDependencies {
+  var hasAccessibilityPermission: @MainActor () -> Bool
+  var installEventTap: @MainActor (LockEngine) throws -> any InstalledEventTap
+  var scheduleTimer: MainActorTimerScheduler
+  var broadcastStateChange: () -> Void
+  var now: () -> Date
+
+  static var live: Self {
+    Self(
+      hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
+      installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
+      scheduleTimer: liveMainActorTimerScheduler,
+      broadcastStateChange: { LockStateBroadcaster.broadcast() },
+      now: { Date() }
+    )
+  }
+}
+
 /// Use refcon to bridge C callback to Swift instance since CGEventTap requires C function pointer
 private func eventTapCallback(
   proxy _: CGEventTapProxy,
@@ -287,6 +318,80 @@ private func eventTapCallback(
     }
 
     return engine.handleEvent(type: type, event: event)
+  }
+}
+
+/// Live `InstalledEventTap` backed by a Quartz session event tap on the main run loop.
+private final class CoreGraphicsEventTap: InstalledEventTap {
+  private static let runLoopSourceOrder: CFIndex = 0
+
+  private let tap: CFMachPort
+  private let source: CFRunLoopSource
+
+  private init(installation: EventTapInstallation<CFMachPort, CFRunLoopSource>) {
+    tap = installation.tap
+    source = installation.source
+  }
+
+  var isEnabled: Bool {
+    CGEvent.tapIsEnabled(tap: tap)
+  }
+
+  func setEnabled(_ enabled: Bool) {
+    CGEvent.tapEnable(tap: tap, enable: enabled)
+  }
+
+  func teardown() {
+    CGEvent.tapEnable(tap: tap, enable: false)
+    CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+    CFMachPortInvalidate(tap)
+  }
+
+  /// Acquires the tap and its run-loop source as one transaction, surfacing engine errors.
+  static func install(engine: LockEngine) throws -> CoreGraphicsEventTap {
+    let installation: EventTapInstallation<CFMachPort, CFRunLoopSource>
+    do {
+      installation = try EventTapInstallation.make(
+        createTap: {
+          CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: LockEngine.eventMasks,
+            callback: eventTapCallback,
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(engine).toOpaque())
+          )
+        },
+        createSource: {
+          CFMachPortCreateRunLoopSource(
+            kCFAllocatorDefault,
+            $0,
+            runLoopSourceOrder
+          )
+        },
+        attachSource: {
+          CFRunLoopAddSource(CFRunLoopGetMain(), $0, .commonModes)
+        },
+        enableTap: {
+          CGEvent.tapEnable(tap: $0, enable: true)
+        },
+        isTapEnabled: {
+          CGEvent.tapIsEnabled(tap: $0)
+        },
+        detachSource: {
+          CFRunLoopRemoveSource(CFRunLoopGetMain(), $0, .commonModes)
+        },
+        invalidateTap: CFMachPortInvalidate
+      )
+    } catch EventTapInstallationError.eventTapCreationFailed {
+      throw LockEngine.LockEngineError.eventTapCreationFailed
+    } catch EventTapInstallationError.runLoopSourceCreationFailed {
+      throw LockEngine.LockEngineError.runLoopSourceCreationFailed
+    } catch EventTapInstallationError.eventTapEnableFailed {
+      throw LockEngine.LockEngineError.eventTapEnableFailed
+    }
+
+    return CoreGraphicsEventTap(installation: installation)
   }
 }
 
@@ -336,13 +441,12 @@ public final class LockEngine {
     (1 << CGEventType.flagsChanged.rawValue) |
     (1 << LockedKeyboardEventPolicy.systemDefinedEventType.rawValue)
 
-  private static let runLoopSourceOrder: CFIndex = 0
   private static let autoRepeatFlagValue: Int64 = 1
 
-  private var eventTap: CFMachPort?
+  private let dependencies: LockEngineDependencies
+  private var installedTap: (any InstalledEventTap)?
   private var eventTapGeneration: UInt64 = 0
-  private var runLoopSource: CFRunLoopSource?
-  private var autoUnlockTimer: DispatchSourceTimer?
+  private var cancelScheduledAutoUnlock: (() -> Void)?
   private var runtimeState = LockRuntimeState()
 
   public var isLocked: Bool {
@@ -351,10 +455,13 @@ public final class LockEngine {
 
   /// One coherent Agent-owned snapshot for read-only wrappers and presentation surfaces.
   public var statusSnapshot: LockStatusSnapshot {
-    runtimeState.statusSnapshot(capturedAt: Date())
+    runtimeState.statusSnapshot(capturedAt: dependencies.now())
   }
 
-  private init() {}
+  /// `shared` runs on live system dependencies; tests inject deterministic fakes.
+  init(dependencies: LockEngineDependencies = .live) {
+    self.dependencies = dependencies
+  }
 
   @discardableResult
   public func lock(
@@ -398,7 +505,7 @@ public final class LockEngine {
     }
 
     // Verify Accessibility permission before attempting to create event tap.
-    guard AccessibilityManager.hasPermission() else {
+    guard dependencies.hasAccessibilityPermission() else {
       throw LockEngineError.accessibilityPermissionDenied
     }
 
@@ -407,7 +514,7 @@ public final class LockEngine {
     let outcome = runtimeState.begin(
       settings: settings,
       allowsControlCUnlock: allowsControlCUnlock,
-      at: Date()
+      at: dependencies.now()
     )
     guard outcome == .acquired else {
       teardownEventTap()
@@ -431,56 +538,13 @@ public final class LockEngine {
   }
 
   private func startEventTap() throws {
-    let installation: EventTapInstallation<CFMachPort, CFRunLoopSource>
-    do {
-      installation = try EventTapInstallation.make(
-        createTap: {
-          CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: Self.eventMasks,
-            callback: eventTapCallback,
-            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-          )
-        },
-        createSource: {
-          CFMachPortCreateRunLoopSource(
-            kCFAllocatorDefault,
-            $0,
-            Self.runLoopSourceOrder
-          )
-        },
-        attachSource: {
-          CFRunLoopAddSource(CFRunLoopGetMain(), $0, .commonModes)
-        },
-        enableTap: {
-          CGEvent.tapEnable(tap: $0, enable: true)
-        },
-        isTapEnabled: {
-          CGEvent.tapIsEnabled(tap: $0)
-        },
-        detachSource: {
-          CFRunLoopRemoveSource(CFRunLoopGetMain(), $0, .commonModes)
-        },
-        invalidateTap: CFMachPortInvalidate
-      )
-    } catch EventTapInstallationError.eventTapCreationFailed {
-      throw LockEngineError.eventTapCreationFailed
-    } catch EventTapInstallationError.runLoopSourceCreationFailed {
-      throw LockEngineError.runLoopSourceCreationFailed
-    } catch EventTapInstallationError.eventTapEnableFailed {
-      throw LockEngineError.eventTapEnableFailed
-    }
-
+    installedTap = try dependencies.installEventTap(self)
     eventTapGeneration &+= 1
-    eventTap = installation.tap
-    runLoopSource = installation.source
   }
 
   private func markLocked() {
     configureAutoUnlockTimerIfNeeded()
-    LockStateBroadcaster.broadcast()
+    dependencies.broadcastStateChange()
     Self.logger.info("Locked")
   }
 
@@ -491,12 +555,12 @@ public final class LockEngine {
 
     // An explicit settings update starts a fresh timeout window without changing when the
     // authoritative lock began. A duplicate lock request never reaches this path.
-    let referenceDate = Date()
+    let referenceDate = dependencies.now()
     guard runtimeState.isLocked,
           let schedule = AutoUnlockSchedule.make(
             timeout: timeout,
             referenceDate: referenceDate,
-            currentDate: Date()
+            currentDate: dependencies.now()
           )
     else {
       return
@@ -508,18 +572,14 @@ public final class LockEngine {
       return
     }
 
-    let timer = DispatchSource.makeTimerSource(queue: .main)
-    timer.schedule(deadline: .now() + schedule.delay)
-    timer.setEventHandler { [weak self] in
+    cancelScheduledAutoUnlock = dependencies.scheduleTimer(schedule.delay) { [weak self] in
       self?.unlock(ifLockGeneration: lockGeneration)
     }
-    timer.resume()
-    autoUnlockTimer = timer
   }
 
   private func cancelAutoUnlockTimer() {
-    autoUnlockTimer?.cancel()
-    autoUnlockTimer = nil
+    cancelScheduledAutoUnlock?()
+    cancelScheduledAutoUnlock = nil
     runtimeState.setAutoUnlockTargetDate(nil)
   }
 
@@ -541,38 +601,26 @@ public final class LockEngine {
   }
 
   private func teardownEventTap() {
-    let tap = eventTap
-    if let tap {
-      CGEvent.tapEnable(tap: tap, enable: false)
-    }
-
-    if let source = runLoopSource {
-      CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-      runLoopSource = nil
-    }
-
-    if let tap {
-      CFMachPortInvalidate(tap)
-      eventTap = nil
-    }
+    installedTap?.teardown()
+    installedTap = nil
   }
 
   private func resetLockState() {
     runtimeState.end()
 
-    LockStateBroadcaster.broadcast()
+    dependencies.broadcastStateChange()
     Self.logger.info("Unlocked")
   }
 
-  fileprivate func handleDisabledEvent(_ event: CGEvent) -> Unmanaged<CGEvent>? {
-    guard runtimeState.isLocked, let tap = eventTap else {
+  func handleDisabledEvent(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    guard runtimeState.isLocked, let tap = installedTap else {
       return Unmanaged.passUnretained(event)
     }
 
     Self.logger.warning("Event tap disabled by system, attempting to re-enable")
-    CGEvent.tapEnable(tap: tap, enable: true)
+    tap.setEnabled(true)
 
-    guard !CGEvent.tapIsEnabled(tap: tap) else {
+    guard !tap.isEnabled else {
       return Unmanaged.passUnretained(event)
     }
 
@@ -594,7 +642,7 @@ public final class LockEngine {
     resetLockState()
   }
 
-  fileprivate func handleEvent(
+  func handleEvent(
     type: CGEventType,
     event: CGEvent
   ) -> Unmanaged<CGEvent>? {

@@ -18,12 +18,6 @@ protocol LockEngineServing {
 
 extension LockEngine: LockEngineServing {}
 
-/// Schedules the short-lived replacement-preparation expiry. Returns a cancellation closure.
-typealias ReplacementExpirationScheduler = (
-  _ interval: TimeInterval,
-  _ fire: @escaping @MainActor () -> Void
-) -> () -> Void
-
 /// XPC service implementation. Owns the settings source of truth and drives the single
 /// global `LockEngine`. All wrappers reach the lock exclusively through this object.
 ///
@@ -35,7 +29,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
   @MainActor private let settings: KeyboardLockerSettings
   @MainActor private let engine: any LockEngineServing
-  @MainActor private let expirationScheduler: ReplacementExpirationScheduler
+  @MainActor private let expirationScheduler: MainActorTimerScheduler
   @MainActor private var replacement = ReplacementTransaction()
   @MainActor private var replacementPreparationCancellation: (() -> Void)?
 
@@ -44,7 +38,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     descriptorResult: Result<ServiceDescriptor, Error>,
     settings: KeyboardLockerSettings,
     engine: any LockEngineServing,
-    expirationScheduler: @escaping ReplacementExpirationScheduler
+    expirationScheduler: @escaping MainActorTimerScheduler
   ) {
     self.descriptorResult = descriptorResult
     self.settings = settings
@@ -61,7 +55,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       descriptorResult: Result { try Self.makeServiceDescriptor() },
       settings: KeyboardLockerSettingsStore().load(),
       engine: LockEngine.shared,
-      expirationScheduler: Self.liveExpirationScheduler
+      expirationScheduler: liveMainActorTimerScheduler
     )
   }
 
@@ -396,14 +390,6 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       7
     }
     return replacementError(code: code, description: error.localizedDescription)
-  }
-
-  private static let liveExpirationScheduler: ReplacementExpirationScheduler = { interval, fire in
-    let item = DispatchWorkItem {
-      MainActor.assumeIsolated { fire() }
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: item)
-    return { item.cancel() }
   }
 
   @MainActor

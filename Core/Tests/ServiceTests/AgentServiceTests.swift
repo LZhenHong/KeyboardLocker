@@ -439,7 +439,7 @@ private final class ManualExpirationScheduler {
   private(set) var cancelCount = 0
   private var pendingFire: (@MainActor () -> Void)?
 
-  var scheduler: ReplacementExpirationScheduler {
+  var scheduler: MainActorTimerScheduler {
     { interval, fire in
       self.scheduledCount += 1
       self.lastInterval = interval

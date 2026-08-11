@@ -36,10 +36,11 @@
 - `UnlockStatusPoller.swift`:`XPCClient.waitUntilUnlocked()` 的可测试等待组合。notification stream 提供及时更新,内部 poller 周期性查询权威状态以恢复丢通知和 Agent 重启；transport failure 后 reset connection,连续三次失败则抛错,不把不可达猜成 unlocked。任一路径确认解锁后都会取消另一条路径,取消 polling 时主动失效本轮 connection,避免等待完整 XPC response timeout。
 
 **Service**(`Core/Sources/Service/`)—— 仅 Agent 使用
-- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、物理状态幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、Focus-owned generation、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。event policy 消费标准按键及 system-defined keyboard control,同时明确放行鼠标 / 触控板 pointer event。Focus activation 最多创建并标记一个 generation；普通 duplicate `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline,但会清除当前 Focus ownership marker；Focus disable、timer 与热键回调都使用 generation fence,不能解除后续新锁。marker 只存在于 Agent 进程内,显式 unlock、热键、timeout、event-tap failure 或 Agent restart 可以提前结束 generation,且不会因 Focus 仍 active 而自动 relock。资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。
+- `LockEngine.swift`:`@MainActor` 隔离的 CGEventTap 单例、物理状态幂等且返回 atomic outcome 的 `lock(settings:allowsControlCUnlock:)`、Focus-owned generation、显式 `updateSettings(_:)`、同一 runtime turn 生成的 `statusSnapshot`、自动解锁定时器、热键检测、事务式 tap/source 安装与 `os.Logger`。event policy 消费标准按键及 system-defined keyboard control,同时明确放行鼠标 / 触控板 pointer event。Focus activation 最多创建并标记一个 generation；普通 duplicate `lock` 不会修改活动设置、临时 `Ctrl+C` 手势或 deadline,但会清除当前 Focus ownership marker；Focus disable、timer 与热键回调都使用 generation fence,不能解除后续新锁。marker 只存在于 Agent 进程内,显式 unlock、热键、timeout、event-tap failure 或 Agent restart 可以提前结束 generation,且不会因 Focus 仍 active 而自动 relock。资源未全部可用前不提交 locked 状态；运行中 tap 无法重新启用时 fail open 到 unlocked 并广播权威状态。引擎的全部外部副作用(Accessibility 查询、tap 安装、定时器排程、状态广播、时钟)经 `LockEngineDependencies` / `InstalledEventTap` 注入缝进入,`LockEngineTests` 因此能确定性驱动这些路径。
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
 - `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
+- `MainActorTimerScheduler.swift`:单次 MainActor 定时器抽象(返回取消闭包)及其 live 实现;`LockEngine` 的 auto-unlock 与 `AgentService` 的 replacement 过期共用,测试中替换为手动调度。
 - `AgentService.swift`:nonisolated XPC wire adapter,持有设置快照与 replacement transaction,并把所有可变状态与引擎操作切到 `MainActor`。引擎、descriptor 与 prepare 过期调度都经注入缝进入;replacement barrier、instance-ID fence、locked refusal、错误码映射与过期/取消语义由 `ServiceTests` 确定性覆盖。
 - `AccessibilityManager.swift`(Agent 身份下的实时权限查询与 prompt 请求)、`XPCAccessControl.swift`(生成 Listener 的受信 Client requirement)、`XPCServerConnection.swift`。
 
@@ -142,7 +143,7 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 
 测试覆盖有意停止在需要真实系统边界的层面;以下是当前接受的残余风险与实现特性,排查问题时先对照,不要重新"发现"它们:
 
-- `LockEngine` 依赖真实 CGEventTap 与时钟的路径(auto-unlock 触发、tap-disable fail-open、热键分发、`updateSettings` 重新排程、Accessibility 预检)未单测;纯策略部分(event policy、schedule 计算、runtime state、tap 安装事务)已覆盖。
+- `LockEngine` 的纯策略(event policy、schedule 计算、runtime state、tap 安装事务)与引擎语义(Accessibility 预检、tap 安装/拆除、auto-unlock 排程/触发/陈旧代际拒绝、热键与 Control-C 分发、tap-disable re-enable/fail-open、Focus 代际所有权)均已单测 —— 后者由 `LockEngineTests` 经注入缝(`InstalledEventTap`、`MainActorTimerScheduler`、权限/广播/时钟闭包)确定性驱动;剩余不可单测的只有 Quartz 对真实硬件事件的拦截本身(平台集成事实,靠真机验证)。
 - App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 已由 `KeyboardLockerModelTests` 经 fake client/lifecycle 覆盖(handshake 重试、unverified fallback、safe/forced 计划、prepare→commit→restart 顺序、cancel/redetection);`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)未覆盖,`KlockStatusOutput` 渲染已覆盖。
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
 - `KeyboardLockerSettingsStore` 在本地持久化数据损坏时回退 `.default` 并记录 `os.Logger` 错误(仅 Agent 写该 key,风险有界;该路径已由 `ServiceTests` 覆盖);跨进程的 wire codec 保持严格显式失败,不受影响。

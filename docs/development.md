@@ -40,6 +40,7 @@
 - `KeyboardLockerSettingsStore.swift`:基于 `UserDefaults` 的设置持久化 —— 放在 `Service` 内,以确保没有 wrapper 能拥有自己的 store(契约的真相源规则)。
 - `LockStateBroadcaster.swift`:发出 Darwin + Distributed 通知(均无载荷,只是"状态已变"的信号;订阅方收到后回拉 `status()`)。
 - `ReplacementTransaction.swift`:纯 `idle → prepared → committed` 状态机；prepared 可 cancel/expire，committed 不可 cancel/expire，只能由 Agent 进程退出终止。它不触碰 TCC 或 Service Management，可由 `ServiceTests` 确定性覆盖。
+- `AgentService.swift`:nonisolated XPC wire adapter,持有设置快照与 replacement transaction,并把所有可变状态与引擎操作切到 `MainActor`。引擎、descriptor 与 prepare 过期调度都经注入缝进入;replacement barrier、instance-ID fence、locked refusal、错误码映射与过期/取消语义由 `ServiceTests` 确定性覆盖。
 - `AccessibilityManager.swift`(Agent 身份下的实时权限查询与 prompt 请求)、`XPCAccessControl.swift`(生成 Listener 的受信 Client requirement)、`XPCServerConnection.swift`。
 
 **SystemSurfaces**(`Core/Sources/SystemSurfaces/`)—— 仅 containing App、Widget 与 Focus extension 使用的 presentation adapter
@@ -82,7 +83,7 @@
 ### 新增一个 XPC 方法
 1. 先判断它是否 optional/additive。不得在同一 protocol major 内修改或移除既有 selector、参数顺序或 reply 形状;破坏性变化需要新 major,无法保留 selector union 时需要新 Mach service。
 2. 在 `Common/Shared.swift` 的 `KeyboardLockerServiceProtocol` 里加签名,同时在 `ServiceCapability` 增加一个从不复用的稳定名字,并按兼容需求更新 protocol minor / required capability。无法用 `@objc` 表达的值(如 `KeyboardLockerSettings`)以有大小上限的 JSON `Data` 跨界。
-3. 在 `KeyboardLockerAgent/AgentService.swift` 中实现它并在 descriptor 中声明 capability。
+3. 在 `Core/Sources/Service/AgentService.swift` 中实现它并在 descriptor 中声明 capability。
 4. 在 `Client/` 的 `XPCClient` 上加一个薄的异步封装;调用前必须完成 descriptor handshake 并检查 capability。
 5. 在 `Core/Tests/ClientTests/` 补充 old/future descriptor fixture、round-trip、build ordering 与兼容性测试；Server 状态机在 `Core/Tests/ServiceTests/` 覆盖 exclusivity、stale ticket/timer、cancel、expiry 与 committed fail-closed 语义。
 
@@ -141,7 +142,6 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 
 测试覆盖有意停止在需要真实系统边界的层面;以下是当前接受的残余风险与实现特性,排查问题时先对照,不要重新"发现"它们:
 
-- `AgentService` 的 XPC wiring(replacement barrier、instance-ID fence、locked refusal、错误码映射、30 秒 prepare 过期定时器)直接命中 `LockEngine.shared`,无注入缝,未被单测覆盖;`ReplacementTransaction` 纯状态机(exclusivity、stale ticket/timer、cancel、expiry、committed fail-closed)已在 `ServiceTests` 覆盖。
 - `LockEngine` 依赖真实 CGEventTap 与时钟的路径(auto-unlock 触发、tap-disable fail-open、热键分发、`updateSettings` 重新排程、Accessibility 预检)未单测;纯策略部分(event policy、schedule 计算、runtime state、tap 安装事务)已覆盖。
 - App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 虽按 protocol injection 设计,目前无单测;`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)同样未覆盖,`KlockStatusOutput` 渲染已覆盖。
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。

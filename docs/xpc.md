@@ -527,7 +527,7 @@ sequenceDiagram
 9. `LockEngine.shared.lock(settings:allowsControlCUnlock:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap；physical duplicate 在创建资源前直接返回 already locked,且只可能清除 Focus 的内部 release marker。
 10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
 
-`AgentService` 是 executable target 中的 adapter：它把 wire protocol 翻译成 `Service` 模块里的领域调用。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift`。
+`AgentService` 位于 `Service` 模块,是把 wire protocol 翻译成领域调用的 adapter；放在 library 里是为了让 barrier、generation fence 与错误码映射可以被 `ServiceTests` 确定性覆盖。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift` 这个极薄的 bootstrap。
 
 ## 当前 XPC 方法分别表达什么
 
@@ -664,7 +664,7 @@ locked Agent 不能自动 restart,因为 Agent 退出本身会释放正在工作
 1. 在同一 protocol major 内只允许新增 selector；不得修改/移除既有 selector、参数顺序、类型或 reply 形状。无法长期保留 selector union 的破坏性升级需要新的 Mach service name。
 2. 在 `Core/Sources/Common/Shared.swift` 的 `KeyboardLockerServiceProtocol` 增加最小 wire method,在 `ServiceCapability` 增加一个稳定且永不复用的名字,并按需要提高 protocol minor。
 3. 只使用 Objective-C/XPC 能表达的参数和 reply 类型；复杂 Swift value 编码成有明确 schema 和大小上限的 `Data`。
-4. 在 `KeyboardLockerAgent/AgentService.swift` 实现 protocol adapter,并在 descriptor 声明 capability。
+4. 在 `Core/Sources/Service/AgentService.swift` 实现 protocol adapter,并在 descriptor 声明 capability。
 5. 把真实领域行为放在 `Service`，不要堆进 App、CLI 或 wire adapter。
 6. 在 `Core/Sources/Client/XPCClient.swift` 增加薄的 async/throwing 封装；调用方先 handshake 并检查 capability。
 7. wrapper 只调用 `XPCClient`；App/CLI 不得 import `Service`。
@@ -704,7 +704,7 @@ locked Agent 不能自动 restart,因为 Agent 退出本身会释放正在工作
 | Client connection、async bridge、timeout | [`Core/Sources/Client/XPCClient.swift`](../Core/Sources/Client/XPCClient.swift) |
 | 长命 UI 的状态订阅 | [`Core/Sources/Client/LockStateSubscriber.swift`](../Core/Sources/Client/LockStateSubscriber.swift) |
 | Agent listener 与进程入口 | [`KeyboardLockerAgent/main.swift`](../KeyboardLockerAgent/main.swift) |
-| Wire method 到领域方法的适配 | [`KeyboardLockerAgent/AgentService.swift`](../KeyboardLockerAgent/AgentService.swift) |
+| Wire method 到领域方法的适配 | [`Core/Sources/Service/AgentService.swift`](../Core/Sources/Service/AgentService.swift) |
 | 新 connection 的 server 配置 | [`Core/Sources/Service/XPCServerConnection.swift`](../Core/Sources/Service/XPCServerConnection.swift) |
 | 双向 code-signing requirement | [`Core/Sources/Common/XPCCodeSigningRequirement.swift`](../Core/Sources/Common/XPCCodeSigningRequirement.swift)、[`Core/Sources/Service/XPCAccessControl.swift`](../Core/Sources/Service/XPCAccessControl.swift) |
 | 全局锁与 event tap | [`Core/Sources/Service/LockEngine.swift`](../Core/Sources/Service/LockEngine.swift) |

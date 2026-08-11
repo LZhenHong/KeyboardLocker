@@ -1,32 +1,73 @@
+import Common
 import Foundation
-import os
-import Service
+
+/// The `LockEngine` surface `AgentService` drives. Seamed so ServiceTests can substitute a
+/// deterministic double; production wires the real singleton.
+@MainActor
+protocol LockEngineServing {
+  var isLocked: Bool { get }
+  var statusSnapshot: LockStatusSnapshot { get }
+  func lock(
+    settings: KeyboardLockerSettings,
+    allowsControlCUnlock: Bool
+  ) throws -> LockRequestOutcome
+  func setFocusFilterLockEnabled(_ enabled: Bool, settings: KeyboardLockerSettings) throws
+  func unlock()
+  func updateSettings(_ settings: KeyboardLockerSettings)
+}
+
+extension LockEngine: LockEngineServing {}
+
+/// Schedules the short-lived replacement-preparation expiry. Returns a cancellation closure.
+typealias ReplacementExpirationScheduler = (
+  _ interval: TimeInterval,
+  _ fire: @escaping @MainActor () -> Void
+) -> () -> Void
 
 /// XPC service implementation. Owns the settings source of truth and drives the single
 /// global `LockEngine`. All wrappers reach the lock exclusively through this object.
-final class AgentService: NSObject, KeyboardLockerServiceProtocol {
+///
+/// Lives in the `Service` library so the barrier, generation-fence, and error-mapping wiring
+/// is unit-testable; the `KeyboardLockerAgent` executable only bootstraps the listener.
+public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   private static let replacementPreparationDuration: TimeInterval = 30
 
   @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
   @MainActor private let settings: KeyboardLockerSettings
+  @MainActor private let engine: any LockEngineServing
+  @MainActor private let expirationScheduler: ReplacementExpirationScheduler
   @MainActor private var replacement = ReplacementTransaction()
-  @MainActor private var replacementPreparationExpiration: DispatchWorkItem?
+  @MainActor private var replacementPreparationCancellation: (() -> Void)?
 
   @MainActor
-  override init() {
-    let loaded = KeyboardLockerSettingsStore().load()
-    descriptorResult = Result {
-      try Self.makeServiceDescriptor()
-    }
-    settings = loaded
+  init(
+    descriptorResult: Result<ServiceDescriptor, Error>,
+    settings: KeyboardLockerSettings,
+    engine: any LockEngineServing,
+    expirationScheduler: @escaping ReplacementExpirationScheduler
+  ) {
+    self.descriptorResult = descriptorResult
+    self.settings = settings
+    self.engine = engine
+    self.expirationScheduler = expirationScheduler
     super.init()
     // Seed the engine so a lock uses persisted values.
-    LockEngine.shared.updateSettings(loaded)
+    engine.updateSettings(settings)
+  }
+
+  @MainActor
+  public convenience override init() {
+    self.init(
+      descriptorResult: Result { try Self.makeServiceDescriptor() },
+      settings: KeyboardLockerSettingsStore().load(),
+      engine: LockEngine.shared,
+      expirationScheduler: Self.liveExpirationScheduler
+    )
   }
 
   // MARK: - Bootstrap
 
-  func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void) {
+  public func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void) {
     executeOnMainActor {
       switch self.descriptorResult {
       case let .success(base):
@@ -55,7 +96,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   // MARK: - Locking
 
-  func lockKeyboard(reply: @escaping (Error?) -> Void) {
+  public func lockKeyboard(reply: @escaping (Error?) -> Void) {
     executeOnMainActor {
       do {
         _ = try self.performLock(allowsControlCUnlock: false)
@@ -66,7 +107,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func lockKeyboardInteractively(
+  public func lockKeyboardInteractively(
     reply: @escaping (Bool, Error?) -> Void
   ) {
     executeOnMainActor {
@@ -79,7 +120,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func setFocusFilterLockEnabled(
+  public func setFocusFilterLockEnabled(
     _ enabled: Bool,
     reply: @escaping (Error?) -> Void
   ) {
@@ -88,7 +129,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
         if enabled {
           try self.ensureAcceptingLockRequests()
         }
-        try LockEngine.shared.setFocusFilterLockEnabled(
+        try self.engine.setFocusFilterLockEnabled(
           enabled,
           settings: self.settings
         )
@@ -99,23 +140,23 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func unlockKeyboard(reply: @escaping (Error?) -> Void) {
+  public func unlockKeyboard(reply: @escaping (Error?) -> Void) {
     executeOnMainActor {
-      LockEngine.shared.unlock()
+      self.engine.unlock()
       reply(nil)
     }
   }
 
-  func status(reply: @escaping (Bool, Error?) -> Void) {
+  public func status(reply: @escaping (Bool, Error?) -> Void) {
     executeOnMainActor {
-      reply(LockEngine.shared.isLocked, nil)
+      reply(self.engine.isLocked, nil)
     }
   }
 
-  func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void) {
+  public func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void) {
     executeOnMainActor {
       do {
-        let data = try LockEngine.shared.statusSnapshot.encodedForXPC()
+        let data = try self.engine.statusSnapshot.encodedForXPC()
         reply(data, nil)
       } catch {
         reply(nil, error)
@@ -123,7 +164,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func prepareForReplacement(
+  public func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID,
     reply: @escaping (Data?, Error?) -> Void
@@ -145,7 +186,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
         return
       }
 
-      guard unlockIfNeeded || !LockEngine.shared.isLocked else {
+      guard unlockIfNeeded || !self.engine.isLocked else {
         reply(nil, Self.replacementError(
           code: 3,
           description: "The keyboard must be unlocked before the agent can be replaced."
@@ -176,13 +217,13 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
       // Install the barrier before unlocking so no queued client can re-lock in between.
       self.scheduleExpiration(for: preparation)
       if unlockIfNeeded {
-        LockEngine.shared.unlock()
+        self.engine.unlock()
       }
       reply(data, nil)
     }
   }
 
-  func commitReplacement(
+  public func commitReplacement(
     ticket data: Data,
     reply: @escaping (Error?) -> Void
   ) {
@@ -197,8 +238,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     executeOnMainActor {
       do {
         try self.replacement.commit(ticket: candidate)
-        self.replacementPreparationExpiration?.cancel()
-        self.replacementPreparationExpiration = nil
+        self.replacementPreparationCancellation?()
+        self.replacementPreparationCancellation = nil
         reply(nil)
       } catch {
         reply(Self.replacementError(error))
@@ -206,7 +247,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func replacementStatus(
+  public func replacementStatus(
     ticket data: Data,
     reply: @escaping (Data?, Error?) -> Void
   ) {
@@ -228,7 +269,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  func cancelReplacementPreparation(
+  public func cancelReplacementPreparation(
     ticket data: Data,
     reply: @escaping (Error?) -> Void
   ) {
@@ -243,8 +284,8 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     executeOnMainActor {
       do {
         try self.replacement.cancel(ticket: candidate)
-        self.replacementPreparationExpiration?.cancel()
-        self.replacementPreparationExpiration = nil
+        self.replacementPreparationCancellation?()
+        self.replacementPreparationCancellation = nil
         reply(nil)
       } catch {
         reply(Self.replacementError(error))
@@ -254,13 +295,13 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   // MARK: - Accessibility
 
-  func hasAccessibilityPermission(reply: @escaping (Bool) -> Void) {
+  public func hasAccessibilityPermission(reply: @escaping (Bool) -> Void) {
     executeOnMainActor {
       reply(AccessibilityManager.hasPermission())
     }
   }
 
-  func requestAccessibilityPermission(reply: @escaping (Error?) -> Void) {
+  public func requestAccessibilityPermission(reply: @escaping (Error?) -> Void) {
     executeOnMainActor {
       AccessibilityManager.requestPermission()
       reply(nil)
@@ -269,13 +310,13 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   // MARK: - Settings
 
-  func currentSettings(reply: @escaping (Data?) -> Void) {
+  public func currentSettings(reply: @escaping (Data?) -> Void) {
     executeOnMainActor {
       reply(try? self.settings.encodedForXPC())
     }
   }
 
-  func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void) {
+  public func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void) {
     executeOnMainActor {
       do {
         let data = try self.settings.encodedForXPC()
@@ -294,7 +335,7 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   ) throws -> LockRequestOutcome {
     try ensureAcceptingLockRequests()
 
-    return try LockEngine.shared.lock(
+    return try engine.lock(
       settings: settings,
       allowsControlCUnlock: allowsControlCUnlock
     )
@@ -357,25 +398,30 @@ final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     return replacementError(code: code, description: error.localizedDescription)
   }
 
+  private static let liveExpirationScheduler: ReplacementExpirationScheduler = { interval, fire in
+    let item = DispatchWorkItem {
+      MainActor.assumeIsolated { fire() }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: item)
+    return { item.cancel() }
+  }
+
   @MainActor
   private func scheduleExpiration(
     for preparation: ReplacementTransaction.Preparation
   ) {
-    replacementPreparationExpiration?.cancel()
+    replacementPreparationCancellation?()
 
-    let expiration = DispatchWorkItem { [weak self] in
+    replacementPreparationCancellation = expirationScheduler(
+      Self.replacementPreparationDuration
+    ) { [weak self] in
       guard let self else {
         return
       }
       if replacement.expire(preparation: preparation) {
-        replacementPreparationExpiration = nil
+        replacementPreparationCancellation = nil
       }
     }
-    replacementPreparationExpiration = expiration
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + Self.replacementPreparationDuration,
-      execute: expiration
-    )
   }
 
   private func executeOnMainActor(_ operation: @escaping @MainActor () -> Void) {

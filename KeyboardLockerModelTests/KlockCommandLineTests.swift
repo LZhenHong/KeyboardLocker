@@ -21,6 +21,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["lock"], .lock(wait: true)),
       (["lock", "--no-wait"], .lock(wait: false)),
       (["unlock"], .unlock),
+      (["register-agent"], .registerAgent),
       (["status"], .status(output: .humanReadable)),
       (["status", "--json"], .status(output: .json)),
     ]
@@ -57,6 +58,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["lock", "--no-wait", "extra"], .unexpectedArguments(["--no-wait", "extra"])),
       (["status", "--xml"], .unexpectedArguments(["--xml"])),
       (["unlock", "now"], .unexpectedArguments(["now"])),
+      (["register-agent", "now"], .unexpectedArguments(["now"])),
       (["--help", "extra"], .unexpectedArguments(["extra"])),
       (["version", "extra"], .unexpectedArguments(["extra"])),
     ]
@@ -240,6 +242,94 @@ final class KlockCommandLineTests: XCTestCase {
     )
   }
 
+  // MARK: - Register Agent
+
+  func testRegisterAgentReportsAlreadyReachableWithoutOpeningApp() async {
+    let client = FakeKlockClient()
+    var openCalls = 0
+
+    let result = await runKlock(
+      arguments: ["register-agent"],
+      client: client,
+      openKeyboardLockerApp: { openCalls += 1 }
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(result.stdout, ["The KeyboardLocker agent is already registered and reachable."])
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(openCalls, 0)
+    XCTAssertEqual(client.statusCalls, 1)
+  }
+
+  func testRegisterAgentOpensAppAndConfirmsWhenAgentBecomesReachable() async {
+    let client = FakeKlockClient()
+    client.statusResults = [
+      .failure(Self.makeError("unreachable")),
+      .success(false),
+    ]
+    var openCalls = 0
+
+    let result = await runKlock(
+      arguments: ["register-agent"],
+      client: client,
+      openKeyboardLockerApp: { openCalls += 1 },
+      agentPoll: (attempts: 3, interval: .zero)
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(
+      result.stdout,
+      [
+        "Launched KeyboardLocker to register its background agent.",
+        "The background agent is registered and reachable.",
+      ]
+    )
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(openCalls, 1)
+    XCTAssertEqual(client.statusCalls, 2)
+  }
+
+  func testRegisterAgentFailsWhenAgentStaysUnreachable() async {
+    let client = FakeKlockClient()
+    client.statusResult = .failure(Self.makeError("unreachable"))
+    var openCalls = 0
+
+    let result = await runKlock(
+      arguments: ["register-agent"],
+      client: client,
+      openKeyboardLockerApp: { openCalls += 1 },
+      agentPoll: (attempts: 2, interval: .zero)
+    )
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout, ["Launched KeyboardLocker to register its background agent."])
+    XCTAssertEqual(result.stderr.first, "Error: The background agent is not reachable yet.")
+    XCTAssertEqual(openCalls, 1)
+    XCTAssertEqual(client.statusCalls, 3)
+  }
+
+  func testRegisterAgentReportsOpenFailure() async {
+    let client = FakeKlockClient()
+    client.statusResult = .failure(Self.makeError("unreachable"))
+    let error = KlockAppOpener.OpenerError.appNotFound
+
+    let result = await runKlock(
+      arguments: ["register-agent"],
+      client: client,
+      openKeyboardLockerApp: { throw error }
+    )
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout, [])
+    XCTAssertEqual(
+      result.stderr,
+      [
+        "Error: \(error.localizedDescription)",
+        "  \(try XCTUnwrap(error.recoverySuggestion))",
+      ]
+    )
+  }
+
   // MARK: - Helpers
 
   private static func makeError(_ message: String) -> NSError {
@@ -252,13 +342,17 @@ final class KlockCommandLineTests: XCTestCase {
 
   private func runKlock(
     arguments: [String],
-    client: FakeKlockClient
+    client: FakeKlockClient,
+    openKeyboardLockerApp: @escaping () throws -> Void = {},
+    agentPoll: (attempts: Int, interval: Duration) = (attempts: 1, interval: .zero)
   ) async -> (exitCode: Int32, stdout: [String], stderr: [String]) {
     var stdout: [String] = []
     var stderr: [String] = []
     let exitCode = await KlockCLI.run(
       arguments: arguments,
       client: client,
+      openKeyboardLockerApp: openKeyboardLockerApp,
+      agentPoll: agentPoll,
       printOut: { stdout.append($0) },
       printError: { stderr.append($0) }
     )
@@ -279,6 +373,9 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   var lockResult: Result<Void, Error> = .success(())
   var unlockResult: Result<Void, Error> = .success(())
   var statusResult: Result<Bool, Error> = .success(false)
+  /// When set, each `status()` call consumes the next queued result before falling back to
+  /// `statusResult`, so tests can script an Agent that becomes reachable after registration.
+  var statusResults: [Result<Bool, Error>]?
   var waitUntilUnlockedResult: Result<Void, Error> = .success(())
 
   private(set) var currentSettingsCalls = 0
@@ -310,6 +407,9 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
 
   func status() async throws -> Bool {
     statusCalls += 1
+    if statusResults?.isEmpty == false {
+      return try statusResults!.removeFirst().get()
+    }
     return try statusResult.get()
   }
 

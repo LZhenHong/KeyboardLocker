@@ -107,7 +107,7 @@
 
 已构建的 App 也在 status menu 中提供 **Command Line Tool…**。该入口遵循同一所有权边界：只创建或移除指向当前 App bundle 的 link；需要配置 `PATH` 时仅提供可复制命令，不会静默修改 dotfile。
 
-`klock` 自身不注册后台 Agent。首次使用前必须至少启动一次 KeyboardLocker App；Agent 未注册时，CLI 会给出对应恢复提示。
+`klock` 自身不注册后台 Agent——`SMAppService` 注册只能由 App bundle 执行。首次使用前运行 `klock register-agent` 或至少启动一次 KeyboardLocker App；Agent 未注册时，CLI 各命令也会给出对应恢复提示。
 
 `klock lock` 只有在本次请求原子创建全局锁时才进入等待，并提示 `Ctrl+C`。这个按键由 Agent event tap 识别后直接解锁，不依赖 Terminal 先收到被锁定输入并生成 `SIGINT`。若 Agent 已被 App 或其他 CLI 锁定，命令会报告 `Already locked. This command did not create a new lock.` 后成功退出，不改变既有锁。自动化脚本应使用 `klock lock --no-wait`：它确认全局状态为 locked 后立即退出，不启用临时 `Ctrl+C` 手势，也不等待 unlock。
 
@@ -144,7 +144,7 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 测试覆盖有意停止在需要真实系统边界的层面;以下是当前接受的残余风险与实现特性,排查问题时先对照,不要重新"发现"它们:
 
 - `LockEngine` 的纯策略(event policy、schedule 计算、runtime state、tap 安装事务)与引擎语义(Accessibility 预检、tap 安装/拆除、auto-unlock 排程/触发/陈旧代际拒绝、热键与 Control-C 分发、tap-disable re-enable/fail-open、Focus 代际所有权)均已单测 —— 后者由 `LockEngineTests` 经注入缝(`InstalledEventTap`、`MainActorTimerScheduler`、权限/广播/时钟闭包)确定性驱动;剩余不可单测的只有 Quartz 对真实硬件事件的拦截本身(平台集成事实,靠真机验证)。
-- App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 已由 `KeyboardLockerModelTests` 经 fake client/lifecycle 覆盖(handshake 重试、unverified fallback、safe/forced 计划、prepare→commit→restart 顺序、cancel/redetection、Task 取消路径);forced 且无锁态可读的计划结构上不可能产生 `.failed`(该路径不存在任何可抛错调用)。`klock` 的参数矩阵与命令执行路径(未知命令、多余参数、already-locked 退出、stdout/stderr 路由与退出码)已由 `KlockCommandLineTests` 覆盖;`version` 的执行路径依赖 `Bundle.main` 未测(其解析已覆盖)。
+- App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 已由 `KeyboardLockerModelTests` 经 fake client/lifecycle 覆盖(handshake 重试、unverified fallback、safe/forced 计划、prepare→commit→restart 顺序、cancel/redetection、Task 取消路径);forced 且无锁态可读的计划结构上不可能产生 `.failed`(该路径不存在任何可抛错调用)。`klock` 的参数矩阵与命令执行路径(未知命令、多余参数、already-locked 退出、stdout/stderr 路由与退出码、`register-agent` 的探测/启动/轮询路径)已由 `KlockCommandLineTests` 覆盖;`version` 的执行路径依赖 `Bundle.main` 未测(其解析已覆盖),`KlockAppOpener` 的 bundle 定位与 `/usr/bin/open` 调用依赖真实进程环境,经手动验证。
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
 - `KeyboardLockerSettingsStore` 在本地持久化数据损坏时回退 `.default` 并记录 `os.Logger` 错误(仅 Agent 写该 key,风险有界;该路径已由 `ServiceTests` 覆盖);跨进程的 wire codec 保持严格显式失败,不受影响。
 - Client 任意调用的超时或 `waitUntilUnlocked` 取消会失效进程内**共享**的缓存 connection:并发的无关在途调用会收到一次 `serviceUnavailable`,下一次调用自愈,这不是 Agent 故障。

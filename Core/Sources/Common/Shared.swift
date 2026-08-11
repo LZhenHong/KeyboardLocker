@@ -6,7 +6,8 @@ public enum SharedConstants {
   /// Mach service name for XPC communication between the Agent and authorized wrappers.
   public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent"
 
-  private static let appBundleIdentifier = "io.lzhlovesjyq.keyboardlocker"
+  /// Bundle identifier of the menu-bar App, used by `klock` as a Launch Services fallback.
+  public static let appBundleIdentifier = "io.lzhlovesjyq.keyboardlocker"
 
   /// Bundle identifier of the launchd-managed Agent bundled with the App.
   public static let agentBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.agent"

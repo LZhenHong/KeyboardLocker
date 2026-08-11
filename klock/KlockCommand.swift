@@ -6,6 +6,7 @@ enum KlockCommand: Equatable {
   case version
   case lock(wait: Bool)
   case unlock
+  case registerAgent
   case status(output: KlockStatusOutput)
 }
 
@@ -46,6 +47,10 @@ enum KlockCommandLineParser {
     case "unlock":
       try rejectUnexpectedArguments(Array(arguments.dropFirst()))
       return .unlock
+
+    case "register-agent":
+      try rejectUnexpectedArguments(Array(arguments.dropFirst()))
+      return .registerAgent
 
     case "status":
       switch Array(arguments.dropFirst()) {

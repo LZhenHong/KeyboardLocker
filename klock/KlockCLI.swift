@@ -33,6 +33,8 @@ enum KlockCLI {
   static func run(
     arguments: [String],
     client: any KlockClientServing,
+    openKeyboardLockerApp: @escaping () throws -> Void = KlockAppOpener.openContainingApp,
+    agentPoll: (attempts: Int, interval: Duration) = (attempts: 5, interval: .seconds(1)),
     printOut: (String) -> Void,
     printError: (String) -> Void
   ) async -> Int32 {
@@ -75,6 +77,15 @@ enum KlockCLI {
 
     case .unlock:
       return await executeUnlock(client: client, printOut: printOut, printError: printError)
+
+    case .registerAgent:
+      return await executeRegisterAgent(
+        client: client,
+        openKeyboardLockerApp: openKeyboardLockerApp,
+        agentPoll: agentPoll,
+        printOut: printOut,
+        printError: printError
+      )
 
     case let .status(output):
       return await executeStatus(output: output, client: client, printOut: printOut, printError: printError)
@@ -162,6 +173,45 @@ enum KlockCLI {
     }
   }
 
+  /// Registers the background Agent by launching the containing App — only the App bundle can
+  /// hand its launchd plist to `SMAppService`. The command then polls briefly so a terminal
+  /// user learns immediately whether registration produced a reachable Agent.
+  private static func executeRegisterAgent(
+    client: any KlockClientServing,
+    openKeyboardLockerApp: () throws -> Void,
+    agentPoll: (attempts: Int, interval: Duration),
+    printOut: (String) -> Void,
+    printError: (String) -> Void
+  ) async -> Int32 {
+    if (try? await client.status()) != nil {
+      printOut("The KeyboardLocker agent is already registered and reachable.")
+      return ExitCode.success
+    }
+
+    do {
+      try openKeyboardLockerApp()
+    } catch {
+      reportFailure(error, printError: printError)
+      return ExitCode.error
+    }
+    printOut("Launched KeyboardLocker to register its background agent.")
+
+    for _ in 0 ..< agentPoll.attempts {
+      try? await Task.sleep(for: agentPoll.interval)
+      if (try? await client.status()) != nil {
+        printOut("The background agent is registered and reachable.")
+        return ExitCode.success
+      }
+    }
+
+    reportError("The background agent is not reachable yet.", printError: printError)
+    printError(
+      "  If KeyboardLocker appears in System Settings → General → Login Items, enable it, " +
+        "then retry. Locking also requires Accessibility access for the agent."
+    )
+    return ExitCode.error
+  }
+
   private static func executeStatus(
     output: KlockStatusOutput,
     client: any KlockClientServing,
@@ -222,6 +272,7 @@ enum KlockCLI {
         lock [--no-wait]    Lock the keyboard; by default, wait until it is unlocked.
         unlock              Unlock the keyboard.
         status [--json]     Print the current lock state.
+        register-agent      Launch KeyboardLocker once to register its background agent.
         help                Show this help message.
         version             Show the klock version.
 

@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget、Control 与 Notifications 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App,让它注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget、Control 与 Notifications 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App 或运行 `klock register-agent`,让 App 注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -131,7 +131,10 @@ klock lock --no-wait
 klock status
 klock status --json
 klock unlock
+klock register-agent
 ```
+
+`register-agent` 在 Agent 不可达时启动一次 KeyboardLocker App 来完成 `SMAppService` 注册(注册只能由 App bundle 执行),随后短暂轮询确认 Agent 可达；若出现 Login Items 批准或 Accessibility 授权要求,命令会指出对应的系统设置入口。Agent 已经可达时它不启动 App,直接报告。
 
 `status` 默认输出供人阅读的 `Locked` 或 `Unlocked`。自动化使用 `status --json`,其稳定 contract 是单行 `{"locked":true}` 或 `{"locked":false}`。两种状态都表示查询成功并返回 exit code `0`;参数或 Agent 调用失败返回 `1`,因此脚本不需要把 unlocked 与 transport failure 混在同一个 exit code 中。
 

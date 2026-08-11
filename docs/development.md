@@ -145,6 +145,6 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 - `LockEngine` 依赖真实 CGEventTap 与时钟的路径(auto-unlock 触发、tap-disable fail-open、热键分发、`updateSettings` 重新排程、Accessibility 预检)未单测;纯策略部分(event policy、schedule 计算、runtime state、tap 安装事务)已覆盖。
 - App 侧 `AgentReadinessCoordinator` / `AgentReplacementCoordinator` 虽按 protocol injection 设计,目前无单测;`klock` 的参数矩阵(未知命令、多余参数、already-locked 退出路径)同样未覆盖,`KlockStatusOutput` 渲染已覆盖。
 - auto-unlock 定时器使用单调时钟(系统休眠期间暂停),而 snapshot 携带的 `autoUnlockTargetDate` 是墙钟时间:休眠跨过 deadline 时,锁会多保持约等于休眠时长的时间,直到 timer 触发并广播;wrapper 不得把 deadline 当作保证的解锁时刻,Widget 的 deadline reconciliation 只是提前校准提示。
-- `KeyboardLockerSettingsStore` 在本地持久化数据损坏时静默回退 `.default`(仅 Agent 写该 key,风险有界);跨进程的 wire codec 保持严格显式失败,不受影响。
+- `KeyboardLockerSettingsStore` 在本地持久化数据损坏时回退 `.default` 并记录 `os.Logger` 错误(仅 Agent 写该 key,风险有界;该路径已由 `ServiceTests` 覆盖);跨进程的 wire codec 保持严格显式失败,不受影响。
 - Client 任意调用的超时或 `waitUntilUnlocked` 取消会失效进程内**共享**的缓存 connection:并发的无关在途调用会收到一次 `serviceUnavailable`,下一次调用自愈,这不是 Agent 故障。
 - unsigned/ad-hoc 进程 fail closed 的运行路径(测试 bundle 本身已签名,难以构造)与 CI 自动化(`.github/workflows/` 只有 Claude 机器人,无 macOS 构建/测试门禁)是当前验证体系的边界;合并前必须本地跑过 `CLAUDE.md` 的 build 与两套 test 命令。

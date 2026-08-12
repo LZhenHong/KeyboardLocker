@@ -1,10 +1,12 @@
 import Foundation
-import XCTest
+import Testing
 
-final class SafetyCheckExperienceStoreTests: XCTestCase {
-  func testCompletionPersistsOnlyAfterBeingMarked() throws {
+@Suite(.serialized)
+struct SafetyCheckExperienceStoreTests {
+  @Test
+  func completionPersistsOnlyAfterBeingMarked() throws {
     let suiteName = "SafetyCheckExperienceStoreTests.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer {
       defaults.removePersistentDomain(forName: suiteName)
     }
@@ -13,10 +15,10 @@ final class SafetyCheckExperienceStoreTests: XCTestCase {
       completionKey: "completed"
     )
 
-    XCTAssertFalse(store.hasCompletedSafetyCheck)
+    #expect(!store.hasCompletedSafetyCheck)
 
     store.markCompleted()
 
-    XCTAssertTrue(store.hasCompletedSafetyCheck)
+    #expect(store.hasCompletedSafetyCheck)
   }
 }

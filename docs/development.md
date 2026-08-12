@@ -96,6 +96,8 @@
 
 ## 测试须知
 
+`Core/Tests` 与 `KeyboardLockerModelTests` 统一使用 Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect` / `#require`)；不要在新测试中重新引入 XCTest。现有 `swift test`、`xcodebuild test` 与 CI entrypoint 不变。
+
 ### 在 Terminal 中使用开发版 `klock`
 
 开发阶段可用脚本安装、检查或移除指向 Debug App 内已签名 `klock` 的 symbolic link：

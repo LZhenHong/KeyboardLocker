@@ -1,30 +1,34 @@
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerURLRouteTests: XCTestCase {
-  func testCanonicalURLsMapToDesiredStateActions() throws {
-    XCTAssertEqual(
-      try KeyboardLockerURLRoute(url: url("keyboardlocker://lock")).action,
-      .lock
+@Suite(.serialized)
+struct KeyboardLockerURLRouteTests {
+  @Test
+  func canonicalURLsMapToDesiredStateActions() throws {
+    #expect(
+      try KeyboardLockerURLRoute(url: url("keyboardlocker://lock")).action ==
+        .lock
     )
-    XCTAssertEqual(
-      try KeyboardLockerURLRoute(url: url("keyboardlocker://unlock")).action,
-      .unlock
+    #expect(
+      try KeyboardLockerURLRoute(url: url("keyboardlocker://unlock")).action ==
+        .unlock
     )
-    XCTAssertEqual(
-      try KeyboardLockerURLRoute(url: url("keyboardlocker://status")).action,
-      .status
+    #expect(
+      try KeyboardLockerURLRoute(url: url("keyboardlocker://status")).action ==
+        .status
     )
   }
 
-  func testSchemeAndHostFollowURLCaseInsensitivity() throws {
-    XCTAssertEqual(
-      try KeyboardLockerURLRoute(url: url("KEYBOARDLOCKER://LOCK")).action,
-      .lock
+  @Test
+  func schemeAndHostFollowURLCaseInsensitivity() throws {
+    #expect(
+      try KeyboardLockerURLRoute(url: url("KEYBOARDLOCKER://LOCK")).action ==
+        .lock
     )
   }
 
-  func testInvalidOrAmbiguousShapesAreRejected() {
+  @Test
+  func invalidOrAmbiguousShapesAreRejected() {
     let invalidURLs = [
       "https://lock",
       "keyboardlocker:lock",
@@ -42,41 +46,45 @@ final class KeyboardLockerURLRouteTests: XCTestCase {
     ]
 
     for value in invalidURLs {
-      XCTAssertThrowsError(
-        try KeyboardLockerURLRoute(url: url(value)),
+      #expect(
+        throws: KeyboardLockerURLRouteError.invalidURL,
         "Expected \(value) to be rejected."
-      ) { error in
-        XCTAssertEqual(error as? KeyboardLockerURLRouteError, .invalidURL)
+      ) {
+        try KeyboardLockerURLRoute(url: url(value))
       }
     }
   }
 
-  func testMultipleURLsPreserveDeliveryOrderAndRepresentFailures() {
+  @Test
+  func multipleURLsPreserveDeliveryOrderAndRepresentFailures() {
     let requests = KeyboardLockerURLRoute.requests(for: [
       url("keyboardlocker://lock"),
       url("keyboardlocker://invalid"),
       url("keyboardlocker://unlock"),
     ])
 
-    XCTAssertEqual(requests.count, 3)
-    XCTAssertEqual(requests[0], .action(.lock))
+    #expect(requests.count == 3)
+    #expect(requests[0] == .action(.lock))
     guard case let .failure(failure) = requests[1] else {
-      return XCTFail("Expected the invalid route to become a failure request.")
+      Issue.record("Expected the invalid route to become a failure request.")
+      return
     }
-    XCTAssertTrue(failure.message.contains("invalid automation URL"))
-    XCTAssertFalse(failure.message.contains("keyboardlocker://invalid"))
-    XCTAssertEqual(requests[2], .action(.unlock))
+    #expect(failure.message.contains("invalid automation URL"))
+    #expect(!failure.message.contains("keyboardlocker://invalid"))
+    #expect(requests[2] == .action(.unlock))
   }
 
-  func testFailureMessageNeverEchoesQueryData() {
+  @Test
+  func failureMessageNeverEchoesQueryData() {
     let requests = KeyboardLockerURLRoute.requests(for: [
       url("keyboardlocker://lock?token=do-not-echo"),
     ])
 
     guard case let .failure(failure) = requests.first else {
-      return XCTFail("Expected the URL to be rejected.")
+      Issue.record("Expected the URL to be rejected.")
+      return
     }
-    XCTAssertFalse(failure.message.contains("do-not-echo"))
+    #expect(!failure.message.contains("do-not-echo"))
   }
 
   private func url(_ value: String) -> URL {

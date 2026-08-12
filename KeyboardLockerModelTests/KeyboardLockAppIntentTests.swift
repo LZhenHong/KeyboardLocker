@@ -1,45 +1,50 @@
 import AppIntents
-import XCTest
+import Testing
 
-final class KeyboardLockAppIntentTests: XCTestCase {
+@Suite(.serialized)
+struct KeyboardLockAppIntentTests {
+  @Test
   @MainActor
-  func testLockIntentInvokesOnlyLockCapability() async throws {
+  func lockIntentInvokesOnlyLockCapability() async throws {
     let client = FakeAgentLockActionClient(isLocked: false)
 
     _ = try await LockKeyboardIntent(client: client).perform()
 
-    XCTAssertEqual(client.lockCallCount, 1)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertTrue(client.isLocked)
+    #expect(client.lockCallCount == 1)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 0)
+    #expect(client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testUnlockIntentInvokesOnlyUnlockCapability() async throws {
+  func unlockIntentInvokesOnlyUnlockCapability() async throws {
     let client = FakeAgentLockActionClient(isLocked: true)
 
     _ = try await UnlockKeyboardIntent(client: client).perform()
 
-    XCTAssertEqual(client.lockCallCount, 0)
-    XCTAssertEqual(client.unlockCallCount, 1)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertFalse(client.isLocked)
+    #expect(client.lockCallCount == 0)
+    #expect(client.unlockCallCount == 1)
+    #expect(client.statusCallCount == 0)
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testStatusIntentReturnsAuthoritativeClientValue() async throws {
+  func statusIntentReturnsAuthoritativeClientValue() async throws {
     let client = FakeAgentLockActionClient(isLocked: true)
 
     let result = try await GetKeyboardLockStatusIntent(client: client).perform()
 
-    XCTAssertEqual(result.value, true)
-    XCTAssertEqual(client.lockCallCount, 0)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(result.value == true)
+    #expect(client.lockCallCount == 0)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testStatusIntentPropagatesAgentFailureWithoutFallback() async {
+  func statusIntentPropagatesAgentFailureWithoutFallback() async {
     let client = FakeAgentLockActionClient(
       isLocked: false,
       error: IntentClientError.unavailable
@@ -47,39 +52,42 @@ final class KeyboardLockAppIntentTests: XCTestCase {
 
     do {
       _ = try await GetKeyboardLockStatusIntent(client: client).perform()
-      XCTFail("Expected the Agent error to be propagated.")
+      Issue.record("Expected the Agent error to be propagated.")
     } catch {
-      XCTAssertEqual(error as? IntentClientError, .unavailable)
+      #expect(error as? IntentClientError == .unavailable)
     }
   }
 
+  @Test
   @MainActor
-  func testToggleIntentFromUnlockedReturnsLocked() async throws {
+  func toggleIntentFromUnlockedReturnsLocked() async throws {
     let client = FakeAgentLockActionClient(isLocked: false)
 
     let result = try await ToggleKeyboardLockIntent(client: client).perform()
 
-    XCTAssertEqual(result.value, true)
-    XCTAssertEqual(client.toggleCallCount, 1)
-    XCTAssertEqual(client.lockCallCount, 0)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertTrue(client.isLocked)
+    #expect(result.value == true)
+    #expect(client.toggleCallCount == 1)
+    #expect(client.lockCallCount == 0)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 0)
+    #expect(client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testToggleIntentFromLockedReturnsUnlocked() async throws {
+  func toggleIntentFromLockedReturnsUnlocked() async throws {
     let client = FakeAgentLockActionClient(isLocked: true)
 
     let result = try await ToggleKeyboardLockIntent(client: client).perform()
 
-    XCTAssertEqual(result.value, false)
-    XCTAssertEqual(client.toggleCallCount, 1)
-    XCTAssertFalse(client.isLocked)
+    #expect(result.value == false)
+    #expect(client.toggleCallCount == 1)
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testToggleIntentPropagatesAgentFailureWithoutFallback() async {
+  func toggleIntentPropagatesAgentFailureWithoutFallback() async {
     let client = FakeAgentLockActionClient(
       isLocked: false,
       error: IntentClientError.unavailable
@@ -87,10 +95,10 @@ final class KeyboardLockAppIntentTests: XCTestCase {
 
     do {
       _ = try await ToggleKeyboardLockIntent(client: client).perform()
-      XCTFail("Expected the Agent error to be propagated.")
+      Issue.record("Expected the Agent error to be propagated.")
     } catch {
-      XCTAssertEqual(error as? IntentClientError, .unavailable)
-      XCTAssertFalse(client.isLocked)
+      #expect(error as? IntentClientError == .unavailable)
+      #expect(!client.isLocked)
     }
   }
 }

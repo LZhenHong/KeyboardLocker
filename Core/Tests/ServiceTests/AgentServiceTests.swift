@@ -1,16 +1,17 @@
 import Common
+import Foundation
 @testable import Service
-import XCTest
+import Testing
 
 @MainActor
-final class AgentServiceTests: XCTestCase {
-  private var engine: FakeLockEngine!
-  private var scheduler: ManualExpirationScheduler!
-  private var instanceID: UUID!
-  private var customSettings: KeyboardLockerSettings!
+@Suite(.serialized)
+final class AgentServiceTests {
+  private let engine: FakeLockEngine
+  private let scheduler: ManualExpirationScheduler
+  private let instanceID: UUID
+  private let customSettings: KeyboardLockerSettings
 
-  override func setUp() {
-    super.setUp()
+  init() {
     engine = FakeLockEngine()
     scheduler = ManualExpirationScheduler()
     instanceID = UUID()
@@ -22,7 +23,8 @@ final class AgentServiceTests: XCTestCase {
 
   // MARK: - Replacement barrier
 
-  func testPreparedDrainRejectsNewLockRequests() {
+  @Test
+  func preparedDrainRejectsNewLockRequests() {
     let service = makeService()
     prepareTicket(on: service, instanceID: instanceID)
 
@@ -36,7 +38,7 @@ final class AgentServiceTests: XCTestCase {
       interactiveOutcome = outcome
       interactiveError = error
     }
-    XCTAssertEqual(interactiveOutcome, false)
+    #expect(interactiveOutcome == false)
     assertReplacementError(interactiveError, code: 1)
 
     var safetyCheckError: Error?
@@ -47,22 +49,23 @@ final class AgentServiceTests: XCTestCase {
     service.setFocusFilterLockEnabled(true) { focusError = $0 }
     assertReplacementError(focusError, code: 1)
 
-    XCTAssertTrue(engine.lockCalls.isEmpty)
-    XCTAssertTrue(engine.focusCalls.isEmpty)
+    #expect(engine.lockCalls.isEmpty)
+    #expect(engine.focusCalls.isEmpty)
   }
 
-  func testDrainKeepsUnlockStatusAndSnapshotAvailable() {
+  @Test
+  func drainKeepsUnlockStatusAndSnapshotAvailable() {
     let service = makeService()
     prepareTicket(on: service, instanceID: instanceID)
 
     var unlockError: Error?
     service.unlockKeyboard { unlockError = $0 }
-    XCTAssertNil(unlockError)
-    XCTAssertEqual(engine.unlockCallCount, 1)
+    #expect(unlockError == nil)
+    #expect(engine.unlockCallCount == 1)
 
     var isLocked: Bool?
     service.status { locked, _ in isLocked = locked }
-    XCTAssertEqual(isLocked, false)
+    #expect(isLocked == false)
 
     var snapshotData: Data?
     var snapshotError: Error?
@@ -70,11 +73,12 @@ final class AgentServiceTests: XCTestCase {
       snapshotData = data
       snapshotError = error
     }
-    XCTAssertNil(snapshotError)
-    XCTAssertNotNil(snapshotData)
+    #expect(snapshotError == nil)
+    #expect(snapshotData != nil)
   }
 
-  func testPrepareRejectsMismatchedInstanceID() {
+  @Test
+  func prepareRejectsMismatchedInstanceID() {
     let service = makeService()
 
     var error: Error?
@@ -90,7 +94,8 @@ final class AgentServiceTests: XCTestCase {
     prepareTicket(on: service, instanceID: instanceID)
   }
 
-  func testPrepareRejectsLockedEngineUnlessUnlockRequested() {
+  @Test
+  func prepareRejectsLockedEngineUnlessUnlockRequested() {
     let lockedEngine = FakeLockEngine(isLocked: true)
     let service = makeService(engineOverride: lockedEngine)
 
@@ -102,14 +107,15 @@ final class AgentServiceTests: XCTestCase {
       error = replyError
     }
     assertReplacementError(error, code: 3)
-    XCTAssertEqual(lockedEngine.unlockCallCount, 0)
+    #expect(lockedEngine.unlockCallCount == 0)
 
     let ticket = prepareTicket(on: service, unlockIfNeeded: true, instanceID: instanceID)
-    XCTAssertNotNil(ticket)
-    XCTAssertEqual(lockedEngine.unlockCallCount, 1)
+    #expect(ticket != nil)
+    #expect(lockedEngine.unlockCallCount == 1)
   }
 
-  func testPrepareInstallsBarrierBeforeUnlocking() {
+  @Test
+  func prepareInstallsBarrierBeforeUnlocking() {
     let lockedEngine = FakeLockEngine(isLocked: true)
     let service = makeService(engineOverride: lockedEngine)
 
@@ -122,10 +128,11 @@ final class AgentServiceTests: XCTestCase {
     }
 
     prepareTicket(on: service, unlockIfNeeded: true, instanceID: instanceID)
-    XCTAssertEqual(pendingDuringUnlock, true)
+    #expect(pendingDuringUnlock == true)
   }
 
-  func testSecondPrepareIsRejectedAndFirstTicketStillCommits() {
+  @Test
+  func secondPrepareIsRejectedAndFirstTicketStillCommits() {
     let service = makeService()
     let first = prepareTicket(on: service, instanceID: instanceID)
 
@@ -140,11 +147,12 @@ final class AgentServiceTests: XCTestCase {
 
     var commitError: Error?
     service.commitReplacement(ticket: encoded(first)) { commitError = $0 }
-    XCTAssertNil(commitError)
-    XCTAssertEqual(phase(of: first, on: service), .committed)
+    #expect(commitError == nil)
+    #expect(phase(of: first, on: service) == .committed)
   }
 
-  func testCommitWithForeignTicketFails() {
+  @Test
+  func commitWithForeignTicketFails() {
     let service = makeService()
     prepareTicket(on: service, instanceID: instanceID)
 
@@ -154,13 +162,14 @@ final class AgentServiceTests: XCTestCase {
     assertReplacementError(commitError, code: 4)
   }
 
-  func testCommittedDrainCannotBeCancelled() {
+  @Test
+  func committedDrainCannotBeCancelled() {
     let service = makeService()
     let ticket = prepareTicket(on: service, instanceID: instanceID)
 
     var commitError: Error?
     service.commitReplacement(ticket: encoded(ticket)) { commitError = $0 }
-    XCTAssertNil(commitError)
+    #expect(commitError == nil)
 
     var cancelError: Error?
     service.cancelReplacementPreparation(ticket: encoded(ticket)) { cancelError = $0 }
@@ -174,7 +183,8 @@ final class AgentServiceTests: XCTestCase {
     assertReplacementError(foreignCancelError, code: 6)
   }
 
-  func testCancelWithForeignTicketFailsWhilePrepared() {
+  @Test
+  func cancelWithForeignTicketFailsWhilePrepared() {
     let service = makeService()
     prepareTicket(on: service, instanceID: instanceID)
 
@@ -185,70 +195,75 @@ final class AgentServiceTests: XCTestCase {
     assertReplacementError(error, code: 4)
   }
 
-  func testMalformedTicketDataSurfacesDecodeError() {
+  @Test
+  func malformedTicketDataSurfacesDecodeError() {
     let service = makeService()
 
     var commitError: Error?
     service.commitReplacement(ticket: Data([0x00, 0x01])) { commitError = $0 }
-    XCTAssertNotNil(commitError)
+    #expect(commitError != nil)
 
     var statusError: Error?
     service.replacementStatus(ticket: Data([0x00, 0x01])) { _, error in
       statusError = error
     }
-    XCTAssertNotNil(statusError)
+    #expect(statusError != nil)
   }
 
   // MARK: - Expiration scheduling
 
-  func testCommitCancelsScheduledExpiration() {
+  @Test
+  func commitCancelsScheduledExpiration() {
     let service = makeService()
     let ticket = prepareTicket(on: service, instanceID: instanceID)
-    XCTAssertEqual(scheduler.scheduledCount, 1)
-    XCTAssertEqual(scheduler.lastInterval, 30)
+    #expect(scheduler.scheduledCount == 1)
+    #expect(scheduler.lastInterval == 30)
 
     var commitError: Error?
     service.commitReplacement(ticket: encoded(ticket)) { commitError = $0 }
-    XCTAssertNil(commitError)
-    XCTAssertEqual(scheduler.cancelCount, 1)
+    #expect(commitError == nil)
+    #expect(scheduler.cancelCount == 1)
 
     // A canceled expiration must not clear the committed drain.
     scheduler.firePending()
-    XCTAssertEqual(phase(of: ticket, on: service), .committed)
+    #expect(phase(of: ticket, on: service) == .committed)
   }
 
-  func testCancelCancelsScheduledExpiration() {
+  @Test
+  func cancelCancelsScheduledExpiration() {
     let service = makeService()
     let ticket = prepareTicket(on: service, instanceID: instanceID)
 
     var cancelError: Error?
     service.cancelReplacementPreparation(ticket: encoded(ticket)) { cancelError = $0 }
-    XCTAssertNil(cancelError)
-    XCTAssertEqual(scheduler.cancelCount, 1)
+    #expect(cancelError == nil)
+    #expect(scheduler.cancelCount == 1)
 
     var lockError: Error?
     service.lockKeyboard { lockError = $0 }
-    XCTAssertNil(lockError)
-    XCTAssertEqual(engine.lockCalls.count, 1)
+    #expect(lockError == nil)
+    #expect(engine.lockCalls.count == 1)
   }
 
-  func testExpirationReturnsAgentToAcceptingLocks() {
+  @Test
+  func expirationReturnsAgentToAcceptingLocks() {
     let service = makeService()
     let ticket = prepareTicket(on: service, instanceID: instanceID)
-    XCTAssertEqual(replacementPending(on: service), true)
+    #expect(replacementPending(on: service) == true)
 
     scheduler.firePending()
-    XCTAssertEqual(phase(of: ticket, on: service), .inactive)
-    XCTAssertEqual(replacementPending(on: service), false)
+    #expect(phase(of: ticket, on: service) == .inactive)
+    #expect(replacementPending(on: service) == false)
 
     var lockError: Error?
     service.lockKeyboard { lockError = $0 }
-    XCTAssertNil(lockError)
+    #expect(lockError == nil)
   }
 
   // MARK: - Wiring
 
-  func testPrepareFailsWithoutDescriptor() {
+  @Test
+  func prepareFailsWithoutDescriptor() {
     let service = makeService(
       descriptorResult: .failure(StubError.descriptorUnavailable)
     )
@@ -263,37 +278,40 @@ final class AgentServiceTests: XCTestCase {
     assertReplacementError(error, code: 2)
   }
 
-  func testDescriptorReportsReplacementPending() {
+  @Test
+  func descriptorReportsReplacementPending() {
     let service = makeService()
-    XCTAssertEqual(replacementPending(on: service), false)
+    #expect(replacementPending(on: service) == false)
 
     prepareTicket(on: service, instanceID: instanceID)
-    XCTAssertEqual(replacementPending(on: service), true)
+    #expect(replacementPending(on: service) == true)
   }
 
-  func testPersistedSettingsSeedEngineAndLockCalls() {
+  @Test
+  func persistedSettingsSeedEngineAndLockCalls() {
     let service = makeService()
-    XCTAssertEqual(engine.seededSettings, [customSettings])
+    #expect(engine.seededSettings == [customSettings])
 
     var lockError: Error?
     service.lockKeyboard { lockError = $0 }
-    XCTAssertNil(lockError)
-    XCTAssertEqual(engine.lockCalls.count, 1)
-    XCTAssertEqual(engine.lockCalls.first?.settings, customSettings)
-    XCTAssertEqual(engine.lockCalls.first?.allowsControlCUnlock, false)
+    #expect(lockError == nil)
+    #expect(engine.lockCalls.count == 1)
+    #expect(engine.lockCalls.first?.settings == customSettings)
+    #expect(engine.lockCalls.first?.allowsControlCUnlock == false)
 
     var outcome: Bool?
     service.lockKeyboardInteractively { acquired, _ in outcome = acquired }
-    XCTAssertEqual(outcome, true)
-    XCTAssertEqual(engine.lockCalls.last?.allowsControlCUnlock, true)
+    #expect(outcome == true)
+    #expect(engine.lockCalls.last?.allowsControlCUnlock == true)
 
     var focusError: Error?
     service.setFocusFilterLockEnabled(true) { focusError = $0 }
-    XCTAssertNil(focusError)
-    XCTAssertEqual(engine.focusCalls.first?.settings, customSettings)
+    #expect(focusError == nil)
+    #expect(engine.focusCalls.first?.settings == customSettings)
   }
 
-  func testSafetyCheckUsesFixedTimedOverrideWithoutChangingPersistedSettings() {
+  @Test
+  func safetyCheckUsesFixedTimedOverrideWithoutChangingPersistedSettings() {
     let service = makeService()
 
     var didStart: Bool?
@@ -303,26 +321,24 @@ final class AgentServiceTests: XCTestCase {
       safetyError = error
     }
 
-    XCTAssertNil(safetyError)
-    XCTAssertEqual(didStart, true)
-    XCTAssertEqual(
-      engine.lockCalls.first?.settings.autoUnlockPolicy,
-      .timed(seconds: SharedConstants.safetyCheckDuration)
+    #expect(safetyError == nil)
+    #expect(didStart == true)
+    #expect(
+      engine.lockCalls.first?.settings.autoUnlockPolicy ==
+        .timed(seconds: SharedConstants.safetyCheckDuration)
     )
-    XCTAssertEqual(
-      engine.lockCalls.first?.settings.unlockHotkey,
-      customSettings.unlockHotkey
-    )
-    XCTAssertEqual(engine.lockCalls.first?.allowsControlCUnlock, false)
+    #expect(engine.lockCalls.first?.settings.unlockHotkey == customSettings.unlockHotkey)
+    #expect(engine.lockCalls.first?.allowsControlCUnlock == false)
 
     engine.unlock()
     var lockError: Error?
     service.lockKeyboard { lockError = $0 }
-    XCTAssertNil(lockError)
-    XCTAssertEqual(engine.lockCalls.last?.settings, customSettings)
+    #expect(lockError == nil)
+    #expect(engine.lockCalls.last?.settings == customSettings)
   }
 
-  func testSafetyCheckReportsAnExistingLockWithoutChangingIt() {
+  @Test
+  func safetyCheckReportsAnExistingLockWithoutChangingIt() {
     engine.lockOutcome = .alreadyLocked
     let service = makeService()
 
@@ -333,14 +349,15 @@ final class AgentServiceTests: XCTestCase {
       safetyError = error
     }
 
-    XCTAssertNil(safetyError)
-    XCTAssertEqual(didStart, false)
-    XCTAssertEqual(engine.unlockCallCount, 0)
+    #expect(safetyError == nil)
+    #expect(didStart == false)
+    #expect(engine.unlockCallCount == 0)
   }
 
   // MARK: - Toggle
 
-  func testToggleLocksUnlockedEngineWithPersistedSettings() {
+  @Test
+  func toggleLocksUnlockedEngineWithPersistedSettings() {
     let service = makeService()
 
     var isLocked: Bool?
@@ -350,15 +367,16 @@ final class AgentServiceTests: XCTestCase {
       toggleError = error
     }
 
-    XCTAssertNil(toggleError)
-    XCTAssertEqual(isLocked, true)
-    XCTAssertEqual(engine.lockCalls.count, 1)
-    XCTAssertEqual(engine.lockCalls.first?.settings, customSettings)
-    XCTAssertEqual(engine.lockCalls.first?.allowsControlCUnlock, false)
-    XCTAssertEqual(engine.unlockCallCount, 0)
+    #expect(toggleError == nil)
+    #expect(isLocked == true)
+    #expect(engine.lockCalls.count == 1)
+    #expect(engine.lockCalls.first?.settings == customSettings)
+    #expect(engine.lockCalls.first?.allowsControlCUnlock == false)
+    #expect(engine.unlockCallCount == 0)
   }
 
-  func testToggleUnlocksLockedEngine() {
+  @Test
+  func toggleUnlocksLockedEngine() {
     let lockedEngine = FakeLockEngine(isLocked: true)
     let service = makeService(engineOverride: lockedEngine)
 
@@ -369,13 +387,14 @@ final class AgentServiceTests: XCTestCase {
       toggleError = error
     }
 
-    XCTAssertNil(toggleError)
-    XCTAssertEqual(isLocked, false)
-    XCTAssertEqual(lockedEngine.unlockCallCount, 1)
-    XCTAssertTrue(lockedEngine.lockCalls.isEmpty)
+    #expect(toggleError == nil)
+    #expect(isLocked == false)
+    #expect(lockedEngine.unlockCallCount == 1)
+    #expect(lockedEngine.lockCalls.isEmpty)
   }
 
-  func testTogglePropagatesLockFailureWithoutChangingState() {
+  @Test
+  func togglePropagatesLockFailureWithoutChangingState() {
     engine.lockError = StubError.descriptorUnavailable
     let service = makeService()
 
@@ -386,20 +405,21 @@ final class AgentServiceTests: XCTestCase {
       toggleError = error
     }
 
-    XCTAssertEqual(toggleError as? StubError, .descriptorUnavailable)
-    XCTAssertEqual(isLocked, false)
-    XCTAssertFalse(engine.isLocked)
+    #expect(toggleError as? StubError == .descriptorUnavailable)
+    #expect(isLocked == false)
+    #expect(!engine.isLocked)
   }
 
-  func testPreparedDrainRejectsOnlyTheLockDirectionOfToggle() {
+  @Test
+  func preparedDrainRejectsOnlyTheLockDirectionOfToggle() {
     let service = makeService()
     prepareTicket(on: service, instanceID: instanceID)
 
     var toggleError: Error?
     service.toggleKeyboard { _, error in toggleError = error }
     assertReplacementError(toggleError, code: 1)
-    XCTAssertTrue(engine.lockCalls.isEmpty)
-    XCTAssertEqual(engine.unlockCallCount, 0)
+    #expect(engine.lockCalls.isEmpty)
+    #expect(engine.unlockCallCount == 0)
   }
 
   // MARK: - Fixtures
@@ -444,7 +464,7 @@ final class AgentServiceTests: XCTestCase {
       data = ticketData
       error = replyError
     }
-    XCTAssertNil(error)
+    #expect(error == nil)
     return data.flatMap { try? ServiceReplacementTicket.decodedFromXPC($0) }
   }
 
@@ -474,17 +494,14 @@ final class AgentServiceTests: XCTestCase {
   private func assertReplacementError(
     _ error: Error?,
     code: Int,
-    file: StaticString = #filePath,
-    line: UInt = #line
+    sourceLocation: SourceLocation = #_sourceLocation
   ) {
     let nsError = error as NSError?
-    XCTAssertEqual(
-      nsError?.domain,
-      "\(SharedConstants.agentBundleIdentifier).replacement",
-      file: file,
-      line: line
+    #expect(
+      nsError?.domain == "\(SharedConstants.agentBundleIdentifier).replacement",
+      sourceLocation: sourceLocation
     )
-    XCTAssertEqual(nsError?.code, code, file: file, line: line)
+    #expect(nsError?.code == code, sourceLocation: sourceLocation)
   }
 }
 

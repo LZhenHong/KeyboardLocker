@@ -1,11 +1,13 @@
 import Common
 import Foundation
-import XCTest
+import Testing
 
-final class LockStatusSnapshotCodingTests: XCTestCase {
+@Suite(.serialized)
+struct LockStatusSnapshotCodingTests {
   private let capturedAt = Date(timeIntervalSinceReferenceDate: 1000)
 
-  func testRoundTripPreservesAuthoritativeRuntimeDatesAndSettings() throws {
+  @Test
+  func roundTripPreservesAuthoritativeRuntimeDatesAndSettings() throws {
     let startedAt = capturedAt.addingTimeInterval(-10)
     let deadline = capturedAt.addingTimeInterval(50)
     let settings = KeyboardLockerSettings(
@@ -25,10 +27,11 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
 
     let decoded = try LockStatusSnapshot.decodedFromXPC(snapshot.encodedForXPC())
 
-    XCTAssertEqual(decoded, snapshot)
+    #expect(decoded == snapshot)
   }
 
-  func testUnlockedSnapshotRoundTrip() throws {
+  @Test
+  func unlockedSnapshotRoundTrip() throws {
     let snapshot = LockStatusSnapshot(
       capturedAt: capturedAt,
       isLocked: false,
@@ -39,24 +42,25 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
 
     let decoded = try LockStatusSnapshot.decodedFromXPC(snapshot.encodedForXPC())
 
-    XCTAssertEqual(decoded, snapshot)
+    #expect(decoded == snapshot)
   }
 
-  func testMissingPayloadIsRejected() {
-    XCTAssertThrowsError(try LockStatusSnapshot.decodedFromXPC(nil)) { error in
-      XCTAssertEqual(error as? LockStatusSnapshotCodingError, .missingPayload)
+  @Test
+  func missingPayloadIsRejected() {
+    #expect(throws: LockStatusSnapshotCodingError.missingPayload) {
+      try LockStatusSnapshot.decodedFromXPC(nil)
     }
   }
 
-  func testInvalidPayloadIsRejected() {
-    XCTAssertThrowsError(
+  @Test
+  func invalidPayloadIsRejected() {
+    #expect(throws: LockStatusSnapshotCodingError.invalidPayload) {
       try LockStatusSnapshot.decodedFromXPC(Data("not-json".utf8))
-    ) { error in
-      XCTAssertEqual(error as? LockStatusSnapshotCodingError, .invalidPayload)
     }
   }
 
-  func testUnsupportedFormatIsRejected() throws {
+  @Test
+  func unsupportedFormatIsRejected() throws {
     let snapshot = LockStatusSnapshot(
       formatVersion: LockStatusSnapshot.currentFormatVersion + 1,
       capturedAt: capturedAt,
@@ -67,15 +71,17 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
     )
     let payload = try JSONEncoder().encode(snapshot)
 
-    XCTAssertThrowsError(try LockStatusSnapshot.decodedFromXPC(payload)) { error in
-      XCTAssertEqual(
-        error as? LockStatusSnapshotCodingError,
-        .unsupportedFormat(LockStatusSnapshot.currentFormatVersion + 1)
+    #expect(
+      throws: LockStatusSnapshotCodingError.unsupportedFormat(
+        LockStatusSnapshot.currentFormatVersion + 1
       )
+    ) {
+      try LockStatusSnapshot.decodedFromXPC(payload)
     }
   }
 
-  func testInconsistentUnlockedRuntimeDatesAreRejected() throws {
+  @Test
+  func inconsistentUnlockedRuntimeDatesAreRejected() throws {
     let snapshot = LockStatusSnapshot(
       capturedAt: capturedAt,
       isLocked: false,
@@ -85,19 +91,20 @@ final class LockStatusSnapshotCodingTests: XCTestCase {
     )
     let payload = try JSONEncoder().encode(snapshot)
 
-    XCTAssertThrowsError(try LockStatusSnapshot.decodedFromXPC(payload)) { error in
-      XCTAssertEqual(error as? LockStatusSnapshotCodingError, .invalidPayload)
+    #expect(throws: LockStatusSnapshotCodingError.invalidPayload) {
+      try LockStatusSnapshot.decodedFromXPC(payload)
     }
   }
 
-  func testOversizedPayloadIsRejectedBeforeDecoding() {
+  @Test
+  func oversizedPayloadIsRejectedBeforeDecoding() {
     let payload = Data(
       repeating: 0,
       count: LockStatusSnapshot.maximumEncodedSize + 1
     )
 
-    XCTAssertThrowsError(try LockStatusSnapshot.decodedFromXPC(payload)) { error in
-      XCTAssertEqual(error as? LockStatusSnapshotCodingError, .payloadTooLarge)
+    #expect(throws: LockStatusSnapshotCodingError.payloadTooLarge) {
+      try LockStatusSnapshot.decodedFromXPC(payload)
     }
   }
 }

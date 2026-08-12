@@ -1,30 +1,34 @@
 import AppKit
-import XCTest
+import Testing
 
-final class KeyboardLockerServicesProviderTests: XCTestCase {
+@Suite(.serialized)
+struct KeyboardLockerServicesProviderTests {
   private let pasteboard = NSPasteboard(name: NSPasteboard.Name("KeyboardLockerServicesProviderTests"))
 
-  func testProviderExportsEveryDeclaredServiceSelector() {
+  @Test
+  func providerExportsEveryDeclaredServiceSelector() {
     let provider = KeyboardLockerServicesProvider { _ in nil }
 
-    XCTAssertTrue(provider.responds(to: NSSelectorFromString("lockKeyboard:userData:error:")))
-    XCTAssertTrue(provider.responds(to: NSSelectorFromString("unlockKeyboard:userData:error:")))
-    XCTAssertTrue(
+    #expect(provider.responds(to: NSSelectorFromString("lockKeyboard:userData:error:")))
+    #expect(provider.responds(to: NSSelectorFromString("unlockKeyboard:userData:error:")))
+    #expect(
       provider.responds(to: NSSelectorFromString("showKeyboardLockStatus:userData:error:"))
     )
   }
 
-  func testHandlerLeavesErrorUntouchedWhenActionSucceeds() {
+  @Test
+  func handlerLeavesErrorUntouchedWhenActionSucceeds() {
     let provider = KeyboardLockerServicesProvider { _ in nil }
 
     var error: NSString?
     provider.lockKeyboard(pasteboard, userData: nil, error: &error)
 
-    XCTAssertNil(error)
+    #expect(error == nil)
   }
 
+  @Test
   @MainActor
-  func testHandlerPublishesFailureBeforeScheduledPresentationRuns() async {
+  func handlerPublishesFailureBeforeScheduledPresentationRuns() async {
     let presenter = RecordingServicesFailurePresenter()
     let provider = KeyboardLockerServicesProvider(
       presentFailure: { presenter.present($0) }
@@ -35,15 +39,16 @@ final class KeyboardLockerServicesProviderTests: XCTestCase {
     var error: NSString?
     provider.unlockKeyboard(pasteboard, userData: nil, error: &error)
 
-    XCTAssertEqual(error, "Agent not reachable")
-    XCTAssertTrue(presenter.failures.isEmpty)
+    #expect(error == "Agent not reachable")
+    #expect(presenter.failures.isEmpty)
 
     await Task.yield()
 
-    XCTAssertEqual(presenter.failures, [.init(message: "Agent not reachable")])
+    #expect(presenter.failures == [.init(message: "Agent not reachable")])
   }
 
-  func testHandlerReportsTimeoutWhenActionDoesNotFinish() {
+  @Test
+  func handlerReportsTimeoutWhenActionDoesNotFinish() {
     let provider = KeyboardLockerServicesProvider(waitTimeout: 0.1) { _ in
       try? await Task.sleep(nanoseconds: 10_000_000_000)
       return nil
@@ -52,11 +57,12 @@ final class KeyboardLockerServicesProviderTests: XCTestCase {
     var error: NSString?
     provider.showKeyboardLockStatus(pasteboard, userData: nil, error: &error)
 
-    XCTAssertTrue(error?.contains("did not finish") == true)
+    #expect(error?.contains("did not finish") == true)
   }
 
+  @Test
   @MainActor
-  func testTimedOutHandlerPresentsLateFailureAfterPublishingTimeout() async {
+  func timedOutHandlerPresentsLateFailureAfterPublishingTimeout() async {
     let presenter = RecordingServicesFailurePresenter()
     let provider = KeyboardLockerServicesProvider(
       waitTimeout: 0.01,
@@ -69,12 +75,12 @@ final class KeyboardLockerServicesProviderTests: XCTestCase {
     var error: NSString?
     provider.lockKeyboard(pasteboard, userData: nil, error: &error)
 
-    XCTAssertTrue(error?.contains("did not finish") == true)
-    XCTAssertTrue(presenter.failures.isEmpty)
+    #expect(error?.contains("did not finish") == true)
+    #expect(presenter.failures.isEmpty)
 
     try? await Task.sleep(nanoseconds: 100_000_000)
 
-    XCTAssertEqual(presenter.failures, [.init(message: "Late agent failure")])
+    #expect(presenter.failures == [.init(message: "Late agent failure")])
   }
 }
 

@@ -1,31 +1,35 @@
 import Client
 import Foundation
 import SystemSurfaces
-import XCTest
+import Testing
 
-final class AgentCoordinationServicesTests: XCTestCase {
+@Suite(.serialized)
+struct AgentCoordinationServicesTests {
+  @Test
   @MainActor
-  func testSuccessfulLockInvalidatesWidgetThenControl() async throws {
+  func successfulLockInvalidatesWidgetThenControl() async throws {
     let recorder = CallRecorder()
     let client = makeClient(recorder: recorder)
 
     try await client.lock()
 
-    XCTAssertEqual(recorder.calls, [.lock, .widget, .control])
+    #expect(recorder.calls == [.lock, .widget, .control])
   }
 
+  @Test
   @MainActor
-  func testSuccessfulUnlockInvalidatesWidgetThenControl() async throws {
+  func successfulUnlockInvalidatesWidgetThenControl() async throws {
     let recorder = CallRecorder()
     let client = makeClient(recorder: recorder)
 
     try await client.unlock()
 
-    XCTAssertEqual(recorder.calls, [.unlock, .widget, .control])
+    #expect(recorder.calls == [.unlock, .widget, .control])
   }
 
+  @Test
   @MainActor
-  func testFailedMutationDoesNotInvalidateSurfaces() async {
+  func failedMutationDoesNotInvalidateSurfaces() async {
     let recorder = CallRecorder()
     let client = LiveAgentClient(
       lock: {
@@ -48,16 +52,17 @@ final class AgentCoordinationServicesTests: XCTestCase {
 
     do {
       try await client.lock()
-      XCTFail("Expected the Agent failure to propagate.")
+      Issue.record("Expected the Agent failure to propagate.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
 
-    XCTAssertEqual(recorder.calls, [.lock])
+    #expect(recorder.calls == [.lock])
   }
 
+  @Test
   @MainActor
-  func testFailedUnlockDoesNotInvalidateSurfaces() async {
+  func failedUnlockDoesNotInvalidateSurfaces() async {
     let recorder = CallRecorder()
     let client = LiveAgentClient(
       lock: {
@@ -80,49 +85,53 @@ final class AgentCoordinationServicesTests: XCTestCase {
 
     do {
       try await client.unlock()
-      XCTFail("Expected the Agent failure to propagate.")
+      Issue.record("Expected the Agent failure to propagate.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
 
-    XCTAssertEqual(recorder.calls, [.unlock])
+    #expect(recorder.calls == [.unlock])
   }
 
+  @Test
   @MainActor
-  func testStatusDoesNotInvalidateSurfaces() async throws {
+  func statusDoesNotInvalidateSurfaces() async throws {
     let recorder = CallRecorder()
     let client = makeClient(recorder: recorder, status: true)
 
     let isLocked = try await client.status()
 
-    XCTAssertTrue(isLocked)
-    XCTAssertEqual(recorder.calls, [.status])
+    #expect(isLocked)
+    #expect(recorder.calls == [.status])
   }
 
+  @Test
   @MainActor
-  func testSuccessfulToggleInvalidatesWidgetThenControl() async throws {
+  func successfulToggleInvalidatesWidgetThenControl() async throws {
     let recorder = CallRecorder()
     let client = makeClient(recorder: recorder)
 
     let isLocked = try await client.toggle()
 
-    XCTAssertTrue(isLocked)
-    XCTAssertEqual(recorder.calls, [.toggle, .widget, .control])
+    #expect(isLocked)
+    #expect(recorder.calls == [.toggle, .widget, .control])
   }
 
+  @Test
   @MainActor
-  func testSuccessfulSafetyCheckInvalidatesWidgetThenControl() async throws {
+  func successfulSafetyCheckInvalidatesWidgetThenControl() async throws {
     let recorder = CallRecorder()
     let client = makeClient(recorder: recorder)
 
     let outcome = try await client.beginSafetyCheck()
 
-    XCTAssertEqual(outcome, .acquired)
-    XCTAssertEqual(recorder.calls, [.safetyCheck, .widget, .control])
+    #expect(outcome == .acquired)
+    #expect(recorder.calls == [.safetyCheck, .widget, .control])
   }
 
+  @Test
   @MainActor
-  func testFailedToggleDoesNotInvalidateSurfaces() async {
+  func failedToggleDoesNotInvalidateSurfaces() async {
     let recorder = CallRecorder()
     let client = LiveAgentClient(
       lock: {
@@ -144,16 +153,17 @@ final class AgentCoordinationServicesTests: XCTestCase {
 
     do {
       _ = try await client.toggle()
-      XCTFail("Expected the Agent failure to propagate.")
+      Issue.record("Expected the Agent failure to propagate.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
 
-    XCTAssertEqual(recorder.calls, [.toggle])
+    #expect(recorder.calls == [.toggle])
   }
 
+  @Test
   @MainActor
-  func testLiveObserverInvalidatesAtSubscriptionAndBeforeForwardingAChange() {
+  func liveObserverInvalidatesAtSubscriptionAndBeforeForwardingAChange() {
     let recorder = CallRecorder()
     let base = RecordingLockStateObserver()
     let observer = LiveAgentLockStateObserver(
@@ -166,13 +176,13 @@ final class AgentCoordinationServicesTests: XCTestCase {
       receivedValues.append(isLocked)
     }
 
-    XCTAssertEqual(base.initialStates, [false])
-    XCTAssertEqual(recorder.calls, [.widget, .control])
+    #expect(base.initialStates == [false])
+    #expect(recorder.calls == [.widget, .control])
 
     base.send(true)
 
-    XCTAssertEqual(receivedValues, [true])
-    XCTAssertEqual(recorder.calls, [.widget, .control, .widget, .control])
+    #expect(receivedValues == [true])
+    #expect(recorder.calls == [.widget, .control, .widget, .control])
     withExtendedLifetime(token) {}
   }
 

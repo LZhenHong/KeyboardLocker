@@ -1,7 +1,7 @@
 @testable import Common
 import Foundation
 import Security
-import XCTest
+import Testing
 
 /// Evaluates XPC peer requirements against real on-disk code signatures.
 ///
@@ -11,22 +11,25 @@ import XCTest
 /// signature at all — must be rejected by the same Security framework check the Agent's
 /// listener performs. A plain `anchor apple` control requirement proves the harness evaluates
 /// correctly, so failures are requirement mismatches rather than evaluation errors.
-final class XPCCodeSigningRequirementEvaluationTests: XCTestCase {
+@Suite(.serialized)
+struct XPCCodeSigningRequirementEvaluationTests {
   // MARK: - Team requirement vs. real signatures
 
-  func testAppleSignedSystemToolFailsTeamRequirementButPassesAnchorApple() throws {
+  @Test
+  func appleSignedSystemToolFailsTeamRequirementButPassesAnchorApple() throws {
     let tool = try makeSystemToolCopy()
     defer { try? FileManager.default.removeItem(at: tool.deletingLastPathComponent()) }
 
     let requirement = try makeTeamRequirement()
 
     // Control: the copy keeps the embedded Apple signature, so the anchor check passes.
-    XCTAssertEqual(evaluate("anchor apple", against: tool), errSecSuccess)
+    #expect(evaluate("anchor apple", against: tool) == errSecSuccess)
     // Rejected: valid Apple signature, but not our Team ID or identifier.
-    XCTAssertEqual(evaluate(requirement, against: tool), errSecCSReqFailed)
+    #expect(evaluate(requirement, against: tool) == errSecCSReqFailed)
   }
 
-  func testAdHocSignedToolFailsTeamRequirement() throws {
+  @Test
+  func adHocSignedToolFailsTeamRequirement() throws {
     let tool = try makeSystemToolCopy()
     defer { try? FileManager.default.removeItem(at: tool.deletingLastPathComponent()) }
     try runCodesign(["--force", "--sign", "-", tool.path])
@@ -34,12 +37,13 @@ final class XPCCodeSigningRequirementEvaluationTests: XCTestCase {
     let requirement = try makeTeamRequirement()
 
     // Control: ad-hoc signatures never anchor to Apple.
-    XCTAssertEqual(evaluate("anchor apple", against: tool), errSecCSReqFailed)
+    #expect(evaluate("anchor apple", against: tool) == errSecCSReqFailed)
     // Rejected: an ad-hoc signature carries no Apple Team ID.
-    XCTAssertEqual(evaluate(requirement, against: tool), errSecCSReqFailed)
+    #expect(evaluate(requirement, against: tool) == errSecCSReqFailed)
   }
 
-  func testUnsignedToolFailsTeamRequirement() throws {
+  @Test
+  func unsignedToolFailsTeamRequirement() throws {
     let tool = try makeSystemToolCopy()
     defer { try? FileManager.default.removeItem(at: tool.deletingLastPathComponent()) }
     try runCodesign(["--remove-signature", tool.path])
@@ -47,8 +51,8 @@ final class XPCCodeSigningRequirementEvaluationTests: XCTestCase {
     let requirement = try makeTeamRequirement()
 
     // Rejected: unsigned code fails before any requirement clause is even considered.
-    XCTAssertEqual(evaluate("anchor apple", against: tool), errSecCSUnsigned)
-    XCTAssertEqual(evaluate(requirement, against: tool), errSecCSUnsigned)
+    #expect(evaluate("anchor apple", against: tool) == errSecCSUnsigned)
+    #expect(evaluate(requirement, against: tool) == errSecCSUnsigned)
   }
 
   // MARK: - Fixtures
@@ -87,9 +91,8 @@ final class XPCCodeSigningRequirementEvaluationTests: XCTestCase {
       encoding: .utf8
     ) ?? ""
     process.waitUntilExit()
-    XCTAssertEqual(
-      process.terminationStatus,
-      0,
+    #expect(
+      process.terminationStatus == 0,
       "codesign \(arguments.joined(separator: " ")) failed: \(output)"
     )
   }

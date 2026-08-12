@@ -1,20 +1,21 @@
 import Common
 import CoreGraphics
+import Foundation
 @testable import Service
-import XCTest
+import Testing
 
 @MainActor
-final class LockEngineTests: XCTestCase {
-  private var tap: FakeInstalledEventTap!
-  private var scheduler: ManualTimerScheduler!
-  private var installCount = 0
-  private var broadcastCount = 0
-  private var stateChangeCount = 0
-  private var hasAccessibilityPermission = true
-  private var now: Date!
+@Suite(.serialized)
+final class LockEngineTests {
+  private let tap: FakeInstalledEventTap
+  private let scheduler: ManualTimerScheduler
+  private var installCount: Int
+  private var broadcastCount: Int
+  private var stateChangeCount: Int
+  private var hasAccessibilityPermission: Bool
+  private let now: Date
 
-  override func setUp() {
-    super.setUp()
+  init() {
     tap = FakeInstalledEventTap()
     scheduler = ManualTimerScheduler()
     installCount = 0
@@ -26,35 +27,35 @@ final class LockEngineTests: XCTestCase {
 
   // MARK: - Acquisition
 
-  func testLockWithoutAccessibilityPermissionThrowsBeforeInstallingTap() {
+  @Test
+  func lockWithoutAccessibilityPermissionThrowsBeforeInstallingTap() {
     hasAccessibilityPermission = false
     let engine = makeEngine()
 
-    XCTAssertThrowsError(try engine.lock(settings: makeSettings())) { error in
-      XCTAssertEqual(error as? LockEngine.LockEngineError, .accessibilityPermissionDenied)
+    #expect(throws: LockEngine.LockEngineError.accessibilityPermissionDenied) {
+      try engine.lock(settings: makeSettings())
     }
-    XCTAssertEqual(installCount, 0)
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertEqual(broadcastCount, 0)
+    #expect(installCount == 0)
+    #expect(!engine.isLocked)
+    #expect(broadcastCount == 0)
   }
 
-  func testLockInstallsTapSchedulesAutoUnlockAndBroadcasts() throws {
+  @Test
+  func lockInstallsTapSchedulesAutoUnlockAndBroadcasts() throws {
     let engine = makeEngine()
 
     let outcome = try engine.lock(settings: makeSettings())
 
-    XCTAssertEqual(outcome, .acquired)
-    XCTAssertTrue(engine.isLocked)
-    XCTAssertEqual(installCount, 1)
-    XCTAssertEqual(broadcastCount, 1)
-    XCTAssertEqual(scheduler.timers.map(\.interval), [60])
-    XCTAssertEqual(
-      engine.statusSnapshot.autoUnlockTargetDate,
-      now.addingTimeInterval(60)
-    )
+    #expect(outcome == .acquired)
+    #expect(engine.isLocked)
+    #expect(installCount == 1)
+    #expect(broadcastCount == 1)
+    #expect(scheduler.timers.map(\.interval) == [60])
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == now.addingTimeInterval(60))
   }
 
-  func testDuplicateLockNeverMutatesTheRunningLock() throws {
+  @Test
+  func duplicateLockNeverMutatesTheRunningLock() throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
@@ -62,111 +63,113 @@ final class LockEngineTests: XCTestCase {
       settings: makeSettings(autoUnlockPolicy: .timed(seconds: 120))
     )
 
-    XCTAssertEqual(duplicate, .alreadyLocked)
-    XCTAssertEqual(installCount, 1)
-    XCTAssertEqual(scheduler.timers.count, 1)
-    XCTAssertEqual(broadcastCount, 1)
-    XCTAssertEqual(
-      engine.statusSnapshot.autoUnlockTargetDate,
-      now.addingTimeInterval(60)
-    )
+    #expect(duplicate == .alreadyLocked)
+    #expect(installCount == 1)
+    #expect(scheduler.timers.count == 1)
+    #expect(broadcastCount == 1)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == now.addingTimeInterval(60))
   }
 
   // MARK: - Auto-unlock scheduling
 
-  func testAutoUnlockTimerFireUnlocks() throws {
+  @Test
+  func autoUnlockTimerFireUnlocks() throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     scheduler.timers[0].fire()
 
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 1)
-    XCTAssertEqual(broadcastCount, 2)
-    XCTAssertNil(engine.statusSnapshot.autoUnlockTargetDate)
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
+    #expect(broadcastCount == 2)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == nil)
   }
 
-  func testStaleTimerFireKeepsNewerLock() throws {
+  @Test
+  func staleTimerFireKeepsNewerLock() throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
     let staleTimer = scheduler.timers[0]
 
     engine.unlock()
-    XCTAssertTrue(staleTimer.isCancelled)
+    #expect(staleTimer.isCancelled)
 
     _ = try engine.lock(settings: makeSettings())
-    XCTAssertEqual(scheduler.timers.count, 2)
+    #expect(scheduler.timers.count == 2)
 
     // A cancel that lost the race against an already-queued fire must not unlock the new lock.
     staleTimer.fire()
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.isLocked)
   }
 
-  func testUpdateSettingsWhileLockedRearmsAutoUnlock() throws {
+  @Test
+  func updateSettingsWhileLockedRearmsAutoUnlock() throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     engine.updateSettings(makeSettings(autoUnlockPolicy: .timed(seconds: 120)))
 
-    XCTAssertEqual(scheduler.timers.map(\.interval), [60, 120])
-    XCTAssertTrue(scheduler.timers[0].isCancelled)
-    XCTAssertFalse(scheduler.timers[1].isCancelled)
-    XCTAssertEqual(
-      engine.statusSnapshot.autoUnlockTargetDate,
-      now.addingTimeInterval(120)
-    )
+    #expect(scheduler.timers.map(\.interval) == [60, 120])
+    #expect(scheduler.timers[0].isCancelled)
+    #expect(!scheduler.timers[1].isCancelled)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == now.addingTimeInterval(120))
   }
 
-  func testUpdateSettingsWhileUnlockedSchedulesNoTimer() {
+  @Test
+  func updateSettingsWhileUnlockedSchedulesNoTimer() {
     let engine = makeEngine()
 
     engine.updateSettings(makeSettings())
 
-    XCTAssertTrue(scheduler.timers.isEmpty)
-    XCTAssertNil(engine.statusSnapshot.autoUnlockTargetDate)
+    #expect(scheduler.timers.isEmpty)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == nil)
   }
 
-  func testLockWithDisabledAutoUnlockSchedulesNoTimer() throws {
+  @Test
+  func lockWithDisabledAutoUnlockSchedulesNoTimer() throws {
     let engine = makeEngine()
 
     _ = try engine.lock(settings: makeSettings(autoUnlockPolicy: .disabled))
 
-    XCTAssertTrue(engine.isLocked)
-    XCTAssertTrue(scheduler.timers.isEmpty)
-    XCTAssertNil(engine.statusSnapshot.autoUnlockTargetDate)
+    #expect(engine.isLocked)
+    #expect(scheduler.timers.isEmpty)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == nil)
   }
 
   // MARK: - Unlock gestures
 
-  func testUnlockHotkeyEventUnlocksAfterDispatch() async throws {
+  @Test
+  func unlockHotkeyEventUnlocksAfterDispatch() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     let event = makeKeyEvent(keyCode: 4, flags: .maskShift)
-    XCTAssertNil(engine.handleEvent(type: .keyDown, event: event))
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    #expect(engine.isLocked)
 
     await flushMainQueue()
 
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 1)
-    XCTAssertEqual(broadcastCount, 2)
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
+    #expect(broadcastCount == 2)
   }
 
-  func testUnrelatedKeyEventIsConsumedWithoutUnlocking() async throws {
+  @Test
+  func unrelatedKeyEventIsConsumedWithoutUnlocking() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     let event = makeKeyEvent(keyCode: 40)
-    XCTAssertNil(engine.handleEvent(type: .keyDown, event: event))
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
 
     await flushMainQueue()
 
-    XCTAssertTrue(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 0)
+    #expect(engine.isLocked)
+    #expect(tap.teardownCallCount == 0)
   }
 
-  func testControlCUnlocksOnlyWhenAllowed() async throws {
+  @Test
+  func controlCUnlocksOnlyWhenAllowed() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings(), allowsControlCUnlock: false)
 
@@ -174,60 +177,63 @@ final class LockEngineTests: XCTestCase {
       keyCode: UnlockGestureMatcher.controlCKeyCode,
       flags: .maskControl
     )
-    XCTAssertNil(engine.handleEvent(type: .keyDown, event: controlC))
+    #expect(engine.handleEvent(type: .keyDown, event: controlC) == nil)
     await flushMainQueue()
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.isLocked)
 
     engine.unlock()
     _ = try engine.lock(settings: makeSettings(), allowsControlCUnlock: true)
-    XCTAssertNil(engine.handleEvent(type: .keyDown, event: controlC))
+    #expect(engine.handleEvent(type: .keyDown, event: controlC) == nil)
     await flushMainQueue()
-    XCTAssertFalse(engine.isLocked)
+    #expect(!engine.isLocked)
   }
 
   // MARK: - Event tap failure
 
-  func testTapDisabledAndReenabledKeepsLock() async throws {
+  @Test
+  func tapDisabledAndReenabledKeepsLock() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     tap.isEnabled = false
     let event = makeKeyEvent(keyCode: 0)
-    XCTAssertNotNil(engine.handleDisabledEvent(event))
+    #expect(engine.handleDisabledEvent(event) != nil)
 
     await flushMainQueue()
 
-    XCTAssertTrue(engine.isLocked)
-    XCTAssertEqual(tap.setEnabledCalls, [true])
-    XCTAssertEqual(tap.teardownCallCount, 0)
-    XCTAssertEqual(broadcastCount, 1)
+    #expect(engine.isLocked)
+    #expect(tap.setEnabledCalls == [true])
+    #expect(tap.teardownCallCount == 0)
+    #expect(broadcastCount == 1)
   }
 
-  func testTapDisabledBeyondRecoveryUnlocksFailOpen() async throws {
+  @Test
+  func tapDisabledBeyondRecoveryUnlocksFailOpen() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     tap.isEnabled = false
     tap.allowsReEnable = false
     let event = makeKeyEvent(keyCode: 0)
-    XCTAssertNotNil(engine.handleDisabledEvent(event))
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.handleDisabledEvent(event) != nil)
+    #expect(engine.isLocked)
 
     await flushMainQueue()
 
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 1)
-    XCTAssertEqual(broadcastCount, 2)
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
+    #expect(broadcastCount == 2)
   }
 
-  func testStaleTapFailureKeepsNewerLock() async throws {
+  @Test
+  func staleTapFailureKeepsNewerLock() async throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     tap.isEnabled = false
     tap.allowsReEnable = false
     let event = makeKeyEvent(keyCode: 0)
-    XCTAssertNotNil(engine.handleDisabledEvent(event))
+    #expect(engine.handleDisabledEvent(event) != nil)
 
     engine.unlock()
     tap.isEnabled = true
@@ -236,58 +242,62 @@ final class LockEngineTests: XCTestCase {
 
     await flushMainQueue()
 
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.isLocked)
   }
 
   // MARK: - Unlock
 
-  func testUnlockCancelsTimerTearsDownAndBroadcasts() throws {
+  @Test
+  func unlockCancelsTimerTearsDownAndBroadcasts() throws {
     let engine = makeEngine()
     _ = try engine.lock(settings: makeSettings())
 
     engine.unlock()
 
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertTrue(scheduler.timers[0].isCancelled)
-    XCTAssertEqual(tap.teardownCallCount, 1)
-    XCTAssertEqual(broadcastCount, 2)
-    XCTAssertNil(engine.statusSnapshot.autoUnlockTargetDate)
+    #expect(!engine.isLocked)
+    #expect(scheduler.timers[0].isCancelled)
+    #expect(tap.teardownCallCount == 1)
+    #expect(broadcastCount == 2)
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == nil)
   }
 
-  func testStateChangeHandlerFollowsCommittedLockTransitions() throws {
+  @Test
+  func stateChangeHandlerFollowsCommittedLockTransitions() throws {
     let engine = makeEngine()
 
     _ = try engine.lock(settings: makeSettings())
     engine.unlock()
 
-    XCTAssertEqual(stateChangeCount, 2)
+    #expect(stateChangeCount == 2)
   }
 
   // MARK: - Focus ownership
 
-  func testFocusDeactivationReleasesFocusOwnedLock() throws {
+  @Test
+  func focusDeactivationReleasesFocusOwnedLock() throws {
     let engine = makeEngine()
     try engine.setFocusFilterLockEnabled(true, settings: makeSettings())
-    XCTAssertTrue(engine.isLocked)
+    #expect(engine.isLocked)
 
     try engine.setFocusFilterLockEnabled(false, settings: makeSettings())
 
-    XCTAssertFalse(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 1)
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
   }
 
-  func testFocusDeactivationKeepsLockTakenOverByGeneralRequest() throws {
+  @Test
+  func focusDeactivationKeepsLockTakenOverByGeneralRequest() throws {
     let engine = makeEngine()
     try engine.setFocusFilterLockEnabled(true, settings: makeSettings())
 
     // An explicit lock takes persistence over from the Focus-created generation.
     let takeover = try engine.lock(settings: makeSettings())
-    XCTAssertEqual(takeover, .alreadyLocked)
+    #expect(takeover == .alreadyLocked)
 
     try engine.setFocusFilterLockEnabled(false, settings: makeSettings())
 
-    XCTAssertTrue(engine.isLocked)
-    XCTAssertEqual(tap.teardownCallCount, 0)
+    #expect(engine.isLocked)
+    #expect(tap.teardownCallCount == 0)
   }
 
   // MARK: - Helpers

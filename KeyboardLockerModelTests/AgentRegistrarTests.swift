@@ -1,9 +1,11 @@
 import ServiceManagement
-import XCTest
+import Testing
 
-final class AgentRegistrarTests: XCTestCase {
+@Suite(.serialized)
+struct AgentRegistrarTests {
+  @Test
   @MainActor
-  func testNotFoundWithValidBundledAssetsAttemptsRegistration() {
+  func notFoundWithValidBundledAssetsAttemptsRegistration() {
     let service = FakeAgentRegistrationService(
       status: .notFound,
       statusAfterRegistration: .enabled
@@ -14,12 +16,13 @@ final class AgentRegistrarTests: XCTestCase {
       validateBundledRegistration: {}
     )
 
-    XCTAssertEqual(state, .enabled)
-    XCTAssertEqual(service.registrationCallCount, 1)
+    #expect(state == .enabled)
+    #expect(service.registrationCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testNotFoundWithMissingBundledAssetsDoesNotAttemptRegistration() {
+  func notFoundWithMissingBundledAssetsDoesNotAttemptRegistration() {
     let service = FakeAgentRegistrationService(
       status: .notFound,
       statusAfterRegistration: .enabled
@@ -32,12 +35,13 @@ final class AgentRegistrarTests: XCTestCase {
       }
     )
 
-    XCTAssertEqual(state, .unavailable(.notFound))
-    XCTAssertEqual(service.registrationCallCount, 0)
+    #expect(state == .unavailable(.notFound))
+    #expect(service.registrationCallCount == 0)
   }
 
+  @Test
   @MainActor
-  func testNotFoundRegistrationFailurePreservesUnderlyingError() {
+  func notFoundRegistrationFailurePreservesUnderlyingError() {
     let service = FakeAgentRegistrationService(
       status: .notFound,
       statusAfterRegistration: .notFound,
@@ -49,15 +53,16 @@ final class AgentRegistrarTests: XCTestCase {
       validateBundledRegistration: {}
     )
 
-    XCTAssertEqual(
-      state,
-      .unavailable(.registrationFailed("Registration failed for testing."))
+    #expect(
+      state ==
+        .unavailable(.registrationFailed("Registration failed for testing."))
     )
-    XCTAssertEqual(service.registrationCallCount, 1)
+    #expect(service.registrationCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testUnregisterRemovesEnabledService() async throws {
+  func unregisterRemovesEnabledService() async throws {
     let service = FakeAgentRegistrationService(
       status: .enabled,
       statusAfterRegistration: .enabled,
@@ -66,12 +71,13 @@ final class AgentRegistrarTests: XCTestCase {
 
     try await AgentRegistrar.unregister(service: service)
 
-    XCTAssertEqual(service.status, .notRegistered)
-    XCTAssertEqual(service.unregistrationCallCount, 1)
+    #expect(service.status == .notRegistered)
+    #expect(service.unregistrationCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testUnregisterIsIdempotentWhenServiceIsNotFound() async throws {
+  func unregisterIsIdempotentWhenServiceIsNotFound() async throws {
     let service = FakeAgentRegistrationService(
       status: .notFound,
       statusAfterRegistration: .enabled
@@ -79,12 +85,13 @@ final class AgentRegistrarTests: XCTestCase {
 
     try await AgentRegistrar.unregister(service: service)
 
-    XCTAssertEqual(service.status, .notFound)
-    XCTAssertEqual(service.unregistrationCallCount, 0)
+    #expect(service.status == .notFound)
+    #expect(service.unregistrationCallCount == 0)
   }
 
+  @Test
   @MainActor
-  func testUnregisterPreservesUnderlyingError() async {
+  func unregisterPreservesUnderlyingError() async {
     let service = FakeAgentRegistrationService(
       status: .enabled,
       statusAfterRegistration: .enabled,
@@ -93,11 +100,11 @@ final class AgentRegistrarTests: XCTestCase {
 
     do {
       try await AgentRegistrar.unregister(service: service)
-      XCTFail("Expected unregister to throw.")
+      Issue.record("Expected unregister to throw.")
     } catch {
-      XCTAssertEqual(error.localizedDescription, "Registration failed for testing.")
+      #expect(error.localizedDescription == "Registration failed for testing.")
     }
-    XCTAssertEqual(service.unregistrationCallCount, 1)
+    #expect(service.unregistrationCallCount == 1)
   }
 }
 

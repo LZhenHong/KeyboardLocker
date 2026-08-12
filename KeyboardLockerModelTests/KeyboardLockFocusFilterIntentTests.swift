@@ -1,13 +1,16 @@
 import Foundation
 import SystemSurfaces
-import XCTest
+import Testing
 
-final class KeyboardLockFocusFilterIntentTests: XCTestCase {
-  func testDefaultFilterDoesNotRequestALock() {
-    XCTAssertFalse(KeyboardLockFocusFilterIntent().lockKeyboard)
+@Suite(.serialized)
+struct KeyboardLockFocusFilterIntentTests {
+  @Test
+  func defaultFilterDoesNotRequestALock() {
+    #expect(!KeyboardLockFocusFilterIntent().lockKeyboard)
   }
 
-  func testEnabledFilterForwardsTrueToAgent() async throws {
+  @Test
+  func enabledFilterForwardsTrueToAgent() async throws {
     let client = FakeAgentFocusLockClient()
     let surfaces = FocusSurfaceRecorder()
 
@@ -18,11 +21,12 @@ final class KeyboardLockFocusFilterIntentTests: XCTestCase {
     ).perform()
 
     let receivedValues = await client.receivedValues
-    XCTAssertEqual(receivedValues, [true])
-    XCTAssertEqual(surfaces.calls, [.widget, .control])
+    #expect(receivedValues == [true])
+    #expect(surfaces.calls == [.widget, .control])
   }
 
-  func testDisabledFilterForwardsFalseToAgent() async throws {
+  @Test
+  func disabledFilterForwardsFalseToAgent() async throws {
     let client = FakeAgentFocusLockClient()
     let surfaces = FocusSurfaceRecorder()
 
@@ -33,11 +37,12 @@ final class KeyboardLockFocusFilterIntentTests: XCTestCase {
     ).perform()
 
     let receivedValues = await client.receivedValues
-    XCTAssertEqual(receivedValues, [false])
-    XCTAssertEqual(surfaces.calls, [.widget, .control])
+    #expect(receivedValues == [false])
+    #expect(surfaces.calls == [.widget, .control])
   }
 
-  func testAgentFailureIsPropagated() async {
+  @Test
+  func agentFailureIsPropagated() async {
     let client = FakeAgentFocusLockClient(error: FocusIntentTestError.unavailable)
     let surfaces = FocusSurfaceRecorder()
 
@@ -47,12 +52,12 @@ final class KeyboardLockFocusFilterIntentTests: XCTestCase {
         client: client,
         surfaceInvalidator: surfaces.invalidator
       ).perform()
-      XCTFail("Expected the Agent error to be propagated.")
+      Issue.record("Expected the Agent error to be propagated.")
     } catch {
-      XCTAssertEqual(error as? FocusIntentTestError, .unavailable)
+      #expect(error as? FocusIntentTestError == .unavailable)
     }
 
-    XCTAssertTrue(surfaces.calls.isEmpty)
+    #expect(surfaces.calls.isEmpty)
   }
 }
 

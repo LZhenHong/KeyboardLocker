@@ -1,9 +1,11 @@
 import Client
-import XCTest
+import Testing
 
-final class ExternalAutomationControllerTests: XCTestCase {
+@Suite(.serialized)
+struct ExternalAutomationControllerTests {
+  @Test
   @MainActor
-  func testLockInvokesOnlyLockCapability() async {
+  func lockInvokesOnlyLockCapability() async {
     let client = RecordingExternalAutomationClient(isLocked: false)
     let presenter = RecordingExternalAutomationPresenter()
     let controller = ExternalAutomationController(client: client, presenter: presenter)
@@ -11,14 +13,15 @@ final class ExternalAutomationControllerTests: XCTestCase {
     controller.submit(.lock, source: .service)
     await controller.waitUntilIdle()
 
-    XCTAssertEqual(client.calls, [.lock])
-    XCTAssertTrue(client.isLocked)
-    XCTAssertTrue(presenter.statuses.isEmpty)
-    XCTAssertTrue(presenter.failureBatches.isEmpty)
+    #expect(client.calls == [.lock])
+    #expect(client.isLocked)
+    #expect(presenter.statuses.isEmpty)
+    #expect(presenter.failureBatches.isEmpty)
   }
 
+  @Test
   @MainActor
-  func testUnlockInvokesOnlyUnlockCapability() async {
+  func unlockInvokesOnlyUnlockCapability() async {
     let client = RecordingExternalAutomationClient(isLocked: true)
     let presenter = RecordingExternalAutomationPresenter()
     let controller = ExternalAutomationController(client: client, presenter: presenter)
@@ -26,12 +29,13 @@ final class ExternalAutomationControllerTests: XCTestCase {
     controller.submit(.unlock, source: .service)
     await controller.waitUntilIdle()
 
-    XCTAssertEqual(client.calls, [.unlock])
-    XCTAssertFalse(client.isLocked)
+    #expect(client.calls == [.unlock])
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testStatusPresentsAuthoritativeAgentValue() async {
+  func statusPresentsAuthoritativeAgentValue() async {
     let client = RecordingExternalAutomationClient(isLocked: true)
     let presenter = RecordingExternalAutomationPresenter()
     let controller = ExternalAutomationController(client: client, presenter: presenter)
@@ -39,13 +43,14 @@ final class ExternalAutomationControllerTests: XCTestCase {
     controller.submit(.status, source: .service)
     await controller.waitUntilIdle()
 
-    XCTAssertEqual(client.calls, [.status])
-    XCTAssertEqual(presenter.statuses, [.init(isLocked: true, source: .service)])
-    XCTAssertTrue(presenter.failureBatches.isEmpty)
+    #expect(client.calls == [.status])
+    #expect(presenter.statuses == [.init(isLocked: true, source: .service)])
+    #expect(presenter.failureBatches.isEmpty)
   }
 
+  @Test
   @MainActor
-  func testAgentFailureIncludesRecoverySuggestion() async {
+  func agentFailureIncludesRecoverySuggestion() async {
     let client = RecordingExternalAutomationClient(
       isLocked: false,
       error: XPCClientError.serviceUnavailable
@@ -57,13 +62,14 @@ final class ExternalAutomationControllerTests: XCTestCase {
     await controller.waitUntilIdle()
 
     let batch = presenter.failureBatches.first
-    XCTAssertEqual(batch?.source, .service)
-    XCTAssertTrue(batch?.failures.first?.message.contains("not reachable") == true)
-    XCTAssertTrue(batch?.failures.first?.message.contains("Open KeyboardLocker once") == true)
+    #expect(batch?.source == .service)
+    #expect(batch?.failures.first?.message.contains("not reachable") == true)
+    #expect(batch?.failures.first?.message.contains("Open KeyboardLocker once") == true)
   }
 
+  @Test
   @MainActor
-  func testBatchPreservesDesiredStateOrder() async {
+  func batchPreservesDesiredStateOrder() async {
     let client = RecordingExternalAutomationClient(isLocked: false)
     let controller = ExternalAutomationController(
       client: client,
@@ -73,12 +79,13 @@ final class ExternalAutomationControllerTests: XCTestCase {
     controller.submit([.lock, .status, .unlock], source: .urlScheme)
     await controller.waitUntilIdle()
 
-    XCTAssertEqual(client.calls, [.lock, .status, .unlock])
-    XCTAssertFalse(client.isLocked)
+    #expect(client.calls == [.lock, .status, .unlock])
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testRejectedRequestIsPresentedWithoutCallingAgent() async {
+  func rejectedRequestIsPresentedWithoutCallingAgent() async {
     let client = RecordingExternalAutomationClient(isLocked: false)
     let presenter = RecordingExternalAutomationPresenter()
     let controller = ExternalAutomationController(client: client, presenter: presenter)
@@ -89,15 +96,16 @@ final class ExternalAutomationControllerTests: XCTestCase {
     )
     await controller.waitUntilIdle()
 
-    XCTAssertTrue(client.calls.isEmpty)
-    XCTAssertEqual(
-      presenter.failureBatches,
-      [.init(failures: [.init(message: "Invalid URL")], source: .urlScheme)]
+    #expect(client.calls.isEmpty)
+    #expect(
+      presenter.failureBatches ==
+        [.init(failures: [.init(message: "Invalid URL")], source: .urlScheme)]
     )
   }
 
+  @Test
   @MainActor
-  func testSeparateSubmissionsStaySerializedWhileFirstActionIsSuspended() async {
+  func separateSubmissionsStaySerializedWhileFirstActionIsSuspended() async {
     let gate = AsyncGate()
     let client = RecordingExternalAutomationClient(isLocked: false, lockGate: gate)
     let controller = ExternalAutomationController(
@@ -110,31 +118,33 @@ final class ExternalAutomationControllerTests: XCTestCase {
     controller.submit(.unlock, source: .service)
     await Task.yield()
 
-    XCTAssertEqual(client.calls, [.lock])
+    #expect(client.calls == [.lock])
 
     await gate.open()
     await controller.waitUntilIdle()
 
-    XCTAssertEqual(client.calls, [.lock, .unlock])
-    XCTAssertFalse(client.isLocked)
+    #expect(client.calls == [.lock, .unlock])
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testSubmitAndWaitReturnsNilWhenActionSucceeds() async {
+  func submitAndWaitReturnsNilWhenActionSucceeds() async {
     let client = RecordingExternalAutomationClient(isLocked: false)
     let presenter = RecordingExternalAutomationPresenter()
     let controller = ExternalAutomationController(client: client, presenter: presenter)
 
     let failure = await controller.submitAndWait(.lock, source: .service)
 
-    XCTAssertNil(failure)
-    XCTAssertEqual(client.calls, [.lock])
-    XCTAssertTrue(client.isLocked)
-    XCTAssertTrue(presenter.failureBatches.isEmpty)
+    #expect(failure == nil)
+    #expect(client.calls == [.lock])
+    #expect(client.isLocked)
+    #expect(presenter.failureBatches.isEmpty)
   }
 
+  @Test
   @MainActor
-  func testSubmitAndWaitReturnsFailureWithoutPresentingIt() async {
+  func submitAndWaitReturnsFailureWithoutPresentingIt() async {
     let client = RecordingExternalAutomationClient(
       isLocked: false,
       error: XPCClientError.serviceUnavailable
@@ -144,12 +154,13 @@ final class ExternalAutomationControllerTests: XCTestCase {
 
     let failure = await controller.submitAndWait(.lock, source: .service)
 
-    XCTAssertTrue(failure?.message.contains("not reachable") == true)
-    XCTAssertTrue(presenter.failureBatches.isEmpty)
+    #expect(failure?.message.contains("not reachable") == true)
+    #expect(presenter.failureBatches.isEmpty)
   }
 
+  @Test
   @MainActor
-  func testSubmitAndWaitStaysSerializedBehindPendingSubmission() async {
+  func submitAndWaitStaysSerializedBehindPendingSubmission() async {
     let gate = AsyncGate()
     let client = RecordingExternalAutomationClient(isLocked: false, lockGate: gate)
     let controller = ExternalAutomationController(
@@ -163,14 +174,14 @@ final class ExternalAutomationControllerTests: XCTestCase {
     async let awaitedFailure = controller.submitAndWait(.unlock, source: .service)
     await Task.yield()
 
-    XCTAssertEqual(client.calls, [.lock])
+    #expect(client.calls == [.lock])
 
     await gate.open()
     let failure = await awaitedFailure
 
-    XCTAssertNil(failure)
-    XCTAssertEqual(client.calls, [.lock, .unlock])
-    XCTAssertFalse(client.isLocked)
+    #expect(failure == nil)
+    #expect(client.calls == [.lock, .unlock])
+    #expect(!client.isLocked)
   }
 }
 

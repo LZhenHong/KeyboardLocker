@@ -1,18 +1,21 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerWidgetTimelineTests: XCTestCase {
+@Suite(.serialized)
+struct KeyboardLockerWidgetTimelineTests {
   private let now = Date(timeIntervalSinceReferenceDate: 10000)
 
-  func testRegularRefreshUsesBudgetFriendlyFallbackInterval() {
-    XCTAssertEqual(
-      KeyboardLockerWidgetSnapshotLoader.regularRefreshInterval,
-      15 * 60
+  @Test
+  func regularRefreshUsesBudgetFriendlyFallbackInterval() {
+    #expect(
+      KeyboardLockerWidgetSnapshotLoader.regularRefreshInterval ==
+        15 * 60
     )
   }
 
-  func testLoaderPublishesAuthoritativeSnapshot() async {
+  @Test
+  func loaderPublishesAuthoritativeSnapshot() async {
     let snapshot = LockStatusSnapshot(
       capturedAt: now,
       isLocked: true,
@@ -26,10 +29,11 @@ final class KeyboardLockerWidgetTimelineTests: XCTestCase {
 
     let entry = await loader.entry(at: now)
 
-    XCTAssertEqual(entry, KeyboardLockerWidgetEntry(date: now, state: .available(snapshot)))
+    #expect(entry == KeyboardLockerWidgetEntry(date: now, state: .available(snapshot)))
   }
 
-  func testLoaderPublishesExplicitUnavailableState() async {
+  @Test
+  func loaderPublishesExplicitUnavailableState() async {
     let loader = KeyboardLockerWidgetSnapshotLoader {
       throw XPCClientError.serviceUnavailable
     }
@@ -37,13 +41,15 @@ final class KeyboardLockerWidgetTimelineTests: XCTestCase {
     let entry = await loader.entry(at: now)
 
     guard case let .unavailable(message) = entry.state else {
-      return XCTFail("Expected an unavailable entry.")
+      Issue.record("Expected an unavailable entry.")
+      return
     }
-    XCTAssertTrue(message.contains("The KeyboardLocker agent is not reachable."))
-    XCTAssertTrue(message.contains("Open KeyboardLocker once"))
+    #expect(message.contains("The KeyboardLocker agent is not reachable."))
+    #expect(message.contains("Open KeyboardLocker once"))
   }
 
-  func testRefreshReconcilesImmediatelyAfterEarlierAutoUnlockDeadline() {
+  @Test
+  func refreshReconcilesImmediatelyAfterEarlierAutoUnlockDeadline() {
     let deadline = now.addingTimeInterval(20)
     let snapshot = LockStatusSnapshot(
       capturedAt: now,
@@ -57,13 +63,14 @@ final class KeyboardLockerWidgetTimelineTests: XCTestCase {
       snapshot
     }
 
-    XCTAssertEqual(
-      loader.nextRefreshDate(after: entry, now: now),
-      deadline.addingTimeInterval(1)
+    #expect(
+      loader.nextRefreshDate(after: entry, now: now) ==
+        deadline.addingTimeInterval(1)
     )
   }
 
-  func testRefreshUsesRegularIntervalWithoutEarlierDeadline() {
+  @Test
+  func refreshUsesRegularIntervalWithoutEarlierDeadline() {
     let snapshot = LockStatusSnapshot(
       capturedAt: now,
       isLocked: false,
@@ -76,9 +83,9 @@ final class KeyboardLockerWidgetTimelineTests: XCTestCase {
       snapshot
     }
 
-    XCTAssertEqual(
-      loader.nextRefreshDate(after: entry, now: now),
-      now.addingTimeInterval(KeyboardLockerWidgetSnapshotLoader.regularRefreshInterval)
+    #expect(
+      loader.nextRefreshDate(after: entry, now: now) ==
+        now.addingTimeInterval(KeyboardLockerWidgetSnapshotLoader.regularRefreshInterval)
     )
   }
 }

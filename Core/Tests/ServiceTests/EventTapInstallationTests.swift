@@ -1,64 +1,52 @@
 @testable import Service
-import XCTest
+import Testing
 
-final class EventTapInstallationTests: XCTestCase {
-  func testMissingTapHasNoResourcesToRollBack() {
+@Suite(.serialized)
+struct EventTapInstallationTests {
+  @Test
+  func missingTapHasNoResourcesToRollBack() {
     var actions: [String] = []
 
-    XCTAssertThrowsError(
-      try makeInstallation(
+    #expect(throws: EventTapInstallationError.eventTapCreationFailed) {
+      try self.makeInstallation(
         actions: &actions,
         tap: nil,
         source: 2,
         isEnabled: true
       )
-    ) { error in
-      XCTAssertEqual(
-        error as? EventTapInstallationError,
-        .eventTapCreationFailed
-      )
     }
-    XCTAssertEqual(actions, ["createTap"])
+    #expect(actions == ["createTap"])
   }
 
-  func testMissingSourceInvalidatesCreatedTap() {
+  @Test
+  func missingSourceInvalidatesCreatedTap() {
     var actions: [String] = []
 
-    XCTAssertThrowsError(
-      try makeInstallation(
+    #expect(throws: EventTapInstallationError.runLoopSourceCreationFailed) {
+      try self.makeInstallation(
         actions: &actions,
         tap: 1,
         source: nil,
         isEnabled: true
       )
-    ) { error in
-      XCTAssertEqual(
-        error as? EventTapInstallationError,
-        .runLoopSourceCreationFailed
-      )
     }
-    XCTAssertEqual(actions, ["createTap", "createSource", "invalidateTap"])
+    #expect(actions == ["createTap", "createSource", "invalidateTap"])
   }
 
-  func testDisabledTapDetachesSourceBeforeInvalidatingTap() {
+  @Test
+  func disabledTapDetachesSourceBeforeInvalidatingTap() {
     var actions: [String] = []
 
-    XCTAssertThrowsError(
-      try makeInstallation(
+    #expect(throws: EventTapInstallationError.eventTapEnableFailed) {
+      try self.makeInstallation(
         actions: &actions,
         tap: 1,
         source: 2,
         isEnabled: false
       )
-    ) { error in
-      XCTAssertEqual(
-        error as? EventTapInstallationError,
-        .eventTapEnableFailed
-      )
     }
-    XCTAssertEqual(
-      actions,
-      [
+    #expect(
+      actions == [
         "createTap",
         "createSource",
         "attachSource",
@@ -70,7 +58,8 @@ final class EventTapInstallationTests: XCTestCase {
     )
   }
 
-  func testSuccessfulInstallationTransfersResourceOwnership() throws {
+  @Test
+  func successfulInstallationTransfersResourceOwnership() throws {
     var actions: [String] = []
 
     let installation = try makeInstallation(
@@ -80,11 +69,10 @@ final class EventTapInstallationTests: XCTestCase {
       isEnabled: true
     )
 
-    XCTAssertEqual(installation.tap, 1)
-    XCTAssertEqual(installation.source, 2)
-    XCTAssertEqual(
-      actions,
-      [
+    #expect(installation.tap == 1)
+    #expect(installation.source == 2)
+    #expect(
+      actions == [
         "createTap",
         "createSource",
         "attachSource",

@@ -1,9 +1,11 @@
 @testable import Client
 import Foundation
-import XCTest
+import Testing
 
-final class UnlockStatusPollerTests: XCTestCase {
-  func testReturnsImmediatelyWhenAlreadyUnlocked() async throws {
+@Suite(.serialized)
+struct UnlockStatusPollerTests {
+  @Test
+  func returnsImmediatelyWhenAlreadyUnlocked() async throws {
     let source = ScriptedStatusSource([.value(false)])
     let resetRecorder = ResetRecorder()
     let sleepRecorder = SleepRecorder()
@@ -17,12 +19,13 @@ final class UnlockStatusPollerTests: XCTestCase {
 
     let fetchCount = await source.fetchCount
     let sleepCount = await sleepRecorder.count
-    XCTAssertEqual(fetchCount, 1)
-    XCTAssertEqual(resetRecorder.count, 0)
-    XCTAssertEqual(sleepCount, 0)
+    #expect(fetchCount == 1)
+    #expect(resetRecorder.count == 0)
+    #expect(sleepCount == 0)
   }
 
-  func testKeepsPollingUntilAuthoritativeStateIsUnlocked() async throws {
+  @Test
+  func keepsPollingUntilAuthoritativeStateIsUnlocked() async throws {
     let source = ScriptedStatusSource([.value(true), .value(false)])
     let resetRecorder = ResetRecorder()
     let sleepRecorder = SleepRecorder()
@@ -36,12 +39,13 @@ final class UnlockStatusPollerTests: XCTestCase {
 
     let fetchCount = await source.fetchCount
     let sleepCount = await sleepRecorder.count
-    XCTAssertEqual(fetchCount, 2)
-    XCTAssertEqual(resetRecorder.count, 0)
-    XCTAssertEqual(sleepCount, 1)
+    #expect(fetchCount == 2)
+    #expect(resetRecorder.count == 0)
+    #expect(sleepCount == 1)
   }
 
-  func testTransientFailureResetsConnectionAndCanRecoverAsUnlocked() async throws {
+  @Test
+  func transientFailureResetsConnectionAndCanRecoverAsUnlocked() async throws {
     let source = ScriptedStatusSource([
       .failure(.first),
       .value(false),
@@ -58,12 +62,13 @@ final class UnlockStatusPollerTests: XCTestCase {
 
     let fetchCount = await source.fetchCount
     let sleepCount = await sleepRecorder.count
-    XCTAssertEqual(fetchCount, 2)
-    XCTAssertEqual(resetRecorder.count, 1)
-    XCTAssertEqual(sleepCount, 1)
+    #expect(fetchCount == 2)
+    #expect(resetRecorder.count == 1)
+    #expect(sleepCount == 1)
   }
 
-  func testSuccessfulLockedReadClearsConsecutiveFailureCount() async throws {
+  @Test
+  func successfulLockedReadClearsConsecutiveFailureCount() async throws {
     let source = ScriptedStatusSource([
       .failure(.first),
       .value(true),
@@ -85,12 +90,13 @@ final class UnlockStatusPollerTests: XCTestCase {
 
     let fetchCount = await source.fetchCount
     let sleepCount = await sleepRecorder.count
-    XCTAssertEqual(fetchCount, 6)
-    XCTAssertEqual(resetRecorder.count, 3)
-    XCTAssertEqual(sleepCount, 5)
+    #expect(fetchCount == 6)
+    #expect(resetRecorder.count == 3)
+    #expect(sleepCount == 5)
   }
 
-  func testThrowsLastErrorAfterMaximumConsecutiveFailures() async {
+  @Test
+  func throwsLastErrorAfterMaximumConsecutiveFailures() async {
     let source = ScriptedStatusSource([
       .failure(.first),
       .failure(.second),
@@ -106,16 +112,16 @@ final class UnlockStatusPollerTests: XCTestCase {
 
     do {
       try await poller.waitUntilUnlocked()
-      XCTFail("Expected polling to fail")
+      Issue.record("Expected polling to fail")
     } catch {
-      XCTAssertEqual(error as? TestFailure, .third)
+      #expect(error as? TestFailure == .third)
     }
 
     let fetchCount = await source.fetchCount
     let sleepCount = await sleepRecorder.count
-    XCTAssertEqual(fetchCount, 3)
-    XCTAssertEqual(resetRecorder.count, 3)
-    XCTAssertEqual(sleepCount, 2)
+    #expect(fetchCount == 3)
+    #expect(resetRecorder.count == 3)
+    #expect(sleepCount == 2)
   }
 
   private func makePoller(
@@ -156,7 +162,7 @@ private actor ScriptedStatusSource {
   func fetch() throws -> Bool {
     fetchCount += 1
     guard !outcomes.isEmpty else {
-      XCTFail("Status source exhausted")
+      Issue.record("Status source exhausted")
       throw TestFailure.sourceExhausted
     }
 

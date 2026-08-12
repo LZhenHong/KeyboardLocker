@@ -1,8 +1,9 @@
-import XCTest
+import Testing
 
-@available(macOS 14.0, *)
-final class KeyboardLockerInteractiveWidgetTests: XCTestCase {
-  func testIntentUsesExplicitLockedStateThenReloads() async throws {
+@Suite(.serialized)
+struct KeyboardLockerInteractiveWidgetTests {
+  @Test
+  func intentUsesExplicitLockedStateThenReloads() async throws {
     let recorder = CallRecorder()
     let intent = SetKeyboardLockWidgetIntent(
       desiredIsLocked: true,
@@ -12,10 +13,11 @@ final class KeyboardLockerInteractiveWidgetTests: XCTestCase {
     _ = try await intent.perform()
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.lock, .reload])
+    #expect(calls == [.lock, .reload])
   }
 
-  func testIntentUsesExplicitUnlockedStateThenReloads() async throws {
+  @Test
+  func intentUsesExplicitUnlockedStateThenReloads() async throws {
     let recorder = CallRecorder()
     let intent = SetKeyboardLockWidgetIntent(
       desiredIsLocked: false,
@@ -25,10 +27,11 @@ final class KeyboardLockerInteractiveWidgetTests: XCTestCase {
     _ = try await intent.perform()
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.unlock, .reload])
+    #expect(calls == [.unlock, .reload])
   }
 
-  func testIntentPropagatesFailureWithoutReloading() async {
+  @Test
+  func intentPropagatesFailureWithoutReloading() async {
     let recorder = CallRecorder()
     let intent = SetKeyboardLockWidgetIntent(
       desiredIsLocked: true,
@@ -48,13 +51,13 @@ final class KeyboardLockerInteractiveWidgetTests: XCTestCase {
 
     do {
       _ = try await intent.perform()
-      XCTFail("Expected the intent to propagate the Agent failure.")
+      Issue.record("Expected the intent to propagate the Agent failure.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.lock])
+    #expect(calls == [.lock])
   }
 
   private func makeAction(recorder: CallRecorder) -> KeyboardLockerControlAction {
@@ -72,7 +75,6 @@ final class KeyboardLockerInteractiveWidgetTests: XCTestCase {
   }
 }
 
-@available(macOS 14.0, *)
 private extension KeyboardLockerInteractiveWidgetTests {
   enum TestError: Error {
     case expected

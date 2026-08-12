@@ -1,25 +1,22 @@
 @testable import Common
 import Security
-import XCTest
+import Testing
 
-final class XPCCodeSigningRequirementTests: XCTestCase {
-  func testAuthorizedClientIdentifiersAreExactAndNamespaced() {
-    XCTAssertEqual(
-      SharedConstants.authorizedClientBundleIdentifiers,
-      [
-        "io.lzhlovesjyq.keyboardlocker",
-        "io.lzhlovesjyq.keyboardlocker.focus-intents",
-        "io.lzhlovesjyq.keyboardlocker.klock",
-        "io.lzhlovesjyq.keyboardlocker.widgets",
-      ]
-    )
-    XCTAssertEqual(
-      SharedConstants.agentBundleIdentifier,
-      "io.lzhlovesjyq.keyboardlocker.agent"
-    )
+@Suite(.serialized)
+struct XPCCodeSigningRequirementTests {
+  @Test
+  func authorizedClientIdentifiersAreExactAndNamespaced() {
+    #expect(SharedConstants.authorizedClientBundleIdentifiers == [
+      "io.lzhlovesjyq.keyboardlocker",
+      "io.lzhlovesjyq.keyboardlocker.focus-intents",
+      "io.lzhlovesjyq.keyboardlocker.klock",
+      "io.lzhlovesjyq.keyboardlocker.widgets",
+    ])
+    #expect(SharedConstants.agentBundleIdentifier == "io.lzhlovesjyq.keyboardlocker.agent")
   }
 
-  func testRequirementUsesExactTeamAndIdentifiersInStableOrder() throws {
+  @Test
+  func requirementUsesExactTeamAndIdentifiersInStableOrder() throws {
     let requirement = try XPCCodeSigningRequirement.make(
       teamIdentifier: "A1B2C3D4E5",
       identifiers: [
@@ -28,53 +25,52 @@ final class XPCCodeSigningRequirementTests: XCTestCase {
       ]
     )
 
-    XCTAssertEqual(
-      requirement,
-      """
+    #expect(requirement == """
       anchor apple generic and certificate leaf[subject.OU] = "A1B2C3D4E5" and \
       (identifier "io.example.app" or identifier "io.example.tool")
       """
     )
 
     var compiledRequirement: SecRequirement?
-    XCTAssertEqual(
+    #expect(
       SecRequirementCreateWithString(
         requirement as CFString,
         SecCSFlags(),
         &compiledRequirement
-      ),
-      errSecSuccess
+      ) == errSecSuccess
     )
-    XCTAssertNotNil(compiledRequirement)
+    #expect(compiledRequirement != nil)
   }
 
-  func testRequirementRejectsInvalidTeamIdentifiers() {
-    XCTAssertThrowsError(
+  @Test
+  func requirementRejectsInvalidTeamIdentifiers() {
+    #expect(throws: (any Error).self) {
       try XPCCodeSigningRequirement.make(
         teamIdentifier: "too-short",
         identifiers: ["io.example.app"]
       )
-    )
-    XCTAssertThrowsError(
+    }
+    #expect(throws: (any Error).self) {
       try XPCCodeSigningRequirement.make(
         teamIdentifier: "a1b2c3d4e5",
         identifiers: ["io.example.app"]
       )
-    )
+    }
   }
 
-  func testRequirementRejectsMissingOrUnsafeSigningIdentifiers() {
-    XCTAssertThrowsError(
+  @Test
+  func requirementRejectsMissingOrUnsafeSigningIdentifiers() {
+    #expect(throws: (any Error).self) {
       try XPCCodeSigningRequirement.make(
         teamIdentifier: "A1B2C3D4E5",
         identifiers: []
       )
-    )
-    XCTAssertThrowsError(
+    }
+    #expect(throws: (any Error).self) {
       try XPCCodeSigningRequirement.make(
         teamIdentifier: "A1B2C3D4E5",
         identifiers: [#"io.example."injected"#]
       )
-    )
+    }
   }
 }

@@ -1,169 +1,179 @@
 @testable import Client
-import XCTest
+import Foundation
+import Testing
 
-final class LockStateSubscriberTests: XCTestCase {
-  func testSubscriptionCalibratesImmediatelyAfterInstallingObservers() async {
+@Suite(.serialized)
+struct LockStateSubscriberTests {
+  @Test
+  func subscriptionCalibratesImmediatelyAfterInstallingObservers() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedInitialState = expectation(description: "Received initial authoritative state")
-    let recorder = StateRecorder {
-      receivedInitialState.fulfill()
+    try await confirmation("Received initial authoritative state") { receivedInitialState in
+      let recorder = StateRecorder {
+        receivedInitialState()
+      }
+
+      let token = LockStateSubscriber.subscribe(
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      await fetcher.waitUntilStarted(1)
+      try await fetcher.resolveFetch(0, with: true)
+      await recorder.waitUntilCount(1)
+
+      #expect(recorder.values == [true])
+      withExtendedLifetime(token) {}
     }
-
-    let token = LockStateSubscriber.subscribe(
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    await fetcher.waitUntilStarted(1)
-    await fetcher.resolveFetch(0, with: true)
-    await fulfillment(of: [receivedInitialState], timeout: 1)
-
-    XCTAssertEqual(recorder.values, [true])
-    withExtendedLifetime(token) {}
   }
 
-  func testInitialCalibrationMatchingSeedIsNotRedelivered() async {
+  @Test
+  func initialCalibrationMatchingSeedIsNotRedelivered() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedState = expectation(description: "Did not redeliver seeded state")
-    receivedState.isInverted = true
-    let recorder = StateRecorder {
-      receivedState.fulfill()
+    try await confirmation("Did not redeliver seeded state", expectedCount: 0) { receivedState in
+      let recorder = StateRecorder {
+        receivedState()
+      }
+
+      let token = LockStateSubscriber.subscribe(
+        initialState: true,
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      await fetcher.waitUntilStarted(1)
+      try await fetcher.resolveFetch(0, with: true)
+      try? await Task.sleep(for: .milliseconds(100))
+
+      #expect(recorder.values.isEmpty)
+      withExtendedLifetime(token) {}
     }
-
-    let token = LockStateSubscriber.subscribe(
-      initialState: true,
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    await fetcher.waitUntilStarted(1)
-    await fetcher.resolveFetch(0, with: true)
-    await fulfillment(of: [receivedState], timeout: 0.1)
-
-    XCTAssertTrue(recorder.values.isEmpty)
-    withExtendedLifetime(token) {}
   }
 
-  func testInitialCalibrationDifferingFromSeedIsDelivered() async {
+  @Test
+  func initialCalibrationDifferingFromSeedIsDelivered() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedState = expectation(description: "Received state differing from seed")
-    let recorder = StateRecorder {
-      receivedState.fulfill()
+    try await confirmation("Received state differing from seed") { receivedState in
+      let recorder = StateRecorder {
+        receivedState()
+      }
+
+      let token = LockStateSubscriber.subscribe(
+        initialState: false,
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      await fetcher.waitUntilStarted(1)
+      try await fetcher.resolveFetch(0, with: true)
+      await recorder.waitUntilCount(1)
+
+      #expect(recorder.values == [true])
+      withExtendedLifetime(token) {}
     }
-
-    let token = LockStateSubscriber.subscribe(
-      initialState: false,
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    await fetcher.waitUntilStarted(1)
-    await fetcher.resolveFetch(0, with: true)
-    await fulfillment(of: [receivedState], timeout: 1)
-
-    XCTAssertEqual(recorder.values, [true])
-    withExtendedLifetime(token) {}
   }
 
-  func testReleasingTokenSuppressesPendingCalibrationDelivery() async {
+  @Test
+  func releasingTokenSuppressesPendingCalibrationDelivery() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedState = expectation(description: "Did not receive state after cancellation")
-    receivedState.isInverted = true
-    let recorder = StateRecorder {
-      receivedState.fulfill()
+    try await confirmation("Did not receive state after cancellation", expectedCount: 0) { receivedState in
+      let recorder = StateRecorder {
+        receivedState()
+      }
+
+      var token: ObserverToken? = LockStateSubscriber.subscribe(
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      await fetcher.waitUntilStarted(1)
+      token = nil
+      try await fetcher.resolveFetch(0, with: true)
+      try? await Task.sleep(for: .milliseconds(100))
+
+      let fetchMetrics = await fetcher.metrics
+      #expect(token == nil)
+      #expect(recorder.values.isEmpty)
+      #expect(fetchMetrics.startedCount == 1)
     }
-
-    var token: ObserverToken? = LockStateSubscriber.subscribe(
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    await fetcher.waitUntilStarted(1)
-    token = nil
-    await fetcher.resolveFetch(0, with: true)
-    await fulfillment(of: [receivedState], timeout: 0.1)
-
-    let fetchMetrics = await fetcher.metrics
-    XCTAssertNil(token)
-    XCTAssertTrue(recorder.values.isEmpty)
-    XCTAssertEqual(fetchMetrics.startedCount, 1)
   }
 
-  func testSignalsDuringFetchAreSerializedAndCoalescedIntoOneFollowUp() async {
+  @Test
+  func signalsDuringFetchAreSerializedAndCoalescedIntoOneFollowUp() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedStates = expectation(description: "Received reconciled states")
-    receivedStates.expectedFulfillmentCount = 2
-    let recorder = StateRecorder {
-      receivedStates.fulfill()
+    try await confirmation("Received reconciled states", expectedCount: 2) { receivedStates in
+      let recorder = StateRecorder {
+        receivedStates()
+      }
+      let reconciler = StateReconciler(
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      reconciler.signal()
+      await fetcher.waitUntilStarted(1)
+
+      reconciler.signal()
+      reconciler.signal()
+      reconciler.signal()
+      await Task.yield()
+
+      var fetchMetrics = await fetcher.metrics
+      #expect(fetchMetrics.startedCount == 1)
+      #expect(fetchMetrics.maximumConcurrentFetches == 1)
+
+      try await fetcher.resolveFetch(0, with: false)
+      await fetcher.waitUntilStarted(2)
+
+      fetchMetrics = await fetcher.metrics
+      #expect(fetchMetrics.startedCount == 2)
+      #expect(fetchMetrics.maximumConcurrentFetches == 1)
+
+      try await fetcher.resolveFetch(1, with: true)
+      await recorder.waitUntilCount(2)
+      await Task.yield()
+
+      fetchMetrics = await fetcher.metrics
+      #expect(recorder.values == [false, true])
+      #expect(fetchMetrics.startedCount == 2)
+      #expect(fetchMetrics.maximumConcurrentFetches == 1)
     }
-    let reconciler = StateReconciler(
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    reconciler.signal()
-    await fetcher.waitUntilStarted(1)
-
-    reconciler.signal()
-    reconciler.signal()
-    reconciler.signal()
-    await Task.yield()
-
-    var fetchMetrics = await fetcher.metrics
-    XCTAssertEqual(fetchMetrics.startedCount, 1)
-    XCTAssertEqual(fetchMetrics.maximumConcurrentFetches, 1)
-
-    await fetcher.resolveFetch(0, with: false)
-    await fetcher.waitUntilStarted(2)
-
-    fetchMetrics = await fetcher.metrics
-    XCTAssertEqual(fetchMetrics.startedCount, 2)
-    XCTAssertEqual(fetchMetrics.maximumConcurrentFetches, 1)
-
-    await fetcher.resolveFetch(1, with: true)
-    await fulfillment(of: [receivedStates], timeout: 1)
-    await Task.yield()
-
-    fetchMetrics = await fetcher.metrics
-    XCTAssertEqual(recorder.values, [false, true])
-    XCTAssertEqual(fetchMetrics.startedCount, 2)
-    XCTAssertEqual(fetchMetrics.maximumConcurrentFetches, 1)
   }
 
-  func testConsecutiveEqualAuthoritativeStatesAreDeduplicated() async {
+  @Test
+  func consecutiveEqualAuthoritativeStatesAreDeduplicated() async throws {
     let fetcher = ControlledStateFetcher()
-    let receivedStates = expectation(description: "Received distinct states")
-    receivedStates.expectedFulfillmentCount = 2
-    let recorder = StateRecorder {
-      receivedStates.fulfill()
+    try await confirmation("Received distinct states", expectedCount: 2) { receivedStates in
+      let recorder = StateRecorder {
+        receivedStates()
+      }
+      let reconciler = StateReconciler(
+        fetchState: { try await fetcher.fetch() }
+      ) { isLocked in
+        recorder.record(isLocked)
+      }
+
+      reconciler.signal()
+      await fetcher.waitUntilStarted(1)
+      try await fetcher.resolveFetch(0, with: true)
+      await recorder.waitUntilCount(1)
+
+      reconciler.signal()
+      await fetcher.waitUntilStarted(2)
+      try await fetcher.resolveFetch(1, with: true)
+      await fetcher.waitUntilCompleted(2)
+
+      reconciler.signal()
+      await fetcher.waitUntilStarted(3)
+      try await fetcher.resolveFetch(2, with: false)
+      await recorder.waitUntilCount(2)
+
+      #expect(recorder.values == [true, false])
     }
-    let reconciler = StateReconciler(
-      fetchState: { try await fetcher.fetch() }
-    ) { isLocked in
-      recorder.record(isLocked)
-    }
-
-    reconciler.signal()
-    await fetcher.waitUntilStarted(1)
-    await fetcher.resolveFetch(0, with: true)
-    await recorder.waitUntilCount(1)
-
-    reconciler.signal()
-    await fetcher.waitUntilStarted(2)
-    await fetcher.resolveFetch(1, with: true)
-    await fetcher.waitUntilCompleted(2)
-
-    reconciler.signal()
-    await fetcher.waitUntilStarted(3)
-    await fetcher.resolveFetch(2, with: false)
-    await fulfillment(of: [receivedStates], timeout: 1)
-
-    XCTAssertEqual(recorder.values, [true, false])
   }
 }
 
@@ -194,12 +204,11 @@ private actor ControlledStateFetcher {
     }
   }
 
-  func resolveFetch(_ index: Int, with value: Bool) {
+  func resolveFetch(_ index: Int, with value: Bool) throws {
     guard continuations.indices.contains(index),
           let continuation = continuations[index]
     else {
-      XCTFail("No pending fetch at index \(index)")
-      return
+      throw ControlledStateFetcherError.noPendingFetch(index)
     }
 
     continuations[index] = nil
@@ -231,6 +240,10 @@ private actor ControlledStateFetcher {
       completionWaiters.append((count, continuation))
     }
   }
+}
+
+private enum ControlledStateFetcherError: Error {
+  case noPendingFetch(Int)
 }
 
 private final class StateRecorder: @unchecked Sendable {

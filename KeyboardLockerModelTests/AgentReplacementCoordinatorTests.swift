@@ -1,10 +1,12 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class AgentReplacementCoordinatorTests: XCTestCase {
+@Suite(.serialized)
+struct AgentReplacementCoordinatorTests {
+  @Test
   @MainActor
-  func testSafePlanPreparesAndCommitsBeforeRestarting() async {
+  func safePlanPreparesAndCommitsBeforeRestarting() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -21,19 +23,20 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
 
     _ = await coordinator.replace(plan)
 
-    XCTAssertEqual(log.steps, [.prepare, .commit, .restart, .resetConnection])
-    XCTAssertEqual(client.prepareCalls.count, 1)
-    XCTAssertEqual(client.prepareCalls.first?.unlockIfNeeded, true)
-    XCTAssertEqual(
-      client.prepareCalls.first?.expectedAgentInstanceID,
-      descriptor.agentInstanceID
+    #expect(log.steps == [.prepare, .commit, .restart, .resetConnection])
+    #expect(client.prepareCalls.count == 1)
+    #expect(client.prepareCalls.first?.unlockIfNeeded == true)
+    #expect(
+      client.prepareCalls.first?.expectedAgentInstanceID ==
+        descriptor.agentInstanceID
     )
-    XCTAssertEqual(client.committedTickets, [ticket])
-    XCTAssertTrue(client.cancelledTickets.isEmpty)
+    #expect(client.committedTickets == [ticket])
+    #expect(client.cancelledTickets.isEmpty)
   }
 
+  @Test
   @MainActor
-  func testSafePlanRestartSuccessReturnsRestartedAndResetsConnection() async {
+  func safePlanRestartSuccessReturnsRestartedAndResetsConnection() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -51,15 +54,16 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .restarted(previousAgentInstanceID) = outcome else {
-      XCTFail("Expected .restarted, got \(outcome).")
+      Issue.record("Expected .restarted, got \(outcome).")
       return
     }
-    XCTAssertEqual(previousAgentInstanceID, descriptor.agentInstanceID)
-    XCTAssertEqual(client.resetConnectionCallCount, 1)
+    #expect(previousAgentInstanceID == descriptor.agentInstanceID)
+    #expect(client.resetConnectionCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testCommittedSafePlanRestartFailureDoesNotCancelPreparation() async {
+  func committedSafePlanRestartFailureDoesNotCancelPreparation() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -78,18 +82,19 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .registration(state) = outcome else {
-      XCTFail("Expected .registration, got \(outcome).")
+      Issue.record("Expected .registration, got \(outcome).")
       return
     }
-    XCTAssertEqual(state, .approvalRequired)
-    XCTAssertEqual(client.committedTickets, [ticket])
-    XCTAssertTrue(client.cancelledTickets.isEmpty)
-    XCTAssertEqual(client.resetConnectionCallCount, 1)
-    XCTAssertEqual(log.steps, [.prepare, .commit, .restart, .resetConnection])
+    #expect(state == .approvalRequired)
+    #expect(client.committedTickets == [ticket])
+    #expect(client.cancelledTickets.isEmpty)
+    #expect(client.resetConnectionCallCount == 1)
+    #expect(log.steps == [.prepare, .commit, .restart, .resetConnection])
   }
 
+  @Test
   @MainActor
-  func testPrepareFailureReportsFailedWithCurrentLockState() async {
+  func prepareFailureReportsFailedWithCurrentLockState() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -109,18 +114,19 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .failed(error, currentLockState) = outcome else {
-      XCTFail("Expected .failed, got \(outcome).")
+      Issue.record("Expected .failed, got \(outcome).")
       return
     }
-    XCTAssertEqual(error as? TestError, .expected)
-    XCTAssertEqual(currentLockState, true)
-    XCTAssertTrue(client.cancelledTickets.isEmpty)
-    XCTAssertEqual(client.statusCallCount, 1)
-    XCTAssertEqual(log.steps, [.prepare, .serviceDescriptor, .status])
+    #expect(error as? TestError == .expected)
+    #expect(currentLockState == true)
+    #expect(client.cancelledTickets.isEmpty)
+    #expect(client.statusCallCount == 1)
+    #expect(log.steps == [.prepare, .serviceDescriptor, .status])
   }
 
+  @Test
   @MainActor
-  func testCommitFailureCancelsPreparedTicketThenReportsFailed() async {
+  func commitFailureCancelsPreparedTicketThenReportsFailed() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -139,21 +145,22 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .failed(error, currentLockState) = outcome else {
-      XCTFail("Expected .failed, got \(outcome).")
+      Issue.record("Expected .failed, got \(outcome).")
       return
     }
-    XCTAssertEqual(error as? TestError, .expected)
-    XCTAssertEqual(currentLockState, false)
-    XCTAssertEqual(client.cancelledTickets, [ticket])
-    XCTAssertTrue(client.committedTickets.isEmpty)
-    XCTAssertEqual(
-      log.steps,
-      [.prepare, .commit, .cancel, .serviceDescriptor, .status]
+    #expect(error as? TestError == .expected)
+    #expect(currentLockState == false)
+    #expect(client.cancelledTickets == [ticket])
+    #expect(client.committedTickets.isEmpty)
+    #expect(
+      log.steps ==
+        [.prepare, .commit, .cancel, .serviceDescriptor, .status]
     )
   }
 
+  @Test
   @MainActor
-  func testSafePlanFailureRedetectsTrustedReplacementInProgress() async {
+  func safePlanFailureRedetectsTrustedReplacementInProgress() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -174,16 +181,17 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .replacementInProgress(reported) = outcome else {
-      XCTFail("Expected .replacementInProgress, got \(outcome).")
+      Issue.record("Expected .replacementInProgress, got \(outcome).")
       return
     }
-    XCTAssertEqual(reported, pendingDescriptor)
-    XCTAssertEqual(client.cancelledTickets, [ticket])
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(reported == pendingDescriptor)
+    #expect(client.cancelledTickets == [ticket])
+    #expect(client.statusCallCount == 0)
   }
 
+  @Test
   @MainActor
-  func testForcedPlanFailureDoesNotRedetectReplacementInProgress() async {
+  func forcedPlanFailureDoesNotRedetectReplacementInProgress() async {
     let log = ReplacementCallLog()
     let ticket = ServiceReplacementTicket(id: UUID(), agentInstanceID: UUID())
     let client = FakeAgentReplacementClient(log: log, ticket: ticket)
@@ -200,17 +208,18 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .failed(error, currentLockState) = outcome else {
-      XCTFail("Expected .failed, got \(outcome).")
+      Issue.record("Expected .failed, got \(outcome).")
       return
     }
-    XCTAssertEqual(error as? TestError, .expected)
-    XCTAssertEqual(currentLockState, true)
-    XCTAssertEqual(client.descriptorCallCount, 0)
-    XCTAssertEqual(log.steps, [.unlock, .status])
+    #expect(error as? TestError == .expected)
+    #expect(currentLockState == true)
+    #expect(client.descriptorCallCount == 0)
+    #expect(log.steps == [.unlock, .status])
   }
 
+  @Test
   @MainActor
-  func testForcedPlanWithKnownLockStateUnlocksBeforeRestarting() async {
+  func forcedPlanWithKnownLockStateUnlocksBeforeRestarting() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -228,19 +237,20 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .restarted(previousAgentInstanceID) = outcome else {
-      XCTFail("Expected .restarted, got \(outcome).")
+      Issue.record("Expected .restarted, got \(outcome).")
       return
     }
-    XCTAssertEqual(previousAgentInstanceID, descriptor.agentInstanceID)
-    XCTAssertEqual(client.unlockCallCount, 1)
-    XCTAssertTrue(client.prepareCalls.isEmpty)
-    XCTAssertTrue(client.committedTickets.isEmpty)
-    XCTAssertTrue(client.cancelledTickets.isEmpty)
-    XCTAssertEqual(log.steps, [.unlock, .restart, .resetConnection])
+    #expect(previousAgentInstanceID == descriptor.agentInstanceID)
+    #expect(client.unlockCallCount == 1)
+    #expect(client.prepareCalls.isEmpty)
+    #expect(client.committedTickets.isEmpty)
+    #expect(client.cancelledTickets.isEmpty)
+    #expect(log.steps == [.unlock, .restart, .resetConnection])
   }
 
+  @Test
   @MainActor
-  func testForcedPlanWithKnownLockStateRestartFailureReturnsRegistration() async {
+  func forcedPlanWithKnownLockStateRestartFailureReturnsRegistration() async {
     let log = ReplacementCallLog()
     let descriptor = makeDescriptor()
     let ticket = ServiceReplacementTicket(
@@ -259,17 +269,18 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .registration(state) = outcome else {
-      XCTFail("Expected .registration, got \(outcome).")
+      Issue.record("Expected .registration, got \(outcome).")
       return
     }
-    XCTAssertEqual(state, .approvalRequired)
-    XCTAssertEqual(client.unlockCallCount, 1)
-    XCTAssertTrue(client.cancelledTickets.isEmpty)
-    XCTAssertEqual(log.steps, [.unlock, .restart, .resetConnection])
+    #expect(state == .approvalRequired)
+    #expect(client.unlockCallCount == 1)
+    #expect(client.cancelledTickets.isEmpty)
+    #expect(log.steps == [.unlock, .restart, .resetConnection])
   }
 
+  @Test
   @MainActor
-  func testForcedPlanWithUnknownLockStateSkipsUnlock() async {
+  func forcedPlanWithUnknownLockStateSkipsUnlock() async {
     let log = ReplacementCallLog()
     let ticket = ServiceReplacementTicket(id: UUID(), agentInstanceID: UUID())
     let client = FakeAgentReplacementClient(log: log, ticket: ticket)
@@ -283,17 +294,18 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .restarted(previousAgentInstanceID) = outcome else {
-      XCTFail("Expected .restarted, got \(outcome).")
+      Issue.record("Expected .restarted, got \(outcome).")
       return
     }
-    XCTAssertNil(previousAgentInstanceID)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertEqual(log.steps, [.restart, .resetConnection])
+    #expect(previousAgentInstanceID == nil)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 0)
+    #expect(log.steps == [.restart, .resetConnection])
   }
 
+  @Test
   @MainActor
-  func testForcedPlanRestartFailureReturnsRegistration() async {
+  func forcedPlanRestartFailureReturnsRegistration() async {
     let log = ReplacementCallLog()
     let ticket = ServiceReplacementTicket(id: UUID(), agentInstanceID: UUID())
     let client = FakeAgentReplacementClient(log: log, ticket: ticket)
@@ -308,12 +320,12 @@ final class AgentReplacementCoordinatorTests: XCTestCase {
     let outcome = await coordinator.replace(plan)
 
     guard case let .registration(state) = outcome else {
-      XCTFail("Expected .registration, got \(outcome).")
+      Issue.record("Expected .registration, got \(outcome).")
       return
     }
-    XCTAssertEqual(state, .unavailable(.restartFailed("Restart failed for testing.")))
-    XCTAssertEqual(client.resetConnectionCallCount, 1)
-    XCTAssertEqual(log.steps, [.restart, .resetConnection])
+    #expect(state == .unavailable(.restartFailed("Restart failed for testing.")))
+    #expect(client.resetConnectionCallCount == 1)
+    #expect(log.steps == [.restart, .resetConnection])
   }
 }
 

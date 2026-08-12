@@ -1,9 +1,11 @@
 @testable import Client
 import Foundation
-import XCTest
+import Testing
 
-final class UnlockWaiterTests: XCTestCase {
-  func testNotificationUnlockCancelsInFlightPolling() async throws {
+@Suite(.serialized)
+struct UnlockWaiterTests {
+  @Test
+  func notificationUnlockCancelsInFlightPolling() async throws {
     let (stateChanges, stateContinuation) = AsyncStream.makeStream(of: Bool.self)
     let polling = ControlledPollingOperation()
     let waiter = makeWaiter(
@@ -19,11 +21,12 @@ final class UnlockWaiterTests: XCTestCase {
     stateContinuation.yield(false)
     try await waitTask.value
 
-    XCTAssertEqual(polling.cancellationCount, 1)
+    #expect(polling.cancellationCount == 1)
     stateContinuation.finish()
   }
 
-  func testPollingUnlockCancelsObservation() async throws {
+  @Test
+  func pollingUnlockCancelsObservation() async throws {
     let (stateChanges, stateContinuation) = AsyncStream.makeStream(of: Bool.self)
     let polling = ControlledPollingOperation()
     let waiter = makeWaiter(
@@ -39,11 +42,12 @@ final class UnlockWaiterTests: XCTestCase {
     polling.succeed()
     try await waitTask.value
 
-    XCTAssertEqual(polling.cancellationCount, 0)
+    #expect(polling.cancellationCount == 0)
     stateContinuation.finish()
   }
 
-  func testEndedObservationKeepsWaitingForPollingFallback() async throws {
+  @Test
+  func endedObservationKeepsWaitingForPollingFallback() async throws {
     let (stateChanges, stateContinuation) = AsyncStream.makeStream(of: Bool.self)
     let polling = ControlledPollingOperation()
     let waiter = makeWaiter(
@@ -60,10 +64,11 @@ final class UnlockWaiterTests: XCTestCase {
     polling.succeed()
 
     try await waitTask.value
-    XCTAssertEqual(polling.cancellationCount, 0)
+    #expect(polling.cancellationCount == 0)
   }
 
-  func testPollingFailureIsPropagated() async {
+  @Test
+  func pollingFailureIsPropagated() async {
     let (stateChanges, stateContinuation) = AsyncStream.makeStream(of: Bool.self)
     let polling = ControlledPollingOperation()
     let waiter = makeWaiter(
@@ -79,16 +84,17 @@ final class UnlockWaiterTests: XCTestCase {
 
     do {
       try await waitTask.value
-      XCTFail("Expected polling failure")
+      Issue.record("Expected polling failure")
     } catch {
-      XCTAssertEqual(error as? TestFailure, .pollFailed)
+      #expect(error as? TestFailure == .pollFailed)
     }
 
-    XCTAssertEqual(polling.cancellationCount, 0)
+    #expect(polling.cancellationCount == 0)
     stateContinuation.finish()
   }
 
-  func testCancellingWaitCancelsInFlightPolling() async {
+  @Test
+  func cancellingWaitCancelsInFlightPolling() async {
     let (stateChanges, stateContinuation) = AsyncStream.makeStream(of: Bool.self)
     let polling = ControlledPollingOperation()
     let waiter = makeWaiter(
@@ -104,12 +110,12 @@ final class UnlockWaiterTests: XCTestCase {
 
     do {
       try await waitTask.value
-      XCTFail("Expected cancellation")
+      Issue.record("Expected cancellation")
     } catch {
-      XCTAssertTrue(error is CancellationError)
+      #expect(error is CancellationError)
     }
 
-    XCTAssertEqual(polling.cancellationCount, 1)
+    #expect(polling.cancellationCount == 1)
     stateContinuation.finish()
   }
 

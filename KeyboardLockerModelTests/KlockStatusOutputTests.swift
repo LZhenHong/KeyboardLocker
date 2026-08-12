@@ -1,24 +1,28 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class KlockStatusOutputTests: XCTestCase {
-  func testHumanReadableOutputPreservesExistingContract() {
-    XCTAssertEqual(KlockStatusOutput.humanReadable.render(isLocked: true), "Locked")
-    XCTAssertEqual(KlockStatusOutput.humanReadable.render(isLocked: false), "Unlocked")
+@Suite(.serialized)
+struct KlockStatusOutputTests {
+  @Test
+  func humanReadableOutputPreservesExistingContract() {
+    #expect(KlockStatusOutput.humanReadable.render(isLocked: true) == "Locked")
+    #expect(KlockStatusOutput.humanReadable.render(isLocked: false) == "Unlocked")
   }
 
-  func testJSONOutputUsesStableBooleanField() throws {
+  @Test
+  func jSONOutputUsesStableBooleanField() throws {
     let locked = KlockStatusOutput.json.render(isLocked: true)
     let unlocked = KlockStatusOutput.json.render(isLocked: false)
 
-    XCTAssertEqual(locked, #"{"locked":true}"#)
-    XCTAssertEqual(unlocked, #"{"locked":false}"#)
-    XCTAssertEqual(try decodedLockedValue(from: locked), true)
-    XCTAssertEqual(try decodedLockedValue(from: unlocked), false)
+    #expect(locked == #"{"locked":true}"#)
+    #expect(unlocked == #"{"locked":false}"#)
+    #expect(try decodedLockedValue(from: locked) == true)
+    #expect(try decodedLockedValue(from: unlocked) == false)
   }
 
-  func testSnapshotOutputRendersLockedSnapshotWithFixedKeyOrder() {
+  @Test
+  func snapshotOutputRendersLockedSnapshotWithFixedKeyOrder() {
     let output = KlockStatusOutput.render(
       snapshot: makeSnapshot(
         isLocked: true,
@@ -27,22 +31,23 @@ final class KlockStatusOutputTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(
-      output,
-      """
-      {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
-      """
+    #expect(
+      output ==
+        """
+        {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+        """
     )
   }
 
-  func testSnapshotOutputRendersUnlockedSnapshotWithNullDates() {
+  @Test
+  func snapshotOutputRendersUnlockedSnapshotWithNullDates() {
     let output = KlockStatusOutput.render(
       snapshot: makeSnapshot(isLocked: false, startedAt: nil, autoUnlockTargetDate: nil)
     )
 
-    XCTAssertEqual(
-      output,
-      #"{"autoUnlockTargetDate":null,"locked":false,"startedAt":null,"unlockHotkey":"⌃⌘L"}"#
+    #expect(
+      output ==
+        #"{"autoUnlockTargetDate":null,"locked":false,"startedAt":null,"unlockHotkey":"⌃⌘L"}"#
     )
   }
 

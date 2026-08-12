@@ -1,9 +1,11 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class AppCoordinatorTests: XCTestCase {
-  func testStateProjectsKnownLockEvidenceConsistently() {
+@Suite(.serialized)
+struct AppCoordinatorTests {
+  @Test
+  func stateProjectsKnownLockEvidenceConsistently() {
     let cases: [(AppCoordinator.State, Bool?)] = [
       (.checking(lastKnownLock: true), true),
       (.checking(lastKnownLock: nil), nil),
@@ -17,12 +19,13 @@ final class AppCoordinatorTests: XCTestCase {
     ]
 
     for (state, expected) in cases {
-      XCTAssertEqual(state.knownLockState, expected, "state: \(state)")
+      #expect(state.knownLockState == expected, "state: \(state)")
     }
   }
 
+  @Test
   @MainActor
-  func testReconcilePublishesAuthoritativeReadySnapshot() async throws {
+  func reconcilePublishesAuthoritativeReadySnapshot() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let lifecycle = FakeAgentLifecycle()
     let observer = FakeLockStateObserver()
@@ -39,18 +42,19 @@ final class AppCoordinatorTests: XCTestCase {
       coordinator.state == .ready(isLocked: false)
     }
 
-    XCTAssertEqual(coordinator.snapshot, AppCoordinator.Snapshot(
+    #expect(coordinator.snapshot == AppCoordinator.Snapshot(
       state: .ready(isLocked: false),
       activity: nil,
       lastError: nil,
       safetyCheckState: .idle
     ))
-    XCTAssertEqual(observer.initialStates, [false])
-    XCTAssertEqual(snapshots.last, coordinator.snapshot)
+    #expect(observer.initialStates == [false])
+    #expect(snapshots.last == coordinator.snapshot)
   }
 
+  @Test
   @MainActor
-  func testDisplayedLockActionLocksThroughClientThenReconcilesAuthoritativeState() async throws {
+  func displayedLockActionLocksThroughClientThenReconcilesAuthoritativeState() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let lifecycle = FakeAgentLifecycle()
     let observer = FakeLockStateObserver()
@@ -68,14 +72,15 @@ final class AppCoordinatorTests: XCTestCase {
       coordinator.state == .ready(isLocked: true) && coordinator.activity == nil
     }
 
-    XCTAssertEqual(client.lockCallCount, 1)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertTrue(activities.contains(.locking))
-    XCTAssertEqual(observer.initialStates, [true])
+    #expect(client.lockCallCount == 1)
+    #expect(client.unlockCallCount == 0)
+    #expect(activities.contains(.locking))
+    #expect(observer.initialStates == [true])
   }
 
+  @Test
   @MainActor
-  func testObservedAuthoritativeStateUpdatesReadySnapshotWithoutDuplicatePublication() async throws {
+  func observedAuthoritativeStateUpdatesReadySnapshotWithoutDuplicatePublication() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let lifecycle = FakeAgentLifecycle()
     let observer = FakeLockStateObserver()
@@ -94,15 +99,16 @@ final class AppCoordinatorTests: XCTestCase {
     let publicationCountBeforeDuplicate = snapshots.count
 
     observer.send(false)
-    XCTAssertEqual(snapshots.count, publicationCountBeforeDuplicate)
+    #expect(snapshots.count == publicationCountBeforeDuplicate)
 
     observer.send(true)
-    XCTAssertEqual(coordinator.state, .ready(isLocked: true))
-    XCTAssertEqual(snapshots.last?.state, .ready(isLocked: true))
+    #expect(coordinator.state == .ready(isLocked: true))
+    #expect(snapshots.last?.state == .ready(isLocked: true))
   }
 
+  @Test
   @MainActor
-  func testSafetyCheckWaitsForAuthoritativeUnlockAndCompletes() async throws {
+  func safetyCheckWaitsForAuthoritativeUnlockAndCompletes() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let coordinator = makeCoordinator(
       client: client,
@@ -116,14 +122,15 @@ final class AppCoordinatorTests: XCTestCase {
       coordinator.safetyCheckState == .completed
     }
 
-    XCTAssertEqual(client.beginSafetyCheckCallCount, 1)
-    XCTAssertEqual(client.waitUntilUnlockedCallCount, 1)
-    XCTAssertFalse(client.isLocked)
-    XCTAssertNil(coordinator.activity)
+    #expect(client.beginSafetyCheckCallCount == 1)
+    #expect(client.waitUntilUnlockedCallCount == 1)
+    #expect(!client.isLocked)
+    #expect(coordinator.activity == nil)
   }
 
+  @Test
   @MainActor
-  func testSafetyCheckReportsConcurrentExistingLock() async throws {
+  func safetyCheckReportsConcurrentExistingLock() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     client.safetyCheckOutcome = .alreadyLocked
     let coordinator = makeCoordinator(
@@ -142,10 +149,11 @@ final class AppCoordinatorTests: XCTestCase {
     }
 
     guard case let .failed(message) = coordinator.safetyCheckState else {
-      return XCTFail("Expected a failed safety check.")
+      Issue.record("Expected a failed safety check.")
+      return
     }
-    XCTAssertTrue(message.contains("already locked"))
-    XCTAssertEqual(client.waitUntilUnlockedCallCount, 0)
+    #expect(message.contains("already locked"))
+    #expect(client.waitUntilUnlockedCallCount == 0)
   }
 
   @MainActor
@@ -173,12 +181,16 @@ final class AppCoordinatorTests: XCTestCase {
 
     while !condition() {
       guard clock.now < deadline else {
-        XCTFail("Timed out waiting for AppCoordinator state")
-        return
+        Issue.record("Timed out waiting for AppCoordinator state")
+        throw AppCoordinatorTestError.timedOut
       }
       try await Task.sleep(for: .milliseconds(10))
     }
   }
+}
+
+private enum AppCoordinatorTestError: Error {
+  case timedOut
 }
 
 @MainActor

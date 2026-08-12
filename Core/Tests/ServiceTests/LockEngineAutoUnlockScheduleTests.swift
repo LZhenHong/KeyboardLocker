@@ -1,12 +1,14 @@
 import Foundation
 @testable import Service
-import XCTest
+import Testing
 
-final class LockEngineAutoUnlockScheduleTests: XCTestCase {
+@Suite(.serialized)
+struct LockEngineAutoUnlockScheduleTests {
   private let initialDate = Date(timeIntervalSinceReferenceDate: 1000)
 
-  func testInitialScheduleUsesTimeoutForDeadlineAndDelay() throws {
-    let schedule = try XCTUnwrap(
+  @Test
+  func initialScheduleUsesTimeoutForDeadlineAndDelay() throws {
+    let schedule = try #require(
       AutoUnlockSchedule.make(
         timeout: 60,
         referenceDate: initialDate,
@@ -14,12 +16,13 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(schedule.deadline, initialDate.addingTimeInterval(60))
-    XCTAssertEqual(schedule.delay, 60)
+    #expect(schedule.deadline == initialDate.addingTimeInterval(60))
+    #expect(schedule.delay == 60)
   }
 
-  func testExplicitRearmStartsANewTimeoutWindow() throws {
-    let initialSchedule = try XCTUnwrap(
+  @Test
+  func explicitRearmStartsANewTimeoutWindow() throws {
+    let initialSchedule = try #require(
       AutoUnlockSchedule.make(
         timeout: 60,
         referenceDate: initialDate,
@@ -27,7 +30,7 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
       )
     )
     let rearmDate = initialDate.addingTimeInterval(15)
-    let rearmedSchedule = try XCTUnwrap(
+    let rearmedSchedule = try #require(
       AutoUnlockSchedule.make(
         timeout: 60,
         referenceDate: rearmDate,
@@ -35,16 +38,16 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(rearmedSchedule.deadline, rearmDate.addingTimeInterval(60))
-    XCTAssertEqual(rearmedSchedule.delay, 60)
-    XCTAssertEqual(
-      rearmedSchedule.deadline.timeIntervalSince(initialSchedule.deadline),
-      15
+    #expect(rearmedSchedule.deadline == rearmDate.addingTimeInterval(60))
+    #expect(rearmedSchedule.delay == 60)
+    #expect(
+      rearmedSchedule.deadline.timeIntervalSince(initialSchedule.deadline) == 15
     )
   }
 
-  func testPastDeadlineSchedulesImmediateUnlock() throws {
-    let schedule = try XCTUnwrap(
+  @Test
+  func pastDeadlineSchedulesImmediateUnlock() throws {
+    let schedule = try #require(
       AutoUnlockSchedule.make(
         timeout: 10,
         referenceDate: initialDate,
@@ -52,11 +55,12 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(schedule.deadline, initialDate.addingTimeInterval(10))
-    XCTAssertEqual(schedule.delay, 0)
+    #expect(schedule.deadline == initialDate.addingTimeInterval(10))
+    #expect(schedule.delay == 0)
   }
 
-  func testInvalidTimeoutDoesNotCreateSchedule() {
+  @Test
+  func invalidTimeoutDoesNotCreateSchedule() {
     let invalidTimeouts: [TimeInterval?] = [
       nil,
       0,
@@ -67,12 +71,12 @@ final class LockEngineAutoUnlockScheduleTests: XCTestCase {
     ]
 
     for timeout in invalidTimeouts {
-      XCTAssertNil(
+      #expect(
         AutoUnlockSchedule.make(
           timeout: timeout,
           referenceDate: initialDate,
           currentDate: initialDate
-        ),
+        ) == nil,
         "Expected \(String(describing: timeout)) to be rejected"
       )
     }

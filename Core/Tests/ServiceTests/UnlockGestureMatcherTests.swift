@@ -1,16 +1,18 @@
 import Common
 import CoreGraphics
 @testable import Service
-import XCTest
+import Testing
 
-final class UnlockGestureMatcherTests: XCTestCase {
+@Suite(.serialized)
+struct UnlockGestureMatcherTests {
   private let configuredHotkey = KeyboardLockerSettings.Hotkey(
     keyCode: 37,
     modifierFlags: [.maskControl, .maskCommand]
   )
 
-  func testConfiguredHotkeyAlwaysUnlocks() {
-    XCTAssertTrue(
+  @Test
+  func configuredHotkeyAlwaysUnlocks() {
+    #expect(
       matches(
         keyCode: configuredHotkey.keyCode,
         flags: configuredHotkey.modifierFlags,
@@ -19,8 +21,9 @@ final class UnlockGestureMatcherTests: XCTestCase {
     )
   }
 
-  func testControlCUnlocksInteractiveLock() {
-    XCTAssertTrue(
+  @Test
+  func controlCUnlocksInteractiveLock() {
+    #expect(
       matches(
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl],
@@ -29,9 +32,10 @@ final class UnlockGestureMatcherTests: XCTestCase {
     )
   }
 
-  func testControlCDoesNotUnlockNonInteractiveLock() {
-    XCTAssertFalse(
-      matches(
+  @Test
+  func controlCDoesNotUnlockNonInteractiveLock() {
+    #expect(
+      !matches(
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl],
         allowsControlCUnlock: false
@@ -39,9 +43,10 @@ final class UnlockGestureMatcherTests: XCTestCase {
     )
   }
 
-  func testControlCRejectsAdditionalRelevantModifiers() {
-    XCTAssertFalse(
-      matches(
+  @Test
+  func controlCRejectsAdditionalRelevantModifiers() {
+    #expect(
+      !matches(
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl, .maskCommand],
         allowsControlCUnlock: true
@@ -49,8 +54,9 @@ final class UnlockGestureMatcherTests: XCTestCase {
     )
   }
 
-  func testControlCIgnoresCapsLock() {
-    XCTAssertTrue(
+  @Test
+  func controlCIgnoresCapsLock() {
+    #expect(
       matches(
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl, .maskAlphaShift],
@@ -59,17 +65,18 @@ final class UnlockGestureMatcherTests: XCTestCase {
     )
   }
 
-  func testAutoRepeatAndKeyUpNeverUnlock() {
-    XCTAssertFalse(
-      matches(
+  @Test
+  func autoRepeatAndKeyUpNeverUnlock() {
+    #expect(
+      !matches(
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl],
         allowsControlCUnlock: true,
         isAutoRepeat: true
       )
     )
-    XCTAssertFalse(
-      matches(
+    #expect(
+      !matches(
         type: .keyUp,
         keyCode: UnlockGestureMatcher.controlCKeyCode,
         flags: [.maskControl],

@@ -1,65 +1,71 @@
 @testable import Client
 import Foundation
-import XCTest
+import Testing
 
-final class IdempotentMutationRetrierTests: XCTestCase {
-  func testSuccessfulMutationDoesNotResetOrRetry() async throws {
+@Suite(.serialized)
+struct IdempotentMutationRetrierTests {
+  @Test
+  func successfulMutationDoesNotResetOrRetry() async throws {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.success], recorder: recorder)
 
     try await perform(operation: operation, recorder: recorder)
 
-    XCTAssertEqual(recorder.calls, [.attempt])
+    #expect(recorder.calls == [.attempt])
   }
 
-  func testTimeoutResetsConnectionBeforeSingleRetry() async throws {
+  @Test
+  func timeoutResetsConnectionBeforeSingleRetry() async throws {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.timedOut, .success], recorder: recorder)
 
     try await perform(operation: operation, recorder: recorder)
 
-    XCTAssertEqual(recorder.calls, [.attempt, .reset, .attempt])
+    #expect(recorder.calls == [.attempt, .reset, .attempt])
   }
 
-  func testSecondTimeoutBecomesUnknownWithoutAnotherRetry() async {
+  @Test
+  func secondTimeoutBecomesUnknownWithoutAnotherRetry() async {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.timedOut, .timedOut], recorder: recorder)
 
     do {
       try await perform(operation: operation, recorder: recorder)
-      XCTFail("Expected the second timeout to become an unknown outcome.")
+      Issue.record("Expected the second timeout to become an unknown outcome.")
     } catch XPCClientError.operationOutcomeUnknown {
-      XCTAssertEqual(recorder.calls, [.attempt, .reset, .attempt])
+      #expect(recorder.calls == [.attempt, .reset, .attempt])
     } catch {
-      XCTFail("Unexpected error: \(error)")
+      Issue.record("Unexpected error: \(error)")
     }
   }
 
-  func testNonTimeoutFailureDoesNotResetOrRetry() async {
+  @Test
+  func nonTimeoutFailureDoesNotResetOrRetry() async {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.failure], recorder: recorder)
 
     do {
       try await perform(operation: operation, recorder: recorder)
-      XCTFail("Expected the original failure to propagate.")
+      Issue.record("Expected the original failure to propagate.")
     } catch MutationTestError.expected {
-      XCTAssertEqual(recorder.calls, [.attempt])
+      #expect(recorder.calls == [.attempt])
     } catch {
-      XCTFail("Unexpected error: \(error)")
+      Issue.record("Unexpected error: \(error)")
     }
   }
 
-  func testRetryPropagatesNonTimeoutFailure() async {
+  @Test
+  func retryPropagatesNonTimeoutFailure() async {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.timedOut, .failure], recorder: recorder)
 
     do {
       try await perform(operation: operation, recorder: recorder)
-      XCTFail("Expected the retry failure to propagate.")
+      Issue.record("Expected the retry failure to propagate.")
     } catch MutationTestError.expected {
-      XCTAssertEqual(recorder.calls, [.attempt, .reset, .attempt])
+      #expect(recorder.calls == [.attempt, .reset, .attempt])
     } catch {
-      XCTFail("Unexpected error: \(error)")
+      Issue.record("Unexpected error: \(error)")
     }
   }
 
@@ -90,7 +96,7 @@ private actor ScriptedOperation {
   func perform() throws {
     recorder.record(.attempt)
     guard !outcomes.isEmpty else {
-      XCTFail("The operation ran more times than expected.")
+      Issue.record("The operation ran more times than expected.")
       return
     }
 

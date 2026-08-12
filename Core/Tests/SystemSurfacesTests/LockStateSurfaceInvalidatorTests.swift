@@ -1,20 +1,21 @@
 import Foundation
 @testable import SystemSurfaces
-import XCTest
+import Testing
 
-final class LockStateSurfaceInvalidatorTests: XCTestCase {
-  func testSurfaceKindsRemainStable() {
-    XCTAssertEqual(
-      KeyboardLockerSurfaceKind.statusWidget,
-      "io.lzhlovesjyq.keyboardlocker.status"
+@Suite(.serialized)
+struct LockStateSurfaceInvalidatorTests {
+  @Test
+  func surfaceKindsRemainStable() {
+    #expect(
+      KeyboardLockerSurfaceKind.statusWidget == "io.lzhlovesjyq.keyboardlocker.status"
     )
-    XCTAssertEqual(
-      KeyboardLockerSurfaceKind.keyboardLockControl,
-      "io.lzhlovesjyq.keyboardlocker.control"
+    #expect(
+      KeyboardLockerSurfaceKind.keyboardLockControl == "io.lzhlovesjyq.keyboardlocker.control"
     )
   }
 
-  func testInvalidationReloadsWidgetThenControlExactlyOnce() {
+  @Test
+  func invalidationReloadsWidgetThenControlExactlyOnce() {
     let recorder = CallRecorder()
     let invalidator = LockStateSurfaceInvalidator(
       reloadWidget: {
@@ -27,7 +28,7 @@ final class LockStateSurfaceInvalidatorTests: XCTestCase {
 
     invalidator.invalidate()
 
-    XCTAssertEqual(recorder.calls, [.widget, .control])
+    #expect(recorder.calls == [.widget, .control])
   }
 }
 

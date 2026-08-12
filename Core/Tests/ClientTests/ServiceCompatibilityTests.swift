@@ -1,24 +1,28 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class ServiceCompatibilityTests: XCTestCase {
-  func testBuildVersionsUseNumericComponentOrdering() throws {
-    let older = try XCTUnwrap(ServiceBuildVersion("1.9"))
-    let newer = try XCTUnwrap(ServiceBuildVersion("1.10"))
-    let equivalent = try XCTUnwrap(ServiceBuildVersion("01.010.0"))
+@Suite(.serialized)
+struct ServiceCompatibilityTests {
+  @Test
+  func buildVersionsUseNumericComponentOrdering() throws {
+    let older = try #require(ServiceBuildVersion("1.9"))
+    let newer = try #require(ServiceBuildVersion("1.10"))
+    let equivalent = try #require(ServiceBuildVersion("01.010.0"))
 
-    XCTAssertLessThan(older, newer)
-    XCTAssertEqual(newer, equivalent)
+    #expect(older < newer)
+    #expect(newer == equivalent)
   }
 
-  func testBuildVersionRejectsNonNumericComponents() {
-    XCTAssertNil(ServiceBuildVersion(""))
-    XCTAssertNil(ServiceBuildVersion("1.beta"))
-    XCTAssertNil(ServiceBuildVersion("1..2"))
+  @Test
+  func buildVersionRejectsNonNumericComponents() {
+    #expect(ServiceBuildVersion("") == nil)
+    #expect(ServiceBuildVersion("1.beta") == nil)
+    #expect(ServiceBuildVersion("1..2") == nil)
   }
 
-  func testMatchingDescriptorIsCompatible() throws {
+  @Test
+  func matchingDescriptorIsCompatible() throws {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.union([
@@ -26,11 +30,12 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertTrue(descriptor.compatibilityIssues(against: requirements).isEmpty)
-    XCTAssertNoThrow(try descriptor.validateCompatibility(against: requirements))
+    #expect(descriptor.compatibilityIssues(against: requirements).isEmpty)
+    try descriptor.validateCompatibility(against: requirements)
   }
 
-  func testNewerProtocolMinorIsCompatible() {
+  @Test
+  func newerProtocolMinorIsCompatible() {
     let requirements = makeRequirements(
       minimumProtocolVersion: ServiceProtocolVersion(major: 1, minor: 2)
     )
@@ -38,10 +43,11 @@ final class ServiceCompatibilityTests: XCTestCase {
       protocolVersion: ServiceProtocolVersion(major: 1, minor: 3)
     )
 
-    XCTAssertTrue(descriptor.compatibilityIssues(against: requirements).isEmpty)
+    #expect(descriptor.compatibilityIssues(against: requirements).isEmpty)
   }
 
-  func testDifferentProtocolMajorIsIncompatible() {
+  @Test
+  func differentProtocolMajorIsIncompatible() {
     let requirements = makeRequirements(
       minimumProtocolVersion: ServiceProtocolVersion(major: 2, minor: 0)
     )
@@ -49,13 +55,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       protocolVersion: ServiceProtocolVersion(major: 1, minor: 99)
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.protocolMajorMismatch(expected: 2, actual: 1)]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .protocolMajorMismatch(expected: 2, actual: 1),
+    ])
   }
 
-  func testOlderProtocolMinorIsIncompatible() {
+  @Test
+  func olderProtocolMinorIsIncompatible() {
     let requirements = makeRequirements(
       minimumProtocolVersion: ServiceProtocolVersion(major: 1, minor: 2)
     )
@@ -63,13 +69,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       protocolVersion: ServiceProtocolVersion(major: 1, minor: 1)
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.protocolMinorTooOld(required: 2, actual: 1)]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .protocolMinorTooOld(required: 2, actual: 1),
+    ])
   }
 
-  func testMissingCapabilitiesAreReportedInStableOrder() {
+  @Test
+  func missingCapabilitiesAreReportedInStableOrder() {
     let requirements = makeRequirements(requiredCapabilities: [
       .currentSettings,
       .lockControl,
@@ -77,62 +83,55 @@ final class ServiceCompatibilityTests: XCTestCase {
     ])
     let descriptor = makeDescriptor(capabilities: [.lockControl])
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.currentSettings, .prepareForReplacement])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.currentSettings, .prepareForReplacement]),
+    ])
   }
 
-  func testCurrentContractRequiresCommittedReplacementDrain() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.committedReplacementDrain)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 1)
+  @Test
+  func currentContractRequiresCommittedReplacementDrain() {
+    #expect(ServiceContract.requiredCapabilities.contains(.committedReplacementDrain))
+    #expect(ServiceContract.protocolVersion.minor >= 1)
   }
 
-  func testCurrentContractRequiresErrorReportingSettingsSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.currentSettingsWithError)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 2)
+  @Test
+  func currentContractRequiresErrorReportingSettingsSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.currentSettingsWithError))
+    #expect(ServiceContract.protocolVersion.minor >= 2)
   }
 
-  func testCurrentContractRequiresInteractiveLockSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.interactiveLock)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 3)
+  @Test
+  func currentContractRequiresInteractiveLockSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.interactiveLock))
+    #expect(ServiceContract.protocolVersion.minor >= 3)
   }
 
-  func testCurrentContractRequiresLockStatusSnapshotSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.lockStatusSnapshot)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 4)
+  @Test
+  func currentContractRequiresLockStatusSnapshotSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.lockStatusSnapshot))
+    #expect(ServiceContract.protocolVersion.minor >= 4)
   }
 
-  func testCurrentContractRequiresFocusFilterLockSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.focusFilterLock)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 5)
+  @Test
+  func currentContractRequiresFocusFilterLockSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.focusFilterLock))
+    #expect(ServiceContract.protocolVersion.minor >= 5)
   }
 
-  func testCurrentContractRequiresLockToggleSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.lockToggle)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 6)
+  @Test
+  func currentContractRequiresLockToggleSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.lockToggle))
+    #expect(ServiceContract.protocolVersion.minor >= 6)
   }
 
-  func testCurrentContractRequiresSafetyCheckSelector() {
-    XCTAssertTrue(
-      ServiceContract.requiredCapabilities.contains(.safetyCheckLock)
-    )
-    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 7)
+  @Test
+  func currentContractRequiresSafetyCheckSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.safetyCheckLock))
+    #expect(ServiceContract.protocolVersion.minor >= 7)
   }
 
-  func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
+  @Test
+  func agentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.subtracting([
@@ -140,13 +139,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.committedReplacementDrain])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.committedReplacementDrain]),
+    ])
   }
 
-  func testAgentWithoutErrorReportingSettingsIsNotCurrentContractCompatible() {
+  @Test
+  func agentWithoutErrorReportingSettingsIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.subtracting([
@@ -154,13 +153,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.currentSettingsWithError])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.currentSettingsWithError]),
+    ])
   }
 
-  func testAgentWithoutInteractiveLockIsNotCurrentContractCompatible() {
+  @Test
+  func agentWithoutInteractiveLockIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.subtracting([
@@ -168,13 +167,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.interactiveLock])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.interactiveLock]),
+    ])
   }
 
-  func testAgentWithoutLockStatusSnapshotIsNotCurrentContractCompatible() {
+  @Test
+  func agentWithoutLockStatusSnapshotIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.subtracting([
@@ -182,13 +181,13 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.lockStatusSnapshot])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.lockStatusSnapshot]),
+    ])
   }
 
-  func testAgentWithoutFocusFilterLockIsNotCurrentContractCompatible() {
+  @Test
+  func agentWithoutFocusFilterLockIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(
       capabilities: requirements.requiredCapabilities.subtracting([
@@ -196,23 +195,23 @@ final class ServiceCompatibilityTests: XCTestCase {
       ])
     )
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.missingCapabilities([.focusFilterLock])]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .missingCapabilities([.focusFilterLock]),
+    ])
   }
 
-  func testBuildMismatchRequiresReplacement() {
+  @Test
+  func buildMismatchRequiresReplacement() {
     let requirements = makeRequirements(agentBuild: "42")
     let descriptor = makeDescriptor(agentBuild: "41")
 
-    XCTAssertEqual(
-      descriptor.compatibilityIssues(against: requirements),
-      [.agentBuildMismatch(expected: "42", actual: "41")]
-    )
+    #expect(descriptor.compatibilityIssues(against: requirements) == [
+      .agentBuildMismatch(expected: "42", actual: "41"),
+    ])
   }
 
-  func testDescriptorRoundTripPreservesUnknownCapabilities() throws {
+  @Test
+  func descriptorRoundTripPreservesUnknownCapabilities() throws {
     let descriptor = makeDescriptor(capabilities: [
       .lockControl,
       ServiceCapability(rawValue: "capability-added-by-a-newer-agent"),
@@ -220,10 +219,11 @@ final class ServiceCompatibilityTests: XCTestCase {
 
     let decoded = try ServiceDescriptor.decodedFromXPC(descriptor.encodedForXPC())
 
-    XCTAssertEqual(decoded, descriptor)
+    #expect(decoded == descriptor)
   }
 
-  func testDescriptorDecodesLegacyPayloadWithoutAdditiveField() throws {
+  @Test
+  func descriptorDecodesLegacyPayloadWithoutAdditiveField() throws {
     let instanceID = UUID()
     let payload = """
     {
@@ -238,28 +238,27 @@ final class ServiceCompatibilityTests: XCTestCase {
 
     let descriptor = try ServiceDescriptor.decodedFromXPC(payload)
 
-    XCTAssertEqual(descriptor.agentInstanceID, instanceID)
-    XCTAssertFalse(descriptor.replacementPending)
-    XCTAssertEqual(descriptor.replacementPhase, .inactive)
+    #expect(descriptor.agentInstanceID == instanceID)
+    #expect(!descriptor.replacementPending)
+    #expect(descriptor.replacementPhase == .inactive)
   }
 
-  func testDescriptorIgnoresFutureFields() throws {
+  @Test
+  func descriptorIgnoresFutureFields() throws {
     let descriptor = makeDescriptor()
-    var object = try XCTUnwrap(
+    var object = try #require(
       JSONSerialization.jsonObject(with: descriptor.encodedForXPC()) as? [String: Any]
     )
     object["fieldAddedByFutureMinorVersion"] = ["value": 42]
     let futurePayload = try JSONSerialization.data(withJSONObject: object)
 
-    XCTAssertEqual(
-      try ServiceDescriptor.decodedFromXPC(futurePayload),
-      descriptor
-    )
+    #expect(try ServiceDescriptor.decodedFromXPC(futurePayload) == descriptor)
   }
 
-  func testDescriptorMapsPendingLegacyPayloadToUnknownPhase() throws {
+  @Test
+  func descriptorMapsPendingLegacyPayloadToUnknownPhase() throws {
     let descriptor = makeDescriptor()
-    var object = try XCTUnwrap(
+    var object = try #require(
       JSONSerialization.jsonObject(with: descriptor.encodedForXPC()) as? [String: Any]
     )
     object["replacementPending"] = true
@@ -268,50 +267,50 @@ final class ServiceCompatibilityTests: XCTestCase {
 
     let decoded = try ServiceDescriptor.decodedFromXPC(legacyPayload)
 
-    XCTAssertTrue(decoded.replacementPending)
-    XCTAssertEqual(decoded.replacementPhase, .unknown)
+    #expect(decoded.replacementPending)
+    #expect(decoded.replacementPhase == .unknown)
   }
 
-  func testDescriptorPreservesFutureReplacementPhase() throws {
+  @Test
+  func descriptorPreservesFutureReplacementPhase() throws {
     let futurePhase = ServiceReplacementPhase(rawValue: "future-phase")
     let descriptor = makeDescriptor(replacementPhase: futurePhase)
 
     let decoded = try ServiceDescriptor.decodedFromXPC(descriptor.encodedForXPC())
 
-    XCTAssertEqual(decoded.replacementPhase, futurePhase)
-    XCTAssertTrue(decoded.replacementPending)
+    #expect(decoded.replacementPhase == futurePhase)
+    #expect(decoded.replacementPending)
   }
 
-  func testDescriptorRejectsMissingRequiredBootstrapField() throws {
+  @Test
+  func descriptorRejectsMissingRequiredBootstrapField() throws {
     let descriptor = makeDescriptor()
-    var object = try XCTUnwrap(
+    var object = try #require(
       JSONSerialization.jsonObject(with: descriptor.encodedForXPC()) as? [String: Any]
     )
     object.removeValue(forKey: "protocolVersion")
     let invalidPayload = try JSONSerialization.data(withJSONObject: object)
 
-    XCTAssertThrowsError(try ServiceDescriptor.decodedFromXPC(invalidPayload))
+    #expect(throws: (any Error).self) {
+      try ServiceDescriptor.decodedFromXPC(invalidPayload)
+    }
   }
 
-  func testReplacementTicketRoundTrip() throws {
+  @Test
+  func replacementTicketRoundTrip() throws {
     let ticket = ServiceReplacementTicket(
       id: UUID(),
       agentInstanceID: UUID()
     )
 
-    XCTAssertEqual(
-      try ServiceReplacementTicket.decodedFromXPC(ticket.encodedForXPC()),
-      ticket
-    )
+    #expect(try ServiceReplacementTicket.decodedFromXPC(ticket.encodedForXPC()) == ticket)
   }
 
-  func testReplacementStatusRoundTrip() throws {
+  @Test
+  func replacementStatusRoundTrip() throws {
     let status = ServiceReplacementStatus(phase: .committed)
 
-    XCTAssertEqual(
-      try ServiceReplacementStatus.decodedFromXPC(status.encodedForXPC()),
-      status
-    )
+    #expect(try ServiceReplacementStatus.decodedFromXPC(status.encodedForXPC()) == status)
   }
 
   private func makeRequirements(

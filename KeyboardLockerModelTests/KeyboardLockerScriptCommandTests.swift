@@ -1,48 +1,53 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerScriptCommandTests: XCTestCase {
+@Suite(.serialized)
+struct KeyboardLockerScriptCommandTests {
+  @Test
   @MainActor
-  func testLockCommandInvokesOnlyLockCapability() async throws {
+  func lockCommandInvokesOnlyLockCapability() async throws {
     let client = FakeAppleScriptAgentClient(isLocked: false)
 
     let result = try await LockKeyboardScriptCommand.perform(using: client)
 
-    XCTAssertNil(result)
-    XCTAssertEqual(client.lockCallCount, 1)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertTrue(client.isLocked)
+    #expect(result == nil)
+    #expect(client.lockCallCount == 1)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 0)
+    #expect(client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testUnlockCommandInvokesOnlyUnlockCapability() async throws {
+  func unlockCommandInvokesOnlyUnlockCapability() async throws {
     let client = FakeAppleScriptAgentClient(isLocked: true)
 
     let result = try await UnlockKeyboardScriptCommand.perform(using: client)
 
-    XCTAssertNil(result)
-    XCTAssertEqual(client.lockCallCount, 0)
-    XCTAssertEqual(client.unlockCallCount, 1)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertFalse(client.isLocked)
+    #expect(result == nil)
+    #expect(client.lockCallCount == 0)
+    #expect(client.unlockCallCount == 1)
+    #expect(client.statusCallCount == 0)
+    #expect(!client.isLocked)
   }
 
+  @Test
   @MainActor
-  func testStatusCommandReturnsAuthoritativeBoolean() async throws {
+  func statusCommandReturnsAuthoritativeBoolean() async throws {
     let client = FakeAppleScriptAgentClient(isLocked: true)
 
     let result = try await GetKeyboardLockStatusScriptCommand.perform(using: client)
 
-    XCTAssertEqual(result as? NSNumber, NSNumber(value: true))
-    XCTAssertEqual(client.lockCallCount, 0)
-    XCTAssertEqual(client.unlockCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(result as? NSNumber == NSNumber(value: true))
+    #expect(client.lockCallCount == 0)
+    #expect(client.unlockCallCount == 0)
+    #expect(client.statusCallCount == 1)
   }
 
+  @Test
   @MainActor
-  func testCommandPropagatesAgentFailure() async {
+  func commandPropagatesAgentFailure() async {
     let client = FakeAppleScriptAgentClient(
       isLocked: false,
       error: AppleScriptClientError.unavailable
@@ -50,35 +55,37 @@ final class KeyboardLockerScriptCommandTests: XCTestCase {
 
     do {
       _ = try await LockKeyboardScriptCommand.perform(using: client)
-      XCTFail("Expected the Agent error to be propagated.")
+      Issue.record("Expected the Agent error to be propagated.")
     } catch {
-      XCTAssertEqual(error as? AppleScriptClientError, .unavailable)
+      #expect(error as? AppleScriptClientError == .unavailable)
     }
   }
 
+  @Test
   @MainActor
-  func testErrorPresentationIncludesClientRecoverySuggestion() {
+  func errorPresentationIncludesClientRecoverySuggestion() {
     let message = AppleScriptErrorPresentation.message(
       for: XPCClientError.serviceUnavailable
     )
 
-    XCTAssertEqual(
-      message,
-      ExternalAutomationFailure(error: XPCClientError.serviceUnavailable).message
+    #expect(
+      message ==
+        ExternalAutomationFailure(error: XPCClientError.serviceUnavailable).message
     )
-    XCTAssertTrue(message.contains("The KeyboardLocker agent is not reachable."))
-    XCTAssertTrue(message.contains("Open KeyboardLocker once"))
+    #expect(message.contains("The KeyboardLocker agent is not reachable."))
+    #expect(message.contains("Open KeyboardLocker once"))
   }
 
+  @Test
   @MainActor
-  func testErrorPresentationUsesAppleEventTimeoutOnlyForClientTimeout() {
-    XCTAssertEqual(
-      AppleScriptErrorPresentation.errorNumber(for: XPCClientError.timedOut),
-      Int(errAETimeout)
+  func errorPresentationUsesAppleEventTimeoutOnlyForClientTimeout() {
+    #expect(
+      AppleScriptErrorPresentation.errorNumber(for: XPCClientError.timedOut) ==
+        Int(errAETimeout)
     )
-    XCTAssertEqual(
-      AppleScriptErrorPresentation.errorNumber(for: XPCClientError.serviceUnavailable),
-      Int(errAEEventFailed)
+    #expect(
+      AppleScriptErrorPresentation.errorNumber(for: XPCClientError.serviceUnavailable) ==
+        Int(errAEEventFailed)
     )
   }
 }

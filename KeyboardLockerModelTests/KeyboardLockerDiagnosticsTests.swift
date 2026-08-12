@@ -1,17 +1,19 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerDiagnosticsTests: XCTestCase {
+@Suite(.serialized)
+struct KeyboardLockerDiagnosticsTests {
+  @Test
   @MainActor
-  func testReportIncludesRuntimeFactsWithoutMachineIdentity() async {
-    let descriptor = ServiceDescriptor(
+  func reportIncludesRuntimeFactsWithoutMachineIdentity() async throws {
+    let descriptor = try ServiceDescriptor(
       protocolVersion: ServiceProtocolVersion(major: 1, minor: 7),
       capabilities: [.lockControl, .safetyCheckLock],
       agentBundleIdentifier: SharedConstants.agentBundleIdentifier,
       agentVersion: "1.2",
       agentBuild: "34",
-      agentInstanceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+      agentInstanceID: #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
     )
     let lockSnapshot = LockStatusSnapshot(
       capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
@@ -42,19 +44,20 @@ final class KeyboardLockerDiagnosticsTests: XCTestCase {
 
     let report = await collector.report(appSnapshot: appSnapshot)
 
-    XCTAssertTrue(report.contains("App: 1.1 (12)"))
-    XCTAssertTrue(report.contains("Agent Registration: enabled"))
-    XCTAssertTrue(report.contains("Protocol: 1.7"))
-    XCTAssertTrue(report.contains("Capabilities: lock-control, safety-check-lock"))
-    XCTAssertTrue(report.contains("Accessibility: granted"))
-    XCTAssertTrue(report.contains("Status: unlocked"))
-    XCTAssertTrue(report.contains("Safety Check: completed"))
-    XCTAssertFalse(report.localizedCaseInsensitiveContains("user name"))
-    XCTAssertFalse(report.localizedCaseInsensitiveContains("host name"))
+    #expect(report.contains("App: 1.1 (12)"))
+    #expect(report.contains("Agent Registration: enabled"))
+    #expect(report.contains("Protocol: 1.7"))
+    #expect(report.contains("Capabilities: lock-control, safety-check-lock"))
+    #expect(report.contains("Accessibility: granted"))
+    #expect(report.contains("Status: unlocked"))
+    #expect(report.contains("Safety Check: completed"))
+    #expect(!report.localizedCaseInsensitiveContains("user name"))
+    #expect(!report.localizedCaseInsensitiveContains("host name"))
   }
 
+  @Test
   @MainActor
-  func testReportKeepsPartialDiagnosticsAndRedactsPaths() async {
+  func reportKeepsPartialDiagnosticsAndRedactsPaths() async {
     let collector = KeyboardLockerDiagnosticsCollector(
       appIdentity: .init(build: "1", bundleIdentifier: "test.app", version: "1.0"),
       operatingSystemVersion: "macOS test",
@@ -77,12 +80,12 @@ final class KeyboardLockerDiagnosticsTests: XCTestCase {
 
     let report = await collector.report(appSnapshot: appSnapshot)
 
-    XCTAssertTrue(report.contains("Agent Registration: not-registered"))
-    XCTAssertTrue(report.contains("Accessibility: not-granted"))
-    XCTAssertTrue(report.contains("<redacted-path>"))
-    XCTAssertFalse(report.contains("/Users/example"))
-    XCTAssertFalse(report.contains("/private/tmp"))
-    XCTAssertFalse(report.contains("/Applications/KeyboardLocker.app"))
+    #expect(report.contains("Agent Registration: not-registered"))
+    #expect(report.contains("Accessibility: not-granted"))
+    #expect(report.contains("<redacted-path>"))
+    #expect(!report.contains("/Users/example"))
+    #expect(!report.contains("/private/tmp"))
+    #expect(!report.contains("/Applications/KeyboardLocker.app"))
   }
 }
 

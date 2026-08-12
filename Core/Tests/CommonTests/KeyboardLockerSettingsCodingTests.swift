@@ -1,9 +1,11 @@
 import Common
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerSettingsCodingTests: XCTestCase {
-  func testRoundTripPreservesSettings() throws {
+@Suite(.serialized)
+struct KeyboardLockerSettingsCodingTests {
+  @Test
+  func roundTripPreservesSettings() throws {
     let settings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 42),
       unlockHotkey: .init(
@@ -12,43 +14,32 @@ final class KeyboardLockerSettingsCodingTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(
-      try KeyboardLockerSettings.decodedFromXPC(settings.encodedForXPC()),
-      settings
-    )
+    #expect(try KeyboardLockerSettings.decodedFromXPC(settings.encodedForXPC()) == settings)
   }
 
-  func testMissingPayloadIsRejected() {
-    XCTAssertThrowsError(try KeyboardLockerSettings.decodedFromXPC(nil)) { error in
-      XCTAssertEqual(
-        error as? KeyboardLockerSettingsCodingError,
-        .missingPayload
-      )
+  @Test
+  func missingPayloadIsRejected() {
+    #expect(throws: KeyboardLockerSettingsCodingError.missingPayload) {
+      try KeyboardLockerSettings.decodedFromXPC(nil)
     }
   }
 
-  func testInvalidPayloadIsRejected() {
-    XCTAssertThrowsError(
+  @Test
+  func invalidPayloadIsRejected() {
+    #expect(throws: KeyboardLockerSettingsCodingError.invalidPayload) {
       try KeyboardLockerSettings.decodedFromXPC(Data("not-json".utf8))
-    ) { error in
-      XCTAssertEqual(
-        error as? KeyboardLockerSettingsCodingError,
-        .invalidPayload
-      )
     }
   }
 
-  func testOversizedPayloadIsRejectedBeforeDecoding() {
+  @Test
+  func oversizedPayloadIsRejectedBeforeDecoding() {
     let payload = Data(
       repeating: 0,
       count: KeyboardLockerSettings.maximumEncodedSize + 1
     )
 
-    XCTAssertThrowsError(try KeyboardLockerSettings.decodedFromXPC(payload)) { error in
-      XCTAssertEqual(
-        error as? KeyboardLockerSettingsCodingError,
-        .payloadTooLarge
-      )
+    #expect(throws: KeyboardLockerSettingsCodingError.payloadTooLarge) {
+      try KeyboardLockerSettings.decodedFromXPC(payload)
     }
   }
 }

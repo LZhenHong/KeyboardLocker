@@ -1,35 +1,36 @@
 import Common
 import Foundation
 @testable import Service
-import XCTest
+import Testing
 
-final class LockRuntimeStateTests: XCTestCase {
-  func testInteractiveDuplicateDoesNotEnableControlCForExistingLock() {
+@Suite(.serialized)
+struct LockRuntimeStateTests {
+  @Test
+  func interactiveDuplicateDoesNotEnableControlCForExistingLock() {
     let startedAt = Date(timeIntervalSinceReferenceDate: 1000)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: .default,
         allowsControlCUnlock: false,
         at: startedAt
-      ),
-      .acquired
+      ) == .acquired
     )
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: .default,
         allowsControlCUnlock: true,
         at: startedAt.addingTimeInterval(1)
-      ),
-      .alreadyLocked
+      ) == .alreadyLocked
     )
 
-    XCTAssertFalse(state.allowsControlCUnlock)
-    XCTAssertEqual(state.startedAt, startedAt)
+    #expect(!state.allowsControlCUnlock)
+    #expect(state.startedAt == startedAt)
   }
 
-  func testDuplicateBeginPreservesOriginalRuntimeStateAndDeadline() {
+  @Test
+  func duplicateBeginPreservesOriginalRuntimeStateAndDeadline() {
     let originalSettings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),
       unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
@@ -42,83 +43,81 @@ final class LockRuntimeStateTests: XCTestCase {
     let deadline = startedAt.addingTimeInterval(60)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: originalSettings,
         allowsControlCUnlock: true,
         at: startedAt
-      ),
-      .acquired
+      ) == .acquired
     )
     state.setAutoUnlockTargetDate(deadline)
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: replacementSettings,
         allowsControlCUnlock: false,
         at: startedAt.addingTimeInterval(10)
-      ),
-      .alreadyLocked
+      ) == .alreadyLocked
     )
-    XCTAssertEqual(state.activeSettings, originalSettings)
-    XCTAssertTrue(state.allowsControlCUnlock)
-    XCTAssertEqual(state.startedAt, startedAt)
-    XCTAssertEqual(state.autoUnlockTargetDate, deadline)
-    XCTAssertTrue(state.isLocked)
+    #expect(state.activeSettings == originalSettings)
+    #expect(state.allowsControlCUnlock)
+    #expect(state.startedAt == startedAt)
+    #expect(state.autoUnlockTargetDate == deadline)
+    #expect(state.isLocked)
   }
 
-  func testEndedLockCanBeginAgainWithoutRetainingTimingState() {
+  @Test
+  func endedLockCanBeginAgainWithoutRetainingTimingState() {
     let firstStart = Date(timeIntervalSinceReferenceDate: 1000)
     let secondStart = firstStart.addingTimeInterval(90)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: .default,
         allowsControlCUnlock: true,
         at: firstStart
-      ),
-      .acquired
+      ) == .acquired
     )
     state.setAutoUnlockTargetDate(firstStart.addingTimeInterval(60))
     state.end()
 
-    XCTAssertFalse(state.allowsControlCUnlock)
-    XCTAssertFalse(state.isLocked)
-    XCTAssertNil(state.startedAt)
-    XCTAssertNil(state.autoUnlockTargetDate)
-    XCTAssertEqual(
+    #expect(!state.allowsControlCUnlock)
+    #expect(!state.isLocked)
+    #expect(state.startedAt == nil)
+    #expect(state.autoUnlockTargetDate == nil)
+    #expect(
       state.begin(
         settings: .default,
         allowsControlCUnlock: false,
         at: secondStart
-      ),
-      .acquired
+      ) == .acquired
     )
-    XCTAssertFalse(state.allowsControlCUnlock)
-    XCTAssertEqual(state.startedAt, secondStart)
+    #expect(!state.allowsControlCUnlock)
+    #expect(state.startedAt == secondStart)
   }
 
-  func testNewFocusLockOwnsItsGeneration() throws {
+  @Test
+  func newFocusLockOwnsItsGeneration() throws {
     let startedAt = Date(timeIntervalSinceReferenceDate: 1000)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: .default,
         allowsControlCUnlock: false,
         at: startedAt
-      ),
-      .acquired
+      ) == .acquired
     )
     state.markCurrentLockAsFocusOwned()
 
-    let generation = try XCTUnwrap(state.lockGeneration)
-    XCTAssertEqual(state.focusOwnedGenerationForRelease, generation)
-    XCTAssertTrue(state.matchesCurrentLockGeneration(generation))
+    let generation = try #require(state.lockGeneration)
+    #expect(state.focusOwnedGenerationForRelease == generation)
+    #expect(state.matchesCurrentLockGeneration(generation))
   }
 
-  func testFocusDuplicateDoesNotClaimExistingGeneralLock() throws {
+  @Test
+  func focusDuplicateDoesNotClaimExistingGeneralLock() throws {
     let startedAt = Date(timeIntervalSinceReferenceDate: 1000)
     var state = LockRuntimeState()
     _ = state.begin(
@@ -126,19 +125,19 @@ final class LockRuntimeStateTests: XCTestCase {
       allowsControlCUnlock: false,
       at: startedAt
     )
-    let generation = try XCTUnwrap(state.lockGeneration)
+    let generation = try #require(state.lockGeneration)
 
-    XCTAssertEqual(
-      state.handleDuplicateLockRequest(from: .focusFilter),
-      .alreadyLocked
+    #expect(
+      state.handleDuplicateLockRequest(from: .focusFilter) == .alreadyLocked
     )
 
-    XCTAssertNil(state.focusOwnedGenerationForRelease)
-    XCTAssertEqual(state.lockGeneration, generation)
-    XCTAssertEqual(state.startedAt, startedAt)
+    #expect(state.focusOwnedGenerationForRelease == nil)
+    #expect(state.lockGeneration == generation)
+    #expect(state.startedAt == startedAt)
   }
 
-  func testRepeatedFocusEnablePreservesOwnedRuntimeState() {
+  @Test
+  func repeatedFocusEnablePreservesOwnedRuntimeState() {
     let settings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),
       unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
@@ -155,15 +154,15 @@ final class LockRuntimeStateTests: XCTestCase {
     state.setAutoUnlockTargetDate(deadline)
     let originalState = state
 
-    XCTAssertEqual(
-      state.handleDuplicateLockRequest(from: .focusFilter),
-      .alreadyLocked
+    #expect(
+      state.handleDuplicateLockRequest(from: .focusFilter) == .alreadyLocked
     )
 
-    XCTAssertEqual(state, originalState)
+    #expect(state == originalState)
   }
 
-  func testManualDesiredLockTakesOverFocusOwnershipWithoutChangingRuntimeState() throws {
+  @Test
+  func manualDesiredLockTakesOverFocusOwnershipWithoutChangingRuntimeState() throws {
     let settings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),
       unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
@@ -172,33 +171,32 @@ final class LockRuntimeStateTests: XCTestCase {
     let deadline = startedAt.addingTimeInterval(60)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: settings,
         allowsControlCUnlock: false,
         at: startedAt
-      ),
-      .acquired
+      ) == .acquired
     )
     state.markCurrentLockAsFocusOwned()
     state.setAutoUnlockTargetDate(deadline)
-    let generation = try XCTUnwrap(state.lockGeneration)
+    let generation = try #require(state.lockGeneration)
 
-    XCTAssertEqual(
-      state.handleDuplicateLockRequest(from: .general),
-      .alreadyLocked
+    #expect(
+      state.handleDuplicateLockRequest(from: .general) == .alreadyLocked
     )
 
-    XCTAssertNil(state.focusOwnedLockGeneration)
-    XCTAssertEqual(state.lockGeneration, generation)
-    XCTAssertEqual(state.activeSettings, settings)
-    XCTAssertFalse(state.allowsControlCUnlock)
-    XCTAssertEqual(state.startedAt, startedAt)
-    XCTAssertEqual(state.autoUnlockTargetDate, deadline)
-    XCTAssertTrue(state.isLocked)
+    #expect(state.focusOwnedLockGeneration == nil)
+    #expect(state.lockGeneration == generation)
+    #expect(state.activeSettings == settings)
+    #expect(!state.allowsControlCUnlock)
+    #expect(state.startedAt == startedAt)
+    #expect(state.autoUnlockTargetDate == deadline)
+    #expect(state.isLocked)
   }
 
-  func testEndingFocusOwnedLockClearsOwnershipAndNextLockUsesNewGeneration() throws {
+  @Test
+  func endingFocusOwnedLockClearsOwnershipAndNextLockUsesNewGeneration() throws {
     let firstStart = Date(timeIntervalSinceReferenceDate: 1000)
     var state = LockRuntimeState()
 
@@ -208,14 +206,14 @@ final class LockRuntimeStateTests: XCTestCase {
       at: firstStart
     )
     state.markCurrentLockAsFocusOwned()
-    let firstGeneration = try XCTUnwrap(state.lockGeneration)
+    let firstGeneration = try #require(state.lockGeneration)
 
-    XCTAssertEqual(state.focusOwnedLockGeneration, firstGeneration)
+    #expect(state.focusOwnedLockGeneration == firstGeneration)
 
     state.end()
 
-    XCTAssertNil(state.focusOwnedLockGeneration)
-    XCTAssertNil(state.lockGeneration)
+    #expect(state.focusOwnedLockGeneration == nil)
+    #expect(state.lockGeneration == nil)
 
     _ = state.begin(
       settings: .default,
@@ -223,13 +221,14 @@ final class LockRuntimeStateTests: XCTestCase {
       at: firstStart.addingTimeInterval(1)
     )
 
-    XCTAssertNotEqual(state.lockGeneration, firstGeneration)
-    XCTAssertNil(state.focusOwnedLockGeneration)
-    XCTAssertNil(state.focusOwnedGenerationForRelease)
-    XCTAssertFalse(state.matchesCurrentLockGeneration(firstGeneration))
+    #expect(state.lockGeneration != firstGeneration)
+    #expect(state.focusOwnedLockGeneration == nil)
+    #expect(state.focusOwnedGenerationForRelease == nil)
+    #expect(!state.matchesCurrentLockGeneration(firstGeneration))
   }
 
-  func testEarlyUnlockClearsFocusReleaseTarget() throws {
+  @Test
+  func earlyUnlockClearsFocusReleaseTarget() throws {
     var state = LockRuntimeState()
     _ = state.begin(
       settings: .default,
@@ -237,15 +236,16 @@ final class LockRuntimeStateTests: XCTestCase {
       at: Date(timeIntervalSinceReferenceDate: 1000)
     )
     state.markCurrentLockAsFocusOwned()
-    let generation = try XCTUnwrap(state.focusOwnedGenerationForRelease)
+    let generation = try #require(state.focusOwnedGenerationForRelease)
 
     state.end()
 
-    XCTAssertNil(state.focusOwnedGenerationForRelease)
-    XCTAssertFalse(state.matchesCurrentLockGeneration(generation))
+    #expect(state.focusOwnedGenerationForRelease == nil)
+    #expect(!state.matchesCurrentLockGeneration(generation))
   }
 
-  func testStaleFocusReleaseCannotMatchLaterLockGeneration() throws {
+  @Test
+  func staleFocusReleaseCannotMatchLaterLockGeneration() throws {
     var state = LockRuntimeState()
     _ = state.begin(
       settings: .default,
@@ -253,7 +253,7 @@ final class LockRuntimeStateTests: XCTestCase {
       at: Date(timeIntervalSinceReferenceDate: 1000)
     )
     state.markCurrentLockAsFocusOwned()
-    let focusGeneration = try XCTUnwrap(state.focusOwnedGenerationForRelease)
+    let focusGeneration = try #require(state.focusOwnedGenerationForRelease)
 
     state.end()
     _ = state.begin(
@@ -262,11 +262,12 @@ final class LockRuntimeStateTests: XCTestCase {
       at: Date(timeIntervalSinceReferenceDate: 1001)
     )
 
-    XCTAssertFalse(state.matchesCurrentLockGeneration(focusGeneration))
-    XCTAssertNil(state.focusOwnedGenerationForRelease)
+    #expect(!state.matchesCurrentLockGeneration(focusGeneration))
+    #expect(state.focusOwnedGenerationForRelease == nil)
   }
 
-  func testSnapshotCapturesOneCoherentRuntimeState() {
+  @Test
+  func snapshotCapturesOneCoherentRuntimeState() {
     let settings = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),
       unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
@@ -276,19 +277,17 @@ final class LockRuntimeStateTests: XCTestCase {
     let deadline = startedAt.addingTimeInterval(60)
     var state = LockRuntimeState()
 
-    XCTAssertEqual(
+    #expect(
       state.begin(
         settings: settings,
         allowsControlCUnlock: false,
         at: startedAt
-      ),
-      .acquired
+      ) == .acquired
     )
     state.setAutoUnlockTargetDate(deadline)
 
-    XCTAssertEqual(
-      state.statusSnapshot(capturedAt: capturedAt),
-      LockStatusSnapshot(
+    #expect(
+      state.statusSnapshot(capturedAt: capturedAt) == LockStatusSnapshot(
         capturedAt: capturedAt,
         isLocked: true,
         startedAt: startedAt,
@@ -298,7 +297,8 @@ final class LockRuntimeStateTests: XCTestCase {
     )
   }
 
-  func testSnapshotClearsRuntimeDatesAfterUnlock() {
+  @Test
+  func snapshotClearsRuntimeDatesAfterUnlock() {
     let capturedAt = Date(timeIntervalSinceReferenceDate: 1000)
     var state = LockRuntimeState()
     _ = state.begin(
@@ -309,9 +309,8 @@ final class LockRuntimeStateTests: XCTestCase {
     state.setAutoUnlockTargetDate(capturedAt.addingTimeInterval(50))
     state.end()
 
-    XCTAssertEqual(
-      state.statusSnapshot(capturedAt: capturedAt),
-      LockStatusSnapshot(
+    #expect(
+      state.statusSnapshot(capturedAt: capturedAt) == LockStatusSnapshot(
         capturedAt: capturedAt,
         isLocked: false,
         startedAt: nil,

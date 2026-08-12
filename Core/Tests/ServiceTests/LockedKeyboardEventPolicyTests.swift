@@ -2,16 +2,19 @@ import AppKit
 import CoreGraphics
 import IOKit
 @testable import Service
-import XCTest
+import Testing
 
-final class LockedKeyboardEventPolicyTests: XCTestCase {
-  func testSuppressesStandardKeyboardEvents() {
+@Suite(.serialized)
+struct LockedKeyboardEventPolicyTests {
+  @Test
+  func suppressesStandardKeyboardEvents() {
     for type in [CGEventType.keyDown, .keyUp, .flagsChanged] {
-      XCTAssertTrue(LockedKeyboardEventPolicy.shouldSuppress(type: type))
+      #expect(LockedKeyboardEventPolicy.shouldSuppress(type: type))
     }
   }
 
-  func testSuppressesKeyboardSystemControls() {
+  @Test
+  func suppressesKeyboardSystemControls() {
     let subtypes = [
       NX_SUBTYPE_AUX_CONTROL_BUTTONS,
       NX_SUBTYPE_EJECT_KEY,
@@ -19,7 +22,7 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
     ]
 
     for subtype in subtypes {
-      XCTAssertTrue(
+      #expect(
         LockedKeyboardEventPolicy.shouldSuppress(
           type: LockedKeyboardEventPolicy.systemDefinedEventType,
           systemDefinedSubtype: Int16(subtype)
@@ -28,8 +31,9 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
     }
   }
 
+  @Test
   @MainActor
-  func testReadsSystemDefinedSubtypeFromEventPayload() throws {
+  func readsSystemDefinedSubtypeFromEventPayload() throws {
     let keyboardControl = try makeSystemDefinedEvent(
       subtype: NX_SUBTYPE_AUX_CONTROL_BUTTONS
     )
@@ -37,71 +41,73 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
       subtype: NX_SUBTYPE_AUX_MOUSE_BUTTONS
     )
 
-    XCTAssertEqual(
-      keyboardControl.type,
-      LockedKeyboardEventPolicy.systemDefinedEventType
+    #expect(
+      keyboardControl.type == LockedKeyboardEventPolicy.systemDefinedEventType
     )
-    XCTAssertTrue(
+    #expect(
       LockedKeyboardEventPolicy.shouldSuppress(
         type: keyboardControl.type,
         event: keyboardControl
       )
     )
-    XCTAssertFalse(
-      LockedKeyboardEventPolicy.shouldSuppress(
+    #expect(
+      !LockedKeyboardEventPolicy.shouldSuppress(
         type: auxiliaryMouseButton.type,
         event: auxiliaryMouseButton
       )
     )
   }
 
-  func testPreservesPointerAndUnclassifiedSystemEvents() {
-    XCTAssertFalse(
-      LockedKeyboardEventPolicy.shouldSuppress(
+  @Test
+  func preservesPointerAndUnclassifiedSystemEvents() {
+    #expect(
+      !LockedKeyboardEventPolicy.shouldSuppress(
         type: LockedKeyboardEventPolicy.systemDefinedEventType,
         systemDefinedSubtype: Int16(NX_SUBTYPE_AUX_MOUSE_BUTTONS)
       )
     )
-    XCTAssertFalse(
-      LockedKeyboardEventPolicy.shouldSuppress(
+    #expect(
+      !LockedKeyboardEventPolicy.shouldSuppress(
         type: LockedKeyboardEventPolicy.systemDefinedEventType,
         systemDefinedSubtype: Int16(NX_SUBTYPE_SLEEP_EVENT)
       )
     )
-    XCTAssertFalse(
-      LockedKeyboardEventPolicy.shouldSuppress(
+    #expect(
+      !LockedKeyboardEventPolicy.shouldSuppress(
         type: LockedKeyboardEventPolicy.systemDefinedEventType,
         systemDefinedSubtype: nil
       )
     )
-    XCTAssertFalse(
-      LockedKeyboardEventPolicy.shouldSuppress(
+    #expect(
+      !LockedKeyboardEventPolicy.shouldSuppress(
         type: LockedKeyboardEventPolicy.systemDefinedEventType,
         systemDefinedSubtype: .max
       )
     )
   }
 
-  func testPreservesPointerEventTypes() {
+  @Test
+  func preservesPointerEventTypes() {
     for type in [
       CGEventType.leftMouseDown,
       .otherMouseDown,
       .rightMouseDown,
       .scrollWheel,
     ] {
-      XCTAssertFalse(LockedKeyboardEventPolicy.shouldSuppress(type: type))
+      #expect(!LockedKeyboardEventPolicy.shouldSuppress(type: type))
     }
   }
 
+  @Test
   @MainActor
-  func testEventTapObservesEverySuppressibleEventClassWithoutObservingPointers() {
+  func eventTapObservesEverySuppressibleEventClassWithoutObservingPointers() {
     for type in [
       CGEventType.keyDown,
       .keyUp,
       .flagsChanged,
       LockedKeyboardEventPolicy.systemDefinedEventType,
     ] {
-      XCTAssertTrue(eventMaskContains(type))
+      #expect(eventMaskContains(type))
     }
 
     for type in [
@@ -110,7 +116,7 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
       .rightMouseDown,
       .scrollWheel,
     ] {
-      XCTAssertFalse(eventMaskContains(type))
+      #expect(!eventMaskContains(type))
     }
   }
 
@@ -121,7 +127,7 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
 
   @MainActor
   private func makeSystemDefinedEvent(subtype: Int32) throws -> CGEvent {
-    let event = try XCTUnwrap(
+    let event = try #require(
       NSEvent.otherEvent(
         with: .systemDefined,
         location: .zero,
@@ -134,6 +140,6 @@ final class LockedKeyboardEventPolicyTests: XCTestCase {
         data2: 0
       )
     )
-    return try XCTUnwrap(event.cgEvent)
+    return try #require(event.cgEvent)
   }
 }

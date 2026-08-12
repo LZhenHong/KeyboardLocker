@@ -1,51 +1,57 @@
 import Foundation
-import XCTest
+import Testing
 
-final class KeyboardLockerControlModelTests: XCTestCase {
-  func testValueLoaderReturnsAuthoritativeValue() async throws {
+@Suite(.serialized)
+struct KeyboardLockerControlModelTests {
+  @Test
+  func valueLoaderReturnsAuthoritativeValue() async throws {
     let loader = KeyboardLockerControlValueLoader {
       true
     }
 
     let value = try await loader.currentValue()
 
-    XCTAssertTrue(value)
+    #expect(value)
   }
 
-  func testValueLoaderPropagatesFailure() async {
+  @Test
+  func valueLoaderPropagatesFailure() async {
     let loader = KeyboardLockerControlValueLoader {
       throw TestError.expected
     }
 
     do {
       _ = try await loader.currentValue()
-      XCTFail("Expected the loader to propagate the error.")
+      Issue.record("Expected the loader to propagate the error.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
   }
 
-  func testSetLockedCallsOnlyLockThenReload() async throws {
+  @Test
+  func setLockedCallsOnlyLockThenReload() async throws {
     let recorder = CallRecorder()
     let action = makeAction(recorder: recorder)
 
     try await action.setLocked(true)
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.lock, .reload])
+    #expect(calls == [.lock, .reload])
   }
 
-  func testSetUnlockedCallsOnlyUnlockThenReload() async throws {
+  @Test
+  func setUnlockedCallsOnlyUnlockThenReload() async throws {
     let recorder = CallRecorder()
     let action = makeAction(recorder: recorder)
 
     try await action.setLocked(false)
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.unlock, .reload])
+    #expect(calls == [.unlock, .reload])
   }
 
-  func testFailedActionDoesNotReload() async {
+  @Test
+  func failedActionDoesNotReload() async {
     let recorder = CallRecorder()
     let action = KeyboardLockerControlAction(
       lock: {
@@ -62,13 +68,13 @@ final class KeyboardLockerControlModelTests: XCTestCase {
 
     do {
       try await action.setLocked(true)
-      XCTFail("Expected the action to propagate the error.")
+      Issue.record("Expected the action to propagate the error.")
     } catch {
-      XCTAssertEqual(error as? TestError, .expected)
+      #expect(error as? TestError == .expected)
     }
 
     let calls = await recorder.calls
-    XCTAssertEqual(calls, [.lock])
+    #expect(calls == [.lock])
   }
 
   private func makeAction(recorder: CallRecorder) -> KeyboardLockerControlAction {

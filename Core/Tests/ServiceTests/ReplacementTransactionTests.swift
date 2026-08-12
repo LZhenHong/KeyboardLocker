@@ -1,83 +1,94 @@
 import Common
+import Foundation
 @testable import Service
-import XCTest
+import Testing
 
-final class ReplacementTransactionTests: XCTestCase {
-  func testPrepareIsExclusive() throws {
+@Suite(.serialized)
+struct ReplacementTransactionTests {
+  @Test
+  func prepareIsExclusive() throws {
     var transaction = ReplacementTransaction()
     let first = makeTicket()
 
     _ = try transaction.prepare(ticket: first)
 
-    XCTAssertTrue(transaction.isPending)
-    XCTAssertThrowsError(try transaction.prepare(ticket: makeTicket())) { error in
-      XCTAssertEqual(error as? ReplacementTransactionError, .alreadyInProgress)
+    #expect(transaction.isPending)
+    #expect(throws: ReplacementTransactionError.alreadyInProgress) {
+      try transaction.prepare(ticket: makeTicket())
     }
   }
 
-  func testPreparedTransactionCanBeCancelledOnlyByItsOwner() throws {
+  @Test
+  func preparedTransactionCanBeCancelledOnlyByItsOwner() throws {
     var transaction = ReplacementTransaction()
     let owner = makeTicket()
     _ = try transaction.prepare(ticket: owner)
 
-    XCTAssertThrowsError(try transaction.cancel(ticket: makeTicket())) { error in
-      XCTAssertEqual(error as? ReplacementTransactionError, .ticketInactive)
+    #expect(throws: ReplacementTransactionError.ticketInactive) {
+      try transaction.cancel(ticket: makeTicket())
     }
 
     try transaction.cancel(ticket: owner)
-    XCTAssertFalse(transaction.isPending)
+    #expect(!transaction.isPending)
   }
 
-  func testPreparationExpires() throws {
+  @Test
+  func preparationExpires() throws {
     var transaction = ReplacementTransaction()
     let preparation = try transaction.prepare(ticket: makeTicket())
 
-    XCTAssertEqual(transaction.status(for: preparation.ticket).phase, .prepared)
-    XCTAssertEqual(transaction.status(for: makeTicket()).phase, .inactive)
-    XCTAssertTrue(transaction.expire(preparation: preparation))
-    XCTAssertEqual(transaction.status(for: preparation.ticket).phase, .inactive)
-    XCTAssertFalse(transaction.isPending)
+    #expect(transaction.status(for: preparation.ticket).phase == .prepared)
+    #expect(transaction.status(for: makeTicket()).phase == .inactive)
+    let didExpire = transaction.expire(preparation: preparation)
+    #expect(didExpire)
+    #expect(transaction.status(for: preparation.ticket).phase == .inactive)
+    #expect(!transaction.isPending)
   }
 
-  func testStaleExpirationCannotClearNewPreparation() throws {
+  @Test
+  func staleExpirationCannotClearNewPreparation() throws {
     var transaction = ReplacementTransaction()
     let first = try transaction.prepare(ticket: makeTicket())
     try transaction.cancel(ticket: first.ticket)
     let second = try transaction.prepare(ticket: makeTicket())
 
-    XCTAssertFalse(transaction.expire(preparation: first))
-    XCTAssertTrue(transaction.isPending)
-    XCTAssertTrue(transaction.expire(preparation: second))
+    let didExpireFirst = transaction.expire(preparation: first)
+    #expect(!didExpireFirst)
+    #expect(transaction.isPending)
+    let didExpireSecond = transaction.expire(preparation: second)
+    #expect(didExpireSecond)
   }
 
-  func testCommitIsIdempotentAndNonExpiring() throws {
+  @Test
+  func commitIsIdempotentAndNonExpiring() throws {
     var transaction = ReplacementTransaction()
     let preparation = try transaction.prepare(ticket: makeTicket())
 
     try transaction.commit(ticket: preparation.ticket)
     try transaction.commit(ticket: preparation.ticket)
 
-    XCTAssertTrue(transaction.isPending)
-    XCTAssertTrue(transaction.isCommitted)
-    XCTAssertEqual(
-      transaction.status(for: preparation.ticket).phase,
-      .committed
+    #expect(transaction.isPending)
+    #expect(transaction.isCommitted)
+    #expect(
+      transaction.status(for: preparation.ticket).phase == .committed
     )
-    XCTAssertFalse(transaction.expire(preparation: preparation))
-    XCTAssertThrowsError(try transaction.cancel(ticket: preparation.ticket)) { error in
-      XCTAssertEqual(error as? ReplacementTransactionError, .committedCannotCancel)
+    let didExpire = transaction.expire(preparation: preparation)
+    #expect(!didExpire)
+    #expect(throws: ReplacementTransactionError.committedCannotCancel) {
+      try transaction.cancel(ticket: preparation.ticket)
     }
-    XCTAssertTrue(transaction.isPending)
+    #expect(transaction.isPending)
   }
 
-  func testWrongTicketCannotCommit() throws {
+  @Test
+  func wrongTicketCannotCommit() throws {
     var transaction = ReplacementTransaction()
     _ = try transaction.prepare(ticket: makeTicket())
 
-    XCTAssertThrowsError(try transaction.commit(ticket: makeTicket())) { error in
-      XCTAssertEqual(error as? ReplacementTransactionError, .ticketInactive)
+    #expect(throws: ReplacementTransactionError.ticketInactive) {
+      try transaction.commit(ticket: makeTicket())
     }
-    XCTAssertFalse(transaction.isCommitted)
+    #expect(!transaction.isCommitted)
   }
 
   private func makeTicket() -> ServiceReplacementTicket {

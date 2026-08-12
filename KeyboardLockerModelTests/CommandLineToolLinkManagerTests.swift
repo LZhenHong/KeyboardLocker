@@ -1,10 +1,11 @@
 import Foundation
-import XCTest
+import Testing
 
-final class CommandLineToolLinkManagerTests: XCTestCase {
-  private var temporaryDirectory: URL!
+@Suite(.serialized)
+final class CommandLineToolLinkManagerTests {
+  private let temporaryDirectory: URL
 
-  override func setUpWithError() throws {
+  init() throws {
     temporaryDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(
@@ -13,15 +14,13 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
     )
   }
 
-  override func tearDownWithError() throws {
-    if let temporaryDirectory {
-      try? FileManager.default.removeItem(at: temporaryDirectory)
-    }
-    temporaryDirectory = nil
+  deinit {
+    try? FileManager.default.removeItem(at: temporaryDirectory)
   }
 
+  @Test
   @MainActor
-  func testInstallAndUninstallManageOnlySymbolicLink() throws {
+  func installAndUninstallManageOnlySymbolicLink() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
     let destination = binDirectory.appendingPathComponent("klock")
@@ -31,28 +30,29 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
       pathDirectories: [binDirectory]
     )
 
-    XCTAssertEqual(
-      manager.state,
-      .notInstalled(destination: destination, requiresPathSetup: false)
+    #expect(
+      manager.state ==
+        .notInstalled(destination: destination, requiresPathSetup: false)
     )
 
-    XCTAssertEqual(try manager.install(), .installed(destination: destination))
-    XCTAssertTrue(manager.canRemoveLink(at: destination))
-    XCTAssertEqual(
-      try FileManager.default.destinationOfSymbolicLink(atPath: destination.path),
-      source.path
+    #expect(try manager.install() == .installed(destination: destination))
+    #expect(manager.canRemoveLink(at: destination))
+    #expect(
+      try FileManager.default.destinationOfSymbolicLink(atPath: destination.path) ==
+        source.path
     )
 
-    XCTAssertEqual(
-      try manager.uninstall(),
-      .notInstalled(destination: destination, requiresPathSetup: false)
+    #expect(
+      try manager.uninstall() ==
+        .notInstalled(destination: destination, requiresPathSetup: false)
     )
-    XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+    #expect(FileManager.default.fileExists(atPath: source.path))
   }
 
+  @Test
   @MainActor
-  func testInstallIsIdempotentForOwnedSymbolicLink() throws {
+  func installIsIdempotentForOwnedSymbolicLink() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
     let destination = binDirectory.appendingPathComponent("klock")
@@ -63,11 +63,12 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
     )
 
     _ = try manager.install()
-    XCTAssertEqual(try manager.install(), .installed(destination: destination))
+    #expect(try manager.install() == .installed(destination: destination))
   }
 
+  @Test
   @MainActor
-  func testOwnedSymbolicLinkCanBeRemovedWhenBundledExecutableDisappears() throws {
+  func ownedSymbolicLinkCanBeRemovedWhenBundledExecutableDisappears() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
     let destination = binDirectory.appendingPathComponent("klock")
@@ -80,18 +81,19 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
     _ = try manager.install()
     try FileManager.default.removeItem(at: source)
 
-    XCTAssertEqual(manager.state, .installed(destination: destination))
-    XCTAssertEqual(
-      try manager.uninstall(),
-      .sourceUnavailable(source)
+    #expect(manager.state == .installed(destination: destination))
+    #expect(
+      try manager.uninstall() ==
+        .sourceUnavailable(source)
     )
-    XCTAssertThrowsError(
+    #expect(throws: (any Error).self) {
       try FileManager.default.destinationOfSymbolicLink(atPath: destination.path)
-    )
+    }
   }
 
+  @Test
   @MainActor
-  func testForeignItemIsReportedAndNeverOverwritten() throws {
+  func foreignItemIsReportedAndNeverOverwritten() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
     try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
@@ -103,19 +105,21 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
       pathDirectories: [binDirectory]
     )
 
-    XCTAssertEqual(manager.state, .conflict(destination: destination))
-    XCTAssertThrowsError(try manager.install()) { error in
-      guard let installationError = error as? CommandLineToolLinkManager.InstallationError,
-            case .destinationConflict = installationError
-      else {
-        return XCTFail("Expected a destination conflict, found \(error).")
-      }
+    #expect(manager.state == .conflict(destination: destination))
+    let error = #expect(throws: CommandLineToolLinkManager.InstallationError.self) {
+      try manager.install()
     }
-    XCTAssertEqual(try Data(contentsOf: destination), Data("foreign".utf8))
+    guard let error else { return }
+    guard case .destinationConflict = error else {
+      Issue.record("Expected a destination conflict, found \(error).")
+      return
+    }
+    #expect(try Data(contentsOf: destination) == Data("foreign".utf8))
   }
 
+  @Test
   @MainActor
-  func testMissingPathDirectoryIsReportedWithoutEditingShellConfiguration() throws {
+  func missingPathDirectoryIsReportedWithoutEditingShellConfiguration() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
     let destination = binDirectory.appendingPathComponent("klock")
@@ -125,11 +129,11 @@ final class CommandLineToolLinkManagerTests: XCTestCase {
       pathDirectories: []
     )
 
-    XCTAssertEqual(
-      manager.state,
-      .notInstalled(destination: destination, requiresPathSetup: true)
+    #expect(
+      manager.state ==
+        .notInstalled(destination: destination, requiresPathSetup: true)
     )
-    XCTAssertTrue(manager.pathSetupCommand(for: destination).contains("export PATH="))
+    #expect(manager.pathSetupCommand(for: destination).contains("export PATH="))
   }
 
   @MainActor

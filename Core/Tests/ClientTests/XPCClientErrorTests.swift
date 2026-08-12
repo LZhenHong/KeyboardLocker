@@ -1,9 +1,11 @@
 @testable import Client
 import Foundation
-import XCTest
+import Testing
 
-final class XPCClientErrorTests: XCTestCase {
-  func testProxyErrorsNormalizeToServiceUnavailable() {
+@Suite(.serialized)
+struct XPCClientErrorTests {
+  @Test
+  func proxyErrorsNormalizeToServiceUnavailable() {
     let transportError = NSError(
       domain: NSCocoaErrorDomain,
       code: CocoaError.xpcConnectionInvalid.rawValue
@@ -11,61 +13,63 @@ final class XPCClientErrorTests: XCTestCase {
 
     guard case XPCClientError.serviceUnavailable = XPCClient.normalizedProxyError(transportError)
     else {
-      return XCTFail("Expected the proxy error to normalize to serviceUnavailable.")
+      Issue.record("Expected the proxy error to normalize to serviceUnavailable.")
+      return
     }
   }
 
-  func testServiceUnavailableExplainsFirstUseRecovery() throws {
-    let suggestion = try XCTUnwrap(XPCClientError.serviceUnavailable.recoverySuggestion)
+  @Test
+  func serviceUnavailableExplainsFirstUseRecovery() throws {
+    let suggestion = try #require(XPCClientError.serviceUnavailable.recoverySuggestion)
 
-    XCTAssertTrue(suggestion.contains("Open KeyboardLocker once"))
-    XCTAssertTrue(suggestion.contains("Show Details"))
+    #expect(suggestion.contains("Open KeyboardLocker once"))
+    #expect(suggestion.contains("Show Details"))
   }
 
-  func testTimeoutExplainsRetryRecovery() throws {
-    let suggestion = try XCTUnwrap(XPCClientError.timedOut.recoverySuggestion)
+  @Test
+  func timeoutExplainsRetryRecovery() throws {
+    let suggestion = try #require(XPCClientError.timedOut.recoverySuggestion)
 
-    XCTAssertTrue(suggestion.contains("Retry"))
-    XCTAssertTrue(suggestion.contains("Show Details"))
+    #expect(suggestion.contains("Retry"))
+    #expect(suggestion.contains("Show Details"))
   }
 
-  func testMissingCapabilityExplainsAgentUpdateRecovery() throws {
-    let suggestion = try XCTUnwrap(
+  @Test
+  func missingCapabilityExplainsAgentUpdateRecovery() throws {
+    let suggestion = try #require(
       XPCClientError.missingCapability(.interactiveLock).recoverySuggestion
     )
 
-    XCTAssertTrue(suggestion.contains("update its background agent"))
+    #expect(suggestion.contains("update its background agent"))
   }
 
-  func testUnknownMutationOutcomeExplainsStateRecovery() throws {
-    let suggestion = try XCTUnwrap(
+  @Test
+  func unknownMutationOutcomeExplainsStateRecovery() throws {
+    let suggestion = try #require(
       XPCClientError.operationOutcomeUnknown.recoverySuggestion
     )
 
-    XCTAssertTrue(suggestion.contains("Inspect the current state"))
-    XCTAssertTrue(suggestion.contains("repeat the intended lock or unlock action"))
+    #expect(suggestion.contains("Inspect the current state"))
+    #expect(suggestion.contains("repeat the intended lock or unlock action"))
   }
 
-  func testFeatureNegotiationRejectsProtocolMajorBeforeCapabilities() {
+  @Test
+  func featureNegotiationRejectsProtocolMajorBeforeCapabilities() {
     let descriptor = makeDescriptor(
       protocolVersion: ServiceProtocolVersion(major: 2, minor: 99),
       capabilities: []
     )
 
-    XCTAssertThrowsError(
+    #expect(throws: ServiceCompatibilityIssue.protocolMajorMismatch(expected: 1, actual: 2)) {
       try XPCFeatureNegotiation.validate(
         descriptor: descriptor,
         requiring: [.lockToggle]
       )
-    ) { error in
-      XCTAssertEqual(
-        error as? ServiceCompatibilityIssue,
-        .protocolMajorMismatch(expected: 1, actual: 2)
-      )
     }
   }
 
-  func testFeatureNegotiationEnforcesSelectorIntroductionMinor() {
+  @Test
+  func featureNegotiationEnforcesSelectorIntroductionMinor() {
     let introductionMinorByCapability: [ServiceCapability: Int] = [
       .accessibilityPrompt: 0,
       .accessibilityStatus: 0,
@@ -93,22 +97,23 @@ final class XPCClientErrorTests: XCTestCase {
         capabilities: [capability]
       )
 
-      XCTAssertThrowsError(
+      #expect(
+        throws: ServiceCompatibilityIssue.protocolMinorTooOld(
+          required: introductionMinor,
+          actual: introductionMinor - 1
+        ),
+        "Expected \(capability.rawValue) to require protocol minor \(introductionMinor)."
+      ) {
         try XPCFeatureNegotiation.validate(
           descriptor: descriptor,
           requiring: [capability]
-        ),
-        "Expected \(capability.rawValue) to require protocol minor \(introductionMinor)."
-      ) { error in
-        XCTAssertEqual(
-          error as? ServiceCompatibilityIssue,
-          .protocolMinorTooOld(required: introductionMinor, actual: introductionMinor - 1)
         )
       }
     }
   }
 
-  func testFeatureNegotiationAcceptsDeclaredCapabilityAtIntroductionMinor() {
+  @Test
+  func featureNegotiationAcceptsDeclaredCapabilityAtIntroductionMinor() throws {
     let descriptor = makeDescriptor(
       protocolVersion: ServiceProtocolVersion(
         major: ServiceContract.protocolVersion.major,
@@ -117,29 +122,29 @@ final class XPCClientErrorTests: XCTestCase {
       capabilities: [.interactiveLock]
     )
 
-    XCTAssertNoThrow(
-      try XPCFeatureNegotiation.validate(
-        descriptor: descriptor,
-        requiring: [.interactiveLock]
-      )
+    try XPCFeatureNegotiation.validate(
+      descriptor: descriptor,
+      requiring: [.interactiveLock]
     )
   }
 
-  func testFeatureNegotiationChecksCapabilityAfterCompatibleVersion() {
+  @Test
+  func featureNegotiationChecksCapabilityAfterCompatibleVersion() {
     let descriptor = makeDescriptor(
       protocolVersion: ServiceContract.protocolVersion,
       capabilities: []
     )
 
-    XCTAssertThrowsError(
+    do {
       try XPCFeatureNegotiation.validate(
         descriptor: descriptor,
         requiring: [.interactiveLock]
       )
-    ) { error in
-      guard case XPCClientError.missingCapability(.interactiveLock) = error else {
-        return XCTFail("Expected missing interactive-lock capability, got \(error).")
-      }
+      Issue.record("Expected missing interactive-lock capability.")
+    } catch XPCClientError.missingCapability(.interactiveLock) {
+      // Expected.
+    } catch {
+      Issue.record("Expected missing interactive-lock capability, got \(error).")
     }
   }
 

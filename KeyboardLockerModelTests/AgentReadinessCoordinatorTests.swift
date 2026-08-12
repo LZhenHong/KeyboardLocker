@@ -1,10 +1,12 @@
 import Client
 import Foundation
-import XCTest
+import Testing
 
-final class AgentReadinessCoordinatorTests: XCTestCase {
+@Suite(.serialized)
+struct AgentReadinessCoordinatorTests {
   @MainActor
-  func testNonEnabledRegistrationSkipsXPCAndReturnsRegistration() async {
+  @Test
+  func nonEnabledRegistrationSkipsXPCAndReturnsRegistration() async {
     let client = FakeAgentReadinessClient(
       descriptorResults: [.failure(TestError.handshake)]
     )
@@ -16,18 +18,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .registration(state) = outcome else {
-      XCTFail("Expected .registration, got \(outcome).")
+      Issue.record("Expected .registration, got \(outcome).")
       return
     }
-    XCTAssertEqual(state, .approvalRequired)
-    XCTAssertEqual(client.descriptorCallCount, 0)
-    XCTAssertEqual(client.statusCallCount, 0)
-    XCTAssertEqual(client.resetConnectionCallCount, 0)
-    XCTAssertTrue(lifecycle.checkedDescriptors.isEmpty)
+    #expect(state == .approvalRequired)
+    #expect(client.descriptorCallCount == 0)
+    #expect(client.statusCallCount == 0)
+    #expect(client.resetConnectionCallCount == 0)
+    #expect(lifecycle.checkedDescriptors.isEmpty)
   }
 
   @MainActor
-  func testHandshakeFailureResetsConnectionOnceAndRetries() async {
+  @Test
+  func handshakeFailureResetsConnectionOnceAndRetries() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.failure(TestError.handshake), .success(descriptor)],
@@ -40,21 +43,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .ready(isLocked, hasAccessibilityPermission) = outcome else {
-      XCTFail("Expected .ready, got \(outcome).")
+      Issue.record("Expected .ready, got \(outcome).")
       return
     }
-    XCTAssertTrue(isLocked)
-    XCTAssertTrue(hasAccessibilityPermission)
-    XCTAssertEqual(client.descriptorCallCount, 2)
-    XCTAssertEqual(client.resetConnectionCallCount, 1)
-    XCTAssertEqual(
-      Array(client.events.prefix(3)),
-      [.serviceDescriptor, .resetConnection, .serviceDescriptor]
-    )
+    #expect(isLocked)
+    #expect(hasAccessibilityPermission)
+    #expect(client.descriptorCallCount == 2)
+    #expect(client.resetConnectionCallCount == 1)
+    #expect(Array(client.events.prefix(3)) == [.serviceDescriptor, .resetConnection, .serviceDescriptor])
   }
 
   @MainActor
-  func testDoubleHandshakeFailureFallsBackToForcedUpdateWithStatusLockState() async {
+  @Test
+  func doubleHandshakeFailureFallsBackToForcedUpdateWithStatusLockState() async {
     let client = FakeAgentReadinessClient(
       descriptorResults: [
         .failure(TestError.handshake),
@@ -68,24 +69,25 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .updateRequired(plan) = outcome else {
-      XCTFail("Expected .updateRequired, got \(outcome).")
+      Issue.record("Expected .updateRequired, got \(outcome).")
       return
     }
     guard case let .forced(descriptor, isLocked) = plan.mode else {
-      XCTFail("Expected a forced plan, got \(plan.mode).")
+      Issue.record("Expected a forced plan, got \(plan.mode).")
       return
     }
-    XCTAssertNil(descriptor)
-    XCTAssertEqual(isLocked, true)
-    XCTAssertTrue(plan.message.contains("could not be verified"))
-    XCTAssertEqual(client.descriptorCallCount, 2)
-    XCTAssertEqual(client.statusCallCount, 1)
-    XCTAssertEqual(client.resetConnectionCallCount, 2)
-    XCTAssertTrue(lifecycle.checkedDescriptors.isEmpty)
+    #expect(descriptor == nil)
+    #expect(isLocked == true)
+    #expect(plan.message.contains("could not be verified"))
+    #expect(client.descriptorCallCount == 2)
+    #expect(client.statusCallCount == 1)
+    #expect(client.resetConnectionCallCount == 2)
+    #expect(lifecycle.checkedDescriptors.isEmpty)
   }
 
   @MainActor
-  func testDoubleHandshakeFailureWithUnreadableStatusReportsHandshakeContext() async {
+  @Test
+  func doubleHandshakeFailureWithUnreadableStatusReportsHandshakeContext() async {
     let client = FakeAgentReadinessClient(
       descriptorResults: [
         .failure(TestError.handshake),
@@ -99,15 +101,16 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .failure(error, context) = outcome else {
-      XCTFail("Expected .failure, got \(outcome).")
+      Issue.record("Expected .failure, got \(outcome).")
       return
     }
-    XCTAssertEqual(error as? TestError, .status)
-    XCTAssertTrue(context?.contains("Descriptor handshake failed") == true)
+    #expect(error as? TestError == .status)
+    #expect(context?.contains("Descriptor handshake failed") == true)
   }
 
   @MainActor
-  func testCompatibleDescriptorReturnsReadySnapshot() async {
+  @Test
+  func compatibleDescriptorReturnsReadySnapshot() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)],
@@ -120,18 +123,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .ready(isLocked, hasAccessibilityPermission) = outcome else {
-      XCTFail("Expected .ready, got \(outcome).")
+      Issue.record("Expected .ready, got \(outcome).")
       return
     }
-    XCTAssertFalse(isLocked)
-    XCTAssertTrue(hasAccessibilityPermission)
-    XCTAssertEqual(client.descriptorCallCount, 1)
-    XCTAssertEqual(client.resetConnectionCallCount, 0)
-    XCTAssertEqual(lifecycle.checkedDescriptors, [descriptor])
+    #expect(!isLocked)
+    #expect(hasAccessibilityPermission)
+    #expect(client.descriptorCallCount == 1)
+    #expect(client.resetConnectionCallCount == 0)
+    #expect(lifecycle.checkedDescriptors == [descriptor])
   }
 
   @MainActor
-  func testMatchingPreviousInstanceIDReportsAgentDidNotRestart() async {
+  @Test
+  func matchingPreviousInstanceIDReportsAgentDidNotRestart() async {
     let instanceID = UUID()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(makeDescriptor(agentInstanceID: instanceID))]
@@ -144,15 +148,16 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     )
 
     guard case .agentDidNotRestart = outcome else {
-      XCTFail("Expected .agentDidNotRestart, got \(outcome).")
+      Issue.record("Expected .agentDidNotRestart, got \(outcome).")
       return
     }
-    XCTAssertTrue(lifecycle.checkedDescriptors.isEmpty)
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(lifecycle.checkedDescriptors.isEmpty)
+    #expect(client.statusCallCount == 0)
   }
 
   @MainActor
-  func testBundledUpgradeAvailableCarriesDescriptorMessageBuildAndLockState() async {
+  @Test
+  func bundledUpgradeAvailableCarriesDescriptorMessageBuildAndLockState() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)],
@@ -174,18 +179,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
       bundledBuild,
       isLocked
     ) = outcome else {
-      XCTFail("Expected .updateAvailable, got \(outcome).")
+      Issue.record("Expected .updateAvailable, got \(outcome).")
       return
     }
-    XCTAssertEqual(reportedDescriptor, descriptor)
-    XCTAssertEqual(message, "Upgrade available.")
-    XCTAssertEqual(bundledBuild, "99")
-    XCTAssertTrue(isLocked)
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(reportedDescriptor == descriptor)
+    #expect(message == "Upgrade available.")
+    #expect(bundledBuild == "99")
+    #expect(isLocked)
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testSafeReplacementWithoutReadableLockStateFails() async {
+  @Test
+  func safeReplacementWithoutReadableLockStateFails() async {
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(makeDescriptor())]
     )
@@ -201,19 +207,17 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .failure(error, context) = outcome else {
-      XCTFail("Expected .failure, got \(outcome).")
+      Issue.record("Expected .failure, got \(outcome).")
       return
     }
-    XCTAssertEqual(
-      error.localizedDescription,
-      "Safe KeyboardLocker agent replacement requires a readable authoritative lock state."
-    )
-    XCTAssertNil(context)
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(error.localizedDescription == "Safe KeyboardLocker agent replacement requires a readable authoritative lock state.")
+    #expect(context == nil)
+    #expect(client.statusCallCount == 0)
   }
 
   @MainActor
-  func testUpdateRequiredWithoutLockStateOrSafeSupportForcesUpdate() async {
+  @Test
+  func updateRequiredWithoutLockStateOrSafeSupportForcesUpdate() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)]
@@ -230,21 +234,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .updateRequired(plan) = outcome else {
-      XCTFail("Expected .updateRequired, got \(outcome).")
+      Issue.record("Expected .updateRequired, got \(outcome).")
       return
     }
-    XCTAssertEqual(
-      plan,
-      AgentUpdatePlan(
-        mode: .forced(descriptor: descriptor, isLocked: nil),
-        message: "Update required."
-      )
-    )
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(plan == AgentUpdatePlan(
+      mode: .forced(descriptor: descriptor, isLocked: nil),
+      message: "Update required."
+    ))
+    #expect(client.statusCallCount == 0)
   }
 
   @MainActor
-  func testUpdateRequiredWithLockStateAndSafeSupportChoosesSafeMode() async {
+  @Test
+  func updateRequiredWithLockStateAndSafeSupportChoosesSafeMode() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)],
@@ -262,21 +264,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .updateRequired(plan) = outcome else {
-      XCTFail("Expected .updateRequired, got \(outcome).")
+      Issue.record("Expected .updateRequired, got \(outcome).")
       return
     }
-    XCTAssertEqual(
-      plan,
-      AgentUpdatePlan(
-        mode: .safe(descriptor: descriptor, isLocked: true),
-        message: "Update required."
-      )
-    )
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(plan == AgentUpdatePlan(
+      mode: .safe(descriptor: descriptor, isLocked: true),
+      message: "Update required."
+    ))
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testUpdateRequiredWithLockStateWithoutSafeSupportChoosesForcedMode() async {
+  @Test
+  func updateRequiredWithLockStateWithoutSafeSupportChoosesForcedMode() async {
     let descriptor = makeDescriptor()
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)],
@@ -294,21 +294,19 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .updateRequired(plan) = outcome else {
-      XCTFail("Expected .updateRequired, got \(outcome).")
+      Issue.record("Expected .updateRequired, got \(outcome).")
       return
     }
-    XCTAssertEqual(
-      plan,
-      AgentUpdatePlan(
-        mode: .forced(descriptor: descriptor, isLocked: false),
-        message: "Update required."
-      )
-    )
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(plan == AgentUpdatePlan(
+      mode: .forced(descriptor: descriptor, isLocked: false),
+      message: "Update required."
+    ))
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testTrustedReplacementInProgressShortCircuitsCompatibilityOutcome() async {
+  @Test
+  func trustedReplacementInProgressShortCircuitsCompatibilityOutcome() async {
     let descriptor = makeDescriptor(replacementPending: true)
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)]
@@ -319,15 +317,16 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .replacementInProgress(reported) = outcome else {
-      XCTFail("Expected .replacementInProgress, got \(outcome).")
+      Issue.record("Expected .replacementInProgress, got \(outcome).")
       return
     }
-    XCTAssertEqual(reported, descriptor)
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(reported == descriptor)
+    #expect(client.statusCallCount == 0)
   }
 
   @MainActor
-  func testReplacementPendingWithWrongBundleIdentifierFallsThroughToCompatibility() async {
+  @Test
+  func replacementPendingWithWrongBundleIdentifierFallsThroughToCompatibility() async {
     let descriptor = makeDescriptor(
       agentBundleIdentifier: "com.example.unrelated.agent",
       replacementPending: true
@@ -341,14 +340,15 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case .ready = outcome else {
-      XCTFail("Expected .ready, got \(outcome).")
+      Issue.record("Expected .ready, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testReplacementPendingWithoutDrainCapabilityFallsThroughToCompatibility() async {
+  @Test
+  func replacementPendingWithoutDrainCapabilityFallsThroughToCompatibility() async {
     var capabilities = ServiceContract.requiredCapabilities
     capabilities.remove(.committedReplacementDrain)
     let descriptor = makeDescriptor(
@@ -364,14 +364,15 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case .ready = outcome else {
-      XCTFail("Expected .ready, got \(outcome).")
+      Issue.record("Expected .ready, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testReplacementPendingWithInvalidBundleCompatibilityFallsThrough() async {
+  @Test
+  func replacementPendingWithInvalidBundleCompatibilityFallsThrough() async {
     let descriptor = makeDescriptor(replacementPending: true)
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(descriptor)]
@@ -384,15 +385,16 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await coordinator.inspect()
 
     guard case let .invalidBundle(failure) = outcome else {
-      XCTFail("Expected .invalidBundle, got \(outcome).")
+      Issue.record("Expected .invalidBundle, got \(outcome).")
       return
     }
-    XCTAssertEqual(failure, .invalidBundle("Corrupt bundle."))
-    XCTAssertEqual(client.statusCallCount, 0)
+    #expect(failure == .invalidBundle("Corrupt bundle."))
+    #expect(client.statusCallCount == 0)
   }
 
   @MainActor
-  func testCancellationAfterEnsureEnabledReturnsCancelled() async {
+  @Test
+  func cancellationAfterEnsureEnabledReturnsCancelled() async {
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(makeDescriptor())]
     )
@@ -404,17 +406,16 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let outcome = await inspection.value
 
     guard case .cancelled = outcome else {
-      XCTFail("Expected .cancelled, got \(outcome).")
+      Issue.record("Expected .cancelled, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.descriptorCallCount, 0)
+    #expect(client.descriptorCallCount == 0)
   }
 
   @MainActor
-  func testCancellationDuringInitialDescriptorFetchReturnsCancelled() async {
+  @Test
+  func cancellationDuringInitialDescriptorFetchReturnsCancelled() async {
     let descriptorGate = ReadinessTestGate()
-    let descriptorStarted = expectation(description: "Descriptor fetch started.")
-    descriptorGate.onEntered = { descriptorStarted.fulfill() }
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(makeDescriptor())]
     )
@@ -423,24 +424,23 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
 
     let inspection = Task { await coordinator.inspect() }
-    await fulfillment(of: [descriptorStarted], timeout: 5)
+    await descriptorGate.waitUntilEntered()
     inspection.cancel()
     descriptorGate.open()
     let outcome = await inspection.value
 
     guard case .cancelled = outcome else {
-      XCTFail("Expected .cancelled, got \(outcome).")
+      Issue.record("Expected .cancelled, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.descriptorCallCount, 1)
-    XCTAssertTrue(lifecycle.checkedDescriptors.isEmpty)
+    #expect(client.descriptorCallCount == 1)
+    #expect(lifecycle.checkedDescriptors.isEmpty)
   }
 
   @MainActor
-  func testCancellationAfterDescriptorFailureSkipsRetryAndReturnsCancelled() async {
+  @Test
+  func cancellationAfterDescriptorFailureSkipsRetryAndReturnsCancelled() async {
     let descriptorGate = ReadinessTestGate()
-    let descriptorStarted = expectation(description: "Descriptor fetch started.")
-    descriptorGate.onEntered = { descriptorStarted.fulfill() }
     let client = FakeAgentReadinessClient(
       descriptorResults: [.failure(TestError.handshake)]
     )
@@ -449,24 +449,23 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
 
     let inspection = Task { await coordinator.inspect() }
-    await fulfillment(of: [descriptorStarted], timeout: 5)
+    await descriptorGate.waitUntilEntered()
     inspection.cancel()
     descriptorGate.open()
     let outcome = await inspection.value
 
     guard case .cancelled = outcome else {
-      XCTFail("Expected .cancelled, got \(outcome).")
+      Issue.record("Expected .cancelled, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.descriptorCallCount, 1)
-    XCTAssertEqual(client.resetConnectionCallCount, 0)
+    #expect(client.descriptorCallCount == 1)
+    #expect(client.resetConnectionCallCount == 0)
   }
 
   @MainActor
-  func testCancellationDuringCompatibleStatusFetchReturnsCancelled() async {
+  @Test
+  func cancellationDuringCompatibleStatusFetchReturnsCancelled() async {
     let statusGate = ReadinessTestGate()
-    let statusStarted = expectation(description: "Status fetch started.")
-    statusGate.onEntered = { statusStarted.fulfill() }
     let client = FakeAgentReadinessClient(
       descriptorResults: [.success(makeDescriptor())],
       statusResult: .success(true)
@@ -476,23 +475,22 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
 
     let inspection = Task { await coordinator.inspect() }
-    await fulfillment(of: [statusStarted], timeout: 5)
+    await statusGate.waitUntilEntered()
     inspection.cancel()
     statusGate.open()
     let outcome = await inspection.value
 
     guard case .cancelled = outcome else {
-      XCTFail("Expected .cancelled, got \(outcome).")
+      Issue.record("Expected .cancelled, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(client.statusCallCount == 1)
   }
 
   @MainActor
-  func testCancellationDuringUnverifiedAgentStatusFetchReturnsCancelled() async {
+  @Test
+  func cancellationDuringUnverifiedAgentStatusFetchReturnsCancelled() async {
     let statusGate = ReadinessTestGate()
-    let statusStarted = expectation(description: "Status fetch started.")
-    statusGate.onEntered = { statusStarted.fulfill() }
     let client = FakeAgentReadinessClient(
       descriptorResults: [
         .failure(TestError.handshake),
@@ -505,17 +503,17 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     let coordinator = AgentReadinessCoordinator(client: client, lifecycle: lifecycle)
 
     let inspection = Task { await coordinator.inspect() }
-    await fulfillment(of: [statusStarted], timeout: 5)
+    await statusGate.waitUntilEntered()
     inspection.cancel()
     statusGate.open()
     let outcome = await inspection.value
 
     guard case .cancelled = outcome else {
-      XCTFail("Expected .cancelled, got \(outcome).")
+      Issue.record("Expected .cancelled, got \(outcome).")
       return
     }
-    XCTAssertEqual(client.descriptorCallCount, 2)
-    XCTAssertEqual(client.statusCallCount, 1)
+    #expect(client.descriptorCallCount == 2)
+    #expect(client.statusCallCount == 1)
   }
 }
 
@@ -615,18 +613,30 @@ private final class FakeAgentReadinessLifecycle: AgentReadinessLifecycleServing 
 /// the coordinator is suspended at a specific call.
 @MainActor
 private final class ReadinessTestGate {
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var hasEntered = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
   private var isOpen = false
 
-  var onEntered: (() -> Void)?
-
   func wait() async {
-    onEntered?()
+    hasEntered = true
+    let pendingEntryWaiters = entryWaiters
+    entryWaiters.removeAll()
+    pendingEntryWaiters.forEach { $0.resume() }
     guard !isOpen else {
       return
     }
     await withCheckedContinuation { continuation in
       waiters.append(continuation)
+    }
+  }
+
+  func waitUntilEntered() async {
+    guard !hasEntered else {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
     }
   }
 

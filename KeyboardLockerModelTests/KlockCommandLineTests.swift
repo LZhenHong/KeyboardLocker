@@ -1,16 +1,19 @@
 import Client
 import CoreGraphics
 import Foundation
-import XCTest
+import Testing
 
-final class KlockCommandLineTests: XCTestCase {
+@Suite(.serialized)
+struct KlockCommandLineTests {
   // MARK: - Parser
 
-  func testParseReturnsNilWhenNoArgumentsGiven() throws {
-    XCTAssertNil(try KlockCommandLineParser.parse([]))
+  @Test
+  func parseReturnsNilWhenNoArgumentsGiven() throws {
+    #expect(try KlockCommandLineParser.parse([]) == nil)
   }
 
-  func testParseAcceptsEveryValidCommandSpelling() throws {
+  @Test
+  func parseAcceptsEveryValidCommandSpelling() throws {
     let cases: [(arguments: [String], expected: KlockCommand)] = [
       (["--help"], .help),
       (["-h"], .help),
@@ -30,32 +33,27 @@ final class KlockCommandLineTests: XCTestCase {
     ]
 
     for (arguments, expected) in cases {
-      XCTAssertEqual(
-        try KlockCommandLineParser.parse(arguments),
-        expected,
-        "arguments: \(arguments)"
-      )
+      #expect(try KlockCommandLineParser.parse(arguments) == expected, "arguments: \(arguments)")
     }
   }
 
-  func testParseRejectsUnknownCommands() {
+  @Test
+  func parseRejectsUnknownCommands() {
     let cases = [["bogus"], ["--unknown-flag"]]
 
     for arguments in cases {
-      XCTAssertThrowsError(
-        try KlockCommandLineParser.parse(arguments),
+      let error = #expect(
+        throws: KlockCommandLineError.self,
         "arguments: \(arguments)"
-      ) { error in
-        XCTAssertEqual(
-          error as? KlockCommandLineError,
-          .unknownCommand(arguments[0]),
-          "arguments: \(arguments)"
-        )
+      ) {
+        try KlockCommandLineParser.parse(arguments)
       }
+      #expect(error == .unknownCommand(arguments[0]), "arguments: \(arguments)")
     }
   }
 
-  func testParseRejectsUnexpectedArguments() {
+  @Test
+  func parseRejectsUnexpectedArguments() {
     let cases: [(arguments: [String], expected: KlockCommandLineError)] = [
       (["lock", "extra"], .unexpectedArguments(["extra"])),
       (["lock", "--no-wait", "extra"], .unexpectedArguments(["--no-wait", "extra"])),
@@ -70,194 +68,196 @@ final class KlockCommandLineTests: XCTestCase {
     ]
 
     for (arguments, expected) in cases {
-      XCTAssertThrowsError(
-        try KlockCommandLineParser.parse(arguments),
+      let error = #expect(
+        throws: KlockCommandLineError.self,
         "arguments: \(arguments)"
-      ) { error in
-        XCTAssertEqual(error as? KlockCommandLineError, expected, "arguments: \(arguments)")
+      ) {
+        try KlockCommandLineParser.parse(arguments)
       }
+      #expect(error == expected, "arguments: \(arguments)")
     }
   }
 
   // MARK: - Command Execution
 
-  func testInteractiveLockReportsAlreadyLockedWithoutWaiting() async {
+  @Test
+  func interactiveLockReportsAlreadyLockedWithoutWaiting() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .success(.alreadyLocked)
 
     let result = await runKlock(arguments: ["lock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Already locked. This command did not create a new lock."])
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.lockInteractivelyCalls, 1)
-    XCTAssertEqual(client.waitUntilUnlockedCalls, 0)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Already locked. This command did not create a new lock."])
+    #expect(result.stderr == [])
+    #expect(client.lockInteractivelyCalls == 1)
+    #expect(client.waitUntilUnlockedCalls == 0)
   }
 
-  func testInteractiveLockPrintsHotkeyWaitsAndConfirmsUnlock() async {
+  @Test
+  func interactiveLockPrintsHotkeyWaitsAndConfirmsUnlock() async {
     let client = FakeKlockClient()
     let hotkey = KeyboardLockerSettings.testFixture.unlockHotkey.displayString
 
     let result = await runKlock(arguments: ["lock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(
-      result.stdout,
-      [
-        "Locked. Press \(hotkey) or Ctrl+C to unlock.",
-        "Unlocked.",
-      ]
-    )
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.currentSettingsCalls, 1)
-    XCTAssertEqual(client.waitUntilUnlockedCalls, 1)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Locked. Press \(hotkey) or Ctrl+C to unlock.",
+      "Unlocked.",
+    ])
+    #expect(result.stderr == [])
+    #expect(client.currentSettingsCalls == 1)
+    #expect(client.waitUntilUnlockedCalls == 1)
   }
 
-  func testInteractiveLockFallsBackToManualHintWhenSettingsUnavailable() async {
+  @Test
+  func interactiveLockFallsBackToManualHintWhenSettingsUnavailable() async {
     let client = FakeKlockClient()
     client.settingsResult = .failure(Self.makeError("settings unavailable"))
 
     let result = await runKlock(arguments: ["lock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(
-      result.stdout,
-      [
-        "Locked. Press Ctrl+C to unlock, or run `klock unlock` from another Terminal.",
-        "Unlocked.",
-      ]
-    )
-    XCTAssertEqual(
-      result.stderr,
-      ["Warning: Could not read the configured unlock shortcut: settings unavailable"]
-    )
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Locked. Press Ctrl+C to unlock, or run `klock unlock` from another Terminal.",
+      "Unlocked.",
+    ])
+    #expect(result.stderr == ["Warning: Could not read the configured unlock shortcut: settings unavailable"])
   }
 
-  func testInteractiveLockFailureReportsErrorOnStandardError() async throws {
+  @Test
+  func interactiveLockFailureReportsErrorOnStandardError() async throws {
     let client = FakeKlockClient()
     let error = XPCClientError.serviceUnavailable
     client.lockInteractivelyResult = .failure(error)
 
     let result = await runKlock(arguments: ["lock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(
-      result.stderr,
-      [
-        "Error: \(error.localizedDescription)",
-        "  \(try XCTUnwrap(error.recoverySuggestion))",
-        "  Or run `klock register-agent` to register it from Terminal.",
-      ]
-    )
-    XCTAssertEqual(client.waitUntilUnlockedCalls, 0)
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(try result.stderr == [
+      "Error: \(error.localizedDescription)",
+      "  \(#require(error.recoverySuggestion))",
+      "  Or run `klock register-agent` to register it from Terminal.",
+    ])
+    #expect(client.waitUntilUnlockedCalls == 0)
   }
 
-  func testNonInteractiveLockPrintsLockedWithoutWaiting() async {
+  @Test
+  func nonInteractiveLockPrintsLockedWithoutWaiting() async {
     let client = FakeKlockClient()
 
     let result = await runKlock(arguments: ["lock", "--no-wait"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Locked."])
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.lockCalls, 1)
-    XCTAssertEqual(client.lockInteractivelyCalls, 0)
-    XCTAssertEqual(client.waitUntilUnlockedCalls, 0)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Locked."])
+    #expect(result.stderr == [])
+    #expect(client.lockCalls == 1)
+    #expect(client.lockInteractivelyCalls == 0)
+    #expect(client.waitUntilUnlockedCalls == 0)
   }
 
-  func testNonInteractiveLockFailureExitsWithError() async {
+  @Test
+  func nonInteractiveLockFailureExitsWithError() async {
     let client = FakeKlockClient()
     client.lockResult = .failure(Self.makeError("lock failed"))
 
     let result = await runKlock(arguments: ["lock", "--no-wait"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(result.stderr, ["Error: lock failed"])
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(result.stderr == ["Error: lock failed"])
   }
 
-  func testUnlockPrintsUnlockedOnSuccess() async {
+  @Test
+  func unlockPrintsUnlockedOnSuccess() async {
     let client = FakeKlockClient()
 
     let result = await runKlock(arguments: ["unlock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Unlocked."])
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.unlockCalls, 1)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Unlocked."])
+    #expect(result.stderr == [])
+    #expect(client.unlockCalls == 1)
   }
 
-  func testUnlockFailureReportsErrorOnStandardError() async {
+  @Test
+  func unlockFailureReportsErrorOnStandardError() async {
     let client = FakeKlockClient()
     client.unlockResult = .failure(Self.makeError("unlock failed"))
 
     let result = await runKlock(arguments: ["unlock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(result.stderr, ["Error: unlock failed"])
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(result.stderr == ["Error: unlock failed"])
   }
 
-  func testTogglePrintsResultingStateAcrossRoundTrip() async {
+  @Test
+  func togglePrintsResultingStateAcrossRoundTrip() async {
     let client = FakeKlockClient()
     client.toggleResults = [.success(true), .success(false)]
 
     var result = await runKlock(arguments: ["toggle"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Locked."])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Locked."])
 
     result = await runKlock(arguments: ["toggle"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Unlocked."])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Unlocked."])
 
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.toggleCalls, 2)
+    #expect(result.stderr == [])
+    #expect(client.toggleCalls == 2)
   }
 
-  func testToggleFailureReportsErrorOnStandardError() async {
+  @Test
+  func toggleFailureReportsErrorOnStandardError() async {
     let client = FakeKlockClient()
     client.toggleResult = .failure(Self.makeError("toggle failed"))
 
     let result = await runKlock(arguments: ["toggle"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(result.stderr, ["Error: toggle failed"])
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(result.stderr == ["Error: toggle failed"])
   }
 
-  func testStatusPrintsHumanReadableState() async {
+  @Test
+  func statusPrintsHumanReadableState() async {
     let client = FakeKlockClient()
 
     client.statusResult = .success(true)
     var result = await runKlock(arguments: ["status"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Locked"])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Locked"])
 
     client.statusResult = .success(false)
     result = await runKlock(arguments: ["status"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Unlocked"])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Unlocked"])
 
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.statusCalls, 2)
+    #expect(result.stderr == [])
+    #expect(client.statusCalls == 2)
   }
 
-  func testStatusPrintsJSONState() async {
+  @Test
+  func statusPrintsJSONState() async {
     let client = FakeKlockClient()
 
     client.statusResult = .success(true)
     var result = await runKlock(arguments: ["status", "--json"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, [#"{"locked":true}"#])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [#"{"locked":true}"#])
 
     client.statusResult = .success(false)
     result = await runKlock(arguments: ["status", "--json"], client: client)
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, [#"{"locked":false}"#])
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [#"{"locked":false}"#])
   }
 
-  func testStatusSnapshotPrintsSnapshotContract() async {
+  @Test
+  func statusSnapshotPrintsSnapshotContract() async {
     let client = FakeKlockClient()
     client.lockStatusSnapshotResult = .success(
       LockStatusSnapshot(
@@ -271,33 +271,32 @@ final class KlockCommandLineTests: XCTestCase {
 
     let result = await runKlock(arguments: ["status", "--snapshot"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(
-      result.stdout,
-      [
-        """
-        {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
-        """,
-      ]
-    )
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.lockStatusSnapshotCalls, 1)
-    XCTAssertEqual(client.statusCalls, 0)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      """
+      {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+      """,
+    ])
+    #expect(result.stderr == [])
+    #expect(client.lockStatusSnapshotCalls == 1)
+    #expect(client.statusCalls == 0)
   }
 
-  func testStatusSnapshotFailureReportsErrorWithoutFallback() async {
+  @Test
+  func statusSnapshotFailureReportsErrorWithoutFallback() async {
     let client = FakeKlockClient()
     client.lockStatusSnapshotResult = .failure(Self.makeError("snapshot unsupported"))
 
     let result = await runKlock(arguments: ["status", "--snapshot"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(result.stderr, ["Error: snapshot unsupported"])
-    XCTAssertEqual(client.statusCalls, 0)
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(result.stderr == ["Error: snapshot unsupported"])
+    #expect(client.statusCalls == 0)
   }
 
-  func testInteractiveLockExitsWithErrorWhenWaitingForUnlockFails() async throws {
+  @Test
+  func interactiveLockExitsWithErrorWhenWaitingForUnlockFails() async throws {
     let client = FakeKlockClient()
     let error = XPCClientError.serviceUnavailable
     client.waitUntilUnlockedResult = .failure(error)
@@ -305,33 +304,32 @@ final class KlockCommandLineTests: XCTestCase {
 
     let result = await runKlock(arguments: ["lock"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, ["Locked. Press \(hotkey) or Ctrl+C to unlock."])
-    XCTAssertEqual(
-      result.stderr,
-      [
-        "Error: \(error.localizedDescription)",
-        "  \(try XCTUnwrap(error.recoverySuggestion))",
-        "  Or run `klock register-agent` to register it from Terminal.",
-      ]
-    )
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == ["Locked. Press \(hotkey) or Ctrl+C to unlock."])
+    #expect(try result.stderr == [
+      "Error: \(error.localizedDescription)",
+      "  \(#require(error.recoverySuggestion))",
+      "  Or run `klock register-agent` to register it from Terminal.",
+    ])
   }
 
   // MARK: - Request Access
 
-  func testRequestAccessReportsAlreadyGrantedWithoutPrompting() async {
+  @Test
+  func requestAccessReportsAlreadyGrantedWithoutPrompting() async {
     let client = FakeKlockClient()
     client.hasAccessibilityPermissionResult = .success(true)
 
     let result = await runKlock(arguments: ["request-access"], client: client)
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["Accessibility access is already granted."])
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 0)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Accessibility access is already granted."])
+    #expect(result.stderr == [])
+    #expect(client.requestAccessibilityPermissionCalls == 0)
   }
 
-  func testRequestAccessPromptsThenPollsUntilGranted() async {
+  @Test
+  func requestAccessPromptsThenPollsUntilGranted() async {
     let client = FakeKlockClient()
     client.hasAccessibilityPermissionResults = [
       .success(false),
@@ -345,20 +343,18 @@ final class KlockCommandLineTests: XCTestCase {
       accessPoll: (attempts: 5, interval: .zero)
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(
-      result.stdout,
-      [
-        "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…",
-        "Accessibility access granted.",
-      ]
-    )
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 1)
-    XCTAssertEqual(client.hasAccessibilityPermissionCalls, 3)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…",
+      "Accessibility access granted.",
+    ])
+    #expect(result.stderr == [])
+    #expect(client.requestAccessibilityPermissionCalls == 1)
+    #expect(client.hasAccessibilityPermissionCalls == 3)
   }
 
-  func testRequestAccessReportsPendingWhenWindowExpires() async {
+  @Test
+  func requestAccessReportsPendingWhenWindowExpires() async {
     let client = FakeKlockClient()
 
     let result = await runKlock(
@@ -367,27 +363,29 @@ final class KlockCommandLineTests: XCTestCase {
       accessPoll: (attempts: 2, interval: .zero)
     )
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout.first, "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…")
-    XCTAssertEqual(result.stdout.last, "Accessibility access is not granted yet. Enable KeyboardLocker in System Settings → Privacy & Security → Accessibility, then re-run `klock request-access`.")
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 1)
+    #expect(result.exitCode == 1)
+    #expect(result.stdout.first == "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…")
+    #expect(result.stdout.last == "Accessibility access is not granted yet. Enable KeyboardLocker in System Settings → Privacy & Security → Accessibility, then re-run `klock request-access`.")
+    #expect(result.stderr == [])
+    #expect(client.requestAccessibilityPermissionCalls == 1)
   }
 
-  func testRequestAccessFailureReportsErrorOnStandardError() async {
+  @Test
+  func requestAccessFailureReportsErrorOnStandardError() async {
     let client = FakeKlockClient()
     client.requestAccessibilityPermissionResult = .failure(Self.makeError("prompt failed"))
 
     let result = await runKlock(arguments: ["request-access"], client: client)
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(result.stderr, ["Error: prompt failed"])
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(result.stderr == ["Error: prompt failed"])
   }
 
   // MARK: - Register Agent
 
-  func testRegisterAgentReportsAlreadyReachableWithoutOpeningApp() async {
+  @Test
+  func registerAgentReportsAlreadyReachableWithoutOpeningApp() async {
     let client = FakeKlockClient()
     var openCalls = 0
 
@@ -397,14 +395,15 @@ final class KlockCommandLineTests: XCTestCase {
       openKeyboardLockerApp: { openCalls += 1 }
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(result.stdout, ["The KeyboardLocker agent is already registered and reachable."])
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(openCalls, 0)
-    XCTAssertEqual(client.statusCalls, 1)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["The KeyboardLocker agent is already registered and reachable."])
+    #expect(result.stderr == [])
+    #expect(openCalls == 0)
+    #expect(client.statusCalls == 1)
   }
 
-  func testRegisterAgentOpensAppAndConfirmsWhenAgentBecomesReachable() async {
+  @Test
+  func registerAgentOpensAppAndConfirmsWhenAgentBecomesReachable() async {
     let client = FakeKlockClient()
     client.statusResults = [
       .failure(Self.makeError("unreachable")),
@@ -419,20 +418,18 @@ final class KlockCommandLineTests: XCTestCase {
       agentPoll: (attempts: 3, interval: .zero)
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(
-      result.stdout,
-      [
-        "Launched KeyboardLocker to register its background agent.",
-        "The KeyboardLocker agent is registered and reachable.",
-      ]
-    )
-    XCTAssertEqual(result.stderr, [])
-    XCTAssertEqual(openCalls, 1)
-    XCTAssertEqual(client.statusCalls, 2)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Launched KeyboardLocker to register its background agent.",
+      "The KeyboardLocker agent is registered and reachable.",
+    ])
+    #expect(result.stderr == [])
+    #expect(openCalls == 1)
+    #expect(client.statusCalls == 2)
   }
 
-  func testRegisterAgentFailsWhenAgentStaysUnreachable() async {
+  @Test
+  func registerAgentFailsWhenAgentStaysUnreachable() async {
     let client = FakeKlockClient()
     client.statusResult = .failure(Self.makeError("unreachable"))
     var openCalls = 0
@@ -444,14 +441,15 @@ final class KlockCommandLineTests: XCTestCase {
       agentPoll: (attempts: 2, interval: .zero)
     )
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, ["Launched KeyboardLocker to register its background agent."])
-    XCTAssertEqual(result.stderr.first, "Error: The KeyboardLocker agent is not reachable yet.")
-    XCTAssertEqual(openCalls, 1)
-    XCTAssertEqual(client.statusCalls, 3)
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == ["Launched KeyboardLocker to register its background agent."])
+    #expect(result.stderr.first == "Error: The KeyboardLocker agent is not reachable yet.")
+    #expect(openCalls == 1)
+    #expect(client.statusCalls == 3)
   }
 
-  func testRegisterAgentReportsOpenFailure() async {
+  @Test
+  func registerAgentReportsOpenFailure() async throws {
     let client = FakeKlockClient()
     client.statusResult = .failure(Self.makeError("unreachable"))
     let error = KlockAppOpener.OpenerError.appNotFound
@@ -462,20 +460,18 @@ final class KlockCommandLineTests: XCTestCase {
       openKeyboardLockerApp: { throw error }
     )
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(result.stdout, [])
-    XCTAssertEqual(
-      result.stderr,
-      [
-        "Error: \(error.localizedDescription)",
-        "  \(try XCTUnwrap(error.recoverySuggestion))",
-      ]
-    )
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(try result.stderr == [
+      "Error: \(error.localizedDescription)",
+      "  \(#require(error.recoverySuggestion))",
+    ])
   }
 
   // MARK: - Termination Guard
 
-  func testInteractiveLockInstallsAndCancelsTerminationGuardWhileWaiting() async {
+  @Test
+  func interactiveLockInstallsAndCancelsTerminationGuardWhileWaiting() async {
     let client = FakeKlockClient()
     let terminationGuard = FakeKlockTerminationGuard()
 
@@ -485,12 +481,13 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 0)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testSignalDuringAcquisitionReleasesConfirmedLockBeforeTerminating() async {
+  @Test
+  func signalDuringAcquisitionReleasesConfirmedLockBeforeTerminating() async {
     let client = FakeKlockClient()
     let terminationGuard = FakeKlockTerminationGuard()
     client.onLockInteractively = {
@@ -503,13 +500,14 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
-    XCTAssertEqual(client.unlockCalls, 1)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 128 + SIGTERM)
+    #expect(client.unlockCalls == 1)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testSignalDuringUnlockWaitWinsOverConcurrentNormalCompletion() async {
+  @Test
+  func signalDuringUnlockWaitWinsOverConcurrentNormalCompletion() async {
     let client = FakeKlockClient()
     let terminationGuard = FakeKlockTerminationGuard()
     client.onWaitUntilUnlocked = {
@@ -522,14 +520,15 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
-    XCTAssertEqual(client.waitUntilUnlockedCalls, 1)
-    XCTAssertEqual(client.unlockCalls, 1)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 128 + SIGTERM)
+    #expect(client.waitUntilUnlockedCalls == 1)
+    #expect(client.unlockCalls == 1)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testInteractiveLockAlreadyLockedInstallsAndCancelsTerminationGuard() async {
+  @Test
+  func interactiveLockAlreadyLockedInstallsAndCancelsTerminationGuard() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .success(.alreadyLocked)
     let terminationGuard = FakeKlockTerminationGuard()
@@ -540,13 +539,14 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(client.unlockCalls, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 0)
+    #expect(client.unlockCalls == 0)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testInteractiveLockFailureInstallsAndCancelsTerminationGuard() async {
+  @Test
+  func interactiveLockFailureInstallsAndCancelsTerminationGuard() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .failure(Self.makeError("lock failed"))
     let terminationGuard = FakeKlockTerminationGuard()
@@ -557,13 +557,14 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(client.unlockCalls, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 1)
+    #expect(client.unlockCalls == 0)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testSignalDuringAlreadyLockedAcquisitionDoesNotUnlockExistingLock() async {
+  @Test
+  func signalDuringAlreadyLockedAcquisitionDoesNotUnlockExistingLock() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .success(.alreadyLocked)
     let terminationGuard = FakeKlockTerminationGuard()
@@ -577,13 +578,14 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
-    XCTAssertEqual(client.unlockCalls, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 128 + SIGTERM)
+    #expect(client.unlockCalls == 0)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testSignalDuringFailedAcquisitionDoesNotUnlock() async {
+  @Test
+  func signalDuringFailedAcquisitionDoesNotUnlock() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .failure(Self.makeError("lock failed"))
     let terminationGuard = FakeKlockTerminationGuard()
@@ -597,13 +599,14 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 128 + SIGHUP)
-    XCTAssertEqual(client.unlockCalls, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 128 + SIGHUP)
+    #expect(client.unlockCalls == 0)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testInteractiveLockWaitFailureCancelsTerminationGuard() async {
+  @Test
+  func interactiveLockWaitFailureCancelsTerminationGuard() async {
     let client = FakeKlockClient()
     client.waitUntilUnlockedResult = .failure(Self.makeError("wait failed"))
     let terminationGuard = FakeKlockTerminationGuard()
@@ -614,12 +617,13 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(terminationGuard.installCalls, 1)
-    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+    #expect(result.exitCode == 1)
+    #expect(terminationGuard.installCalls == 1)
+    #expect(terminationGuard.cancelCalls == 1)
   }
 
-  func testNonInteractiveLockSkipsTerminationGuard() async {
+  @Test
+  func nonInteractiveLockSkipsTerminationGuard() async {
     let client = FakeKlockClient()
     let terminationGuard = FakeKlockTerminationGuard()
 
@@ -629,32 +633,34 @@ final class KlockCommandLineTests: XCTestCase {
       terminationGuard: terminationGuard
     )
 
-    XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 0)
+    #expect(result.exitCode == 0)
+    #expect(terminationGuard.installCalls == 0)
   }
 
-  func testUnlockBeforeTerminationReleasesCreatedLock() async {
+  @Test
+  func unlockBeforeTerminationReleasesCreatedLock() async {
     let client = FakeKlockClient()
     var stderr: [String] = []
 
     await KlockCLI.unlockBeforeTermination(client: client, printError: { stderr.append($0) })
 
-    XCTAssertEqual(client.unlockCalls, 1)
-    XCTAssertEqual(stderr, ["Terminated; released the keyboard lock created by this command."])
+    #expect(client.unlockCalls == 1)
+    #expect(stderr == ["Terminated; released the keyboard lock created by this command."])
   }
 
-  func testUnlockBeforeTerminationReportsFailureWithRecoveryHint() async {
+  @Test
+  func unlockBeforeTerminationReportsFailureWithRecoveryHint() async {
     let client = FakeKlockClient()
     client.unlockResult = .failure(Self.makeError("agent gone"))
     var stderr: [String] = []
 
     await KlockCLI.unlockBeforeTermination(client: client, printError: { stderr.append($0) })
 
-    XCTAssertEqual(client.unlockCalls, 1)
-    XCTAssertEqual(stderr.count, 1)
-    XCTAssertTrue(stderr[0].contains("could not release"), "stderr: \(stderr)")
-    XCTAssertTrue(stderr[0].contains("agent gone"), "stderr: \(stderr)")
-    XCTAssertTrue(stderr[0].contains("Unlock Now"), "stderr: \(stderr)")
+    #expect(client.unlockCalls == 1)
+    #expect(stderr.count == 1)
+    #expect(stderr[0].contains("could not release"), "stderr: \(stderr)")
+    #expect(stderr[0].contains("agent gone"), "stderr: \(stderr)")
+    #expect(stderr[0].contains("Unlock Now"), "stderr: \(stderr)")
   }
 
   // MARK: - Helpers
@@ -821,7 +827,7 @@ private final class FakeKlockTerminationGuard: KlockTerminationGuarding, @unchec
 }
 
 /// Default guard for tests that do not exercise the termination path: never touches process
-/// signal state, so the XCTest process keeps its default signal dispositions.
+/// signal state, so the test process keeps its default signal dispositions.
 private struct NullKlockTerminationGuard: KlockTerminationGuarding {
   func install(onTermination _: @escaping (Int32) -> Void) -> () -> Void {
     {}

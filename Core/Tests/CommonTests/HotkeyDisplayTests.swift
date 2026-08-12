@@ -1,21 +1,25 @@
 import Common
 import CoreGraphics
-import XCTest
+import Testing
 
-final class HotkeyDisplayTests: XCTestCase {
-  func testDisplayStringRendersGlyphsForMappedKeyCode() {
+@MainActor
+@Suite(.serialized)
+struct HotkeyDisplayTests {
+  @Test
+  func displayStringRendersGlyphsForMappedKeyCode() {
     let hotkey = KeyboardLockerSettings.Hotkey(keyCode: 37, modifierFlags: [.maskCommand, .maskControl])
 
-    XCTAssertFalse(hotkey.displayString.isEmpty)
-    XCTAssertFalse(hotkey.displayString.contains("?"))
-    XCTAssertNotEqual(hotkey.displayString, "the configured unlock hotkey")
+    #expect(!hotkey.displayString.isEmpty)
+    #expect(!hotkey.displayString.contains("?"))
+    #expect(hotkey.displayString != "the configured unlock hotkey")
   }
 
-  func testDisplayStringFallsBackToVerbalPhraseForUnmappedKeyCode() {
+  @Test
+  func displayStringFallsBackToVerbalPhraseForUnmappedKeyCode() {
     // 255 is outside the virtual key-code range of any keyboard layout, so UCKeyTranslate
     // cannot map it and the verbal fallback must replace the old raw "?" glyph.
     let hotkey = KeyboardLockerSettings.Hotkey(keyCode: 255, modifierFlags: [.maskCommand])
 
-    XCTAssertEqual(hotkey.displayString, "the configured unlock hotkey")
+    #expect(hotkey.displayString == "the configured unlock hotkey")
   }
 }

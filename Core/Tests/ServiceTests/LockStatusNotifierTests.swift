@@ -1,32 +1,34 @@
 import Common
 import Foundation
 @testable import Service
-import XCTest
+import Testing
 
 @MainActor
-final class LockStatusNotifierTests: XCTestCase {
-  private var notifications: FakeLockStatusNotifications!
-  private var snapshot: LockStatusSnapshot!
-  private var unlockCalls = 0
+@Suite(.serialized)
+final class LockStatusNotifierTests {
+  private let notifications: FakeLockStatusNotifications
+  private var snapshot: LockStatusSnapshot
+  private var unlockCalls: Int
 
-  override func setUp() {
-    super.setUp()
+  init() {
     notifications = FakeLockStatusNotifications()
     snapshot = Self.makeSnapshot(isLocked: false)
     unlockCalls = 0
   }
 
-  func testStartInstallsCategoryAndClearsStaleNotification() async {
+  @Test
+  func startInstallsCategoryAndClearsStaleNotification() async {
     let notifier = makeNotifier()
 
     notifier.start()
     await notifier.waitUntilIdle()
 
-    XCTAssertEqual(notifications.installedCategoryCount, 1)
-    XCTAssertEqual(notifications.removedIdentifiers, [LockStatusNotifier.notificationIdentifier])
+    #expect(notifications.installedCategoryCount == 1)
+    #expect(notifications.removedIdentifiers == [LockStatusNotifier.notificationIdentifier])
   }
 
-  func testLockTransitionPostsNotificationWithHotkeyAndDeadline() async throws {
+  @Test
+  func lockTransitionPostsNotificationWithHotkeyAndDeadline() async throws {
     snapshot = Self.makeSnapshot(
       isLocked: true,
       autoUnlockTargetDate: Date(timeIntervalSinceReferenceDate: 1_060)
@@ -36,42 +38,45 @@ final class LockStatusNotifierTests: XCTestCase {
     notifier.lockStateDidChange()
     await notifier.waitUntilIdle()
 
-    XCTAssertEqual(notifications.authorizationRequests, 1)
-    XCTAssertEqual(notifications.posts.count, 1)
-    let post = try XCTUnwrap(notifications.posts.first)
-    XCTAssertEqual(post.identifier, LockStatusNotifier.notificationIdentifier)
-    XCTAssertEqual(post.categoryIdentifier, LockStatusNotifier.categoryIdentifier)
-    XCTAssertEqual(post.title, "Keyboard Locked")
-    XCTAssertTrue(post.body.contains("⌃⌘L"), "body: \(post.body)")
-    XCTAssertTrue(post.body.contains("Unlock Now"), "body: \(post.body)")
-    XCTAssertTrue(post.body.contains("Auto-unlocks at"), "body: \(post.body)")
-    XCTAssertTrue(notifications.removedIdentifiers.isEmpty)
+    #expect(notifications.authorizationRequests == 1)
+    #expect(notifications.posts.count == 1)
+    let post = try #require(notifications.posts.first)
+    #expect(post.identifier == LockStatusNotifier.notificationIdentifier)
+    #expect(post.categoryIdentifier == LockStatusNotifier.categoryIdentifier)
+    #expect(post.title == "Keyboard Locked")
+    #expect(post.body.contains("⌃⌘L"), "body: \(post.body)")
+    #expect(post.body.contains("Unlock Now"), "body: \(post.body)")
+    #expect(post.body.contains("Auto-unlocks at"), "body: \(post.body)")
+    #expect(notifications.removedIdentifiers.isEmpty)
   }
 
-  func testLockTransitionWithoutDeadlineOmitsAutoUnlockLine() async throws {
+  @Test
+  func lockTransitionWithoutDeadlineOmitsAutoUnlockLine() async throws {
     snapshot = Self.makeSnapshot(isLocked: true, autoUnlockTargetDate: nil)
     let notifier = makeNotifier()
 
     notifier.lockStateDidChange()
     await notifier.waitUntilIdle()
 
-    let post = try XCTUnwrap(notifications.posts.first)
-    XCTAssertFalse(post.body.contains("Auto-unlocks"), "body: \(post.body)")
+    let post = try #require(notifications.posts.first)
+    #expect(!post.body.contains("Auto-unlocks"), "body: \(post.body)")
   }
 
-  func testUnlockTransitionRemovesNotificationWithoutRequestingAuthorization() async {
+  @Test
+  func unlockTransitionRemovesNotificationWithoutRequestingAuthorization() async {
     snapshot = Self.makeSnapshot(isLocked: false)
     let notifier = makeNotifier()
 
     notifier.lockStateDidChange()
     await notifier.waitUntilIdle()
 
-    XCTAssertEqual(notifications.removedIdentifiers, [LockStatusNotifier.notificationIdentifier])
-    XCTAssertEqual(notifications.authorizationRequests, 0)
-    XCTAssertTrue(notifications.posts.isEmpty)
+    #expect(notifications.removedIdentifiers == [LockStatusNotifier.notificationIdentifier])
+    #expect(notifications.authorizationRequests == 0)
+    #expect(notifications.posts.isEmpty)
   }
 
-  func testDeniedAuthorizationSkipsPostSilently() async {
+  @Test
+  func deniedAuthorizationSkipsPostSilently() async {
     notifications.authorizationGranted = false
     snapshot = Self.makeSnapshot(isLocked: true)
     let notifier = makeNotifier()
@@ -79,31 +84,34 @@ final class LockStatusNotifierTests: XCTestCase {
     notifier.lockStateDidChange()
     await notifier.waitUntilIdle()
 
-    XCTAssertEqual(notifications.authorizationRequests, 1)
-    XCTAssertTrue(notifications.posts.isEmpty)
+    #expect(notifications.authorizationRequests == 1)
+    #expect(notifications.posts.isEmpty)
   }
 
-  func testUnlockActionRunsLocalUnlock() async {
+  @Test
+  func unlockActionRunsLocalUnlock() async {
     _ = makeNotifier()
 
     notifications.actionHandler?(LockStatusNotifier.unlockActionIdentifier)
     await waitForCondition { self.unlockCalls == 1 }
 
-    XCTAssertEqual(unlockCalls, 1)
+    #expect(unlockCalls == 1)
   }
 
-  func testUnrelatedActionIsIgnored() async {
+  @Test
+  func unrelatedActionIsIgnored() async {
     _ = makeNotifier()
 
     notifications.actionHandler?("some-other-action")
     await waitForCondition { false }
 
-    XCTAssertEqual(unlockCalls, 0)
+    #expect(unlockCalls == 0)
   }
 
   /// A rapid lock/unlock flip must serialize post before remove; the remove cannot overtake
   /// the in-flight post and leave a stale notification behind.
-  func testQuickFlipSerializesPostThenRemove() async {
+  @Test
+  func quickFlipSerializesPostThenRemove() async {
     let notifier = makeNotifier()
 
     snapshot = Self.makeSnapshot(isLocked: true)
@@ -112,7 +120,7 @@ final class LockStatusNotifierTests: XCTestCase {
     notifier.lockStateDidChange()
     await notifier.waitUntilIdle()
 
-    XCTAssertEqual(notifications.events, [
+    #expect(notifications.events == [
       .post,
       .remove(LockStatusNotifier.notificationIdentifier),
     ])

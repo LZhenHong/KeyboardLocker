@@ -429,11 +429,11 @@ public final class LockEngine {
     public var recoverySuggestion: String? {
       switch self {
       case .accessibilityPermissionDenied:
-        "Open System Settings → Privacy & Security → Accessibility and enable access for this application."
+        "Open System Settings → Privacy & Security → Accessibility and enable access for the KeyboardLocker agent."
       case .eventTapCreationFailed:
-        "Try restarting the application. If the problem persists, check Accessibility permissions in System Settings."
+        "Try restarting KeyboardLocker. If the problem persists, check Accessibility permissions for the KeyboardLocker agent in System Settings → Privacy & Security → Accessibility."
       case .eventTapEnableFailed:
-        "Check Accessibility permissions in System Settings, then try locking again."
+        "Check Accessibility permissions for the KeyboardLocker agent in System Settings → Privacy & Security → Accessibility, then try locking again."
       case .runLoopSourceCreationFailed:
         "This is a system-level error. Please contact support if it persists."
       }

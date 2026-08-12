@@ -22,6 +22,13 @@ final class XPCClientErrorTests: XCTestCase {
     XCTAssertTrue(suggestion.contains("Show Details"))
   }
 
+  func testTimeoutExplainsRetryRecovery() throws {
+    let suggestion = try XCTUnwrap(XPCClientError.timedOut.recoverySuggestion)
+
+    XCTAssertTrue(suggestion.contains("Retry"))
+    XCTAssertTrue(suggestion.contains("Show Details"))
+  }
+
   func testMissingCapabilityExplainsAgentUpdateRecovery() throws {
     let suggestion = try XCTUnwrap(
       XPCClientError.missingCapability(.interactiveLock).recoverySuggestion

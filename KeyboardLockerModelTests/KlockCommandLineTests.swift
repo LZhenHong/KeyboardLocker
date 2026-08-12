@@ -141,6 +141,7 @@ final class KlockCommandLineTests: XCTestCase {
       [
         "Error: \(error.localizedDescription)",
         "  \(try XCTUnwrap(error.recoverySuggestion))",
+        "  Or run `klock register-agent` to register it from Terminal.",
       ]
     )
     XCTAssertEqual(client.waitUntilUnlockedCalls, 0)
@@ -238,6 +239,7 @@ final class KlockCommandLineTests: XCTestCase {
       [
         "Error: \(error.localizedDescription)",
         "  \(try XCTUnwrap(error.recoverySuggestion))",
+        "  Or run `klock register-agent` to register it from Terminal.",
       ]
     )
   }
@@ -281,7 +283,7 @@ final class KlockCommandLineTests: XCTestCase {
       result.stdout,
       [
         "Launched KeyboardLocker to register its background agent.",
-        "The background agent is registered and reachable.",
+        "The KeyboardLocker agent is registered and reachable.",
       ]
     )
     XCTAssertEqual(result.stderr, [])
@@ -303,7 +305,7 @@ final class KlockCommandLineTests: XCTestCase {
 
     XCTAssertEqual(result.exitCode, 1)
     XCTAssertEqual(result.stdout, ["Launched KeyboardLocker to register its background agent."])
-    XCTAssertEqual(result.stderr.first, "Error: The background agent is not reachable yet.")
+    XCTAssertEqual(result.stderr.first, "Error: The KeyboardLocker agent is not reachable yet.")
     XCTAssertEqual(openCalls, 1)
     XCTAssertEqual(client.statusCalls, 3)
   }

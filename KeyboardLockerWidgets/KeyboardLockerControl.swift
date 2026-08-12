@@ -31,7 +31,9 @@ struct KeyboardLockerControl: ControlWidget {
 
 @available(macOS 26.0, *)
 private struct KeyboardLockerControlValueProvider: ControlValueProvider {
-  let previewValue = false
+  // Gallery preview matches the status widget's locked sample so both system surfaces
+  // advertise the same state.
+  let previewValue = true
 
   private let loader: KeyboardLockerControlValueLoader
 

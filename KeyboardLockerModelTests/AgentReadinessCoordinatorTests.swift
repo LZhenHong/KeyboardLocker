@@ -206,7 +206,7 @@ final class AgentReadinessCoordinatorTests: XCTestCase {
     }
     XCTAssertEqual(
       error.localizedDescription,
-      "Safe Agent replacement requires a readable authoritative lock state."
+      "Safe KeyboardLocker agent replacement requires a readable authoritative lock state."
     )
     XCTAssertNil(context)
     XCTAssertEqual(client.statusCallCount, 0)

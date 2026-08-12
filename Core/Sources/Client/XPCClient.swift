@@ -46,6 +46,9 @@ public enum XPCClientError: Error, LocalizedError {
     case .serviceUnavailable:
       "Open KeyboardLocker once to register its background agent, then retry. If KeyboardLocker is already running, choose Show Details… from its menu."
 
+    case .timedOut:
+      "Retry the action. If the problem persists, open KeyboardLocker and choose Show Details… from its menu."
+
     default:
       nil
     }

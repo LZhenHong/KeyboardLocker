@@ -103,7 +103,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
       if isLocked == true {
         addAction(title: "Unlock Keyboard", action: #selector(toggleLock))
       }
-      addAction(title: "Update Background Agent…", action: #selector(updateAgent))
+      addAction(title: "Update KeyboardLocker Agent…", action: #selector(updateAgent))
 
     case let .accessibilityRequired(isLocked):
       if isLocked {
@@ -112,6 +112,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
       addAction(
         title: "Grant Accessibility Access…",
         action: #selector(requestAccessibilityPermission)
+      )
+      addAction(
+        title: "Open Accessibility Settings…",
+        action: #selector(openAccessibilitySettings)
       )
 
     case let .ready(isLocked):
@@ -122,7 +126,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     case let .unavailable(_, canRestartAgent):
       if canRestartAgent {
-        addAction(title: "Restart Background Agent…", action: #selector(restartAgent))
+        addAction(title: "Restart KeyboardLocker Agent…", action: #selector(restartAgent))
       }
     }
   }
@@ -173,18 +177,20 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     case .agentReplacementInProgress:
       return (
-        "KeyboardLocker — Updating Agent",
+        "KeyboardLocker — Agent Update in Progress",
         "arrow.triangle.2.circlepath",
         "Background agent update in progress"
       )
 
     case let .agentUpdateRequired(isLocked, _):
+      // Locked variants keep the lock icon: the warning triangle is reserved for states
+      // where attention is needed and the keyboard is not known to be locked.
       return (
         isLocked == true
           ? "KeyboardLocker — Locked (Update Required)"
           : "KeyboardLocker — Agent Update Required",
-        "exclamationmark.triangle.fill",
-        "Background agent update required"
+        isLocked == true ? "lock.fill" : "exclamationmark.triangle.fill",
+        isLocked == true ? "Keyboard locked, agent update required" : "Background agent update required"
       )
 
     case let .accessibilityRequired(isLocked):
@@ -229,7 +235,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     case .accessibilityRequired:
       messages.append(
-        "The background Agent needs Accessibility access before it can filter keyboard events."
+        "The KeyboardLocker agent needs Accessibility access before it can filter keyboard events. Grant access from the KeyboardLocker menu, or enable KeyboardLocker in System Settings → Privacy & Security → Accessibility."
       )
     }
 
@@ -256,6 +262,17 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   }
 
   @objc
+  private func openAccessibilitySettings() {
+    // Only Login Items has a public System Settings entry point; once the one-shot
+    // Accessibility prompt has been dismissed, the privacy-pane deep link is the
+    // established path to land the user on the right pane.
+    guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  @objc
   private func updateAgent() {
     guard case let .agentUpdateRequired(isLocked, message) = currentSnapshot.state else {
       return
@@ -265,7 +282,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     confirmation.alertStyle = .warning
     confirmation.messageText = "Update the KeyboardLocker Agent?"
     confirmation.informativeText = if isLocked == true {
-      "The keyboard will be unlocked before the Agent is replaced.\n\n\(message)"
+      "The keyboard will be unlocked before the agent is replaced.\n\n\(message)"
     } else {
       message
     }
@@ -283,7 +300,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     let confirmation = NSAlert()
     confirmation.alertStyle = .warning
     confirmation.messageText = "Restart the KeyboardLocker Agent?"
-    confirmation.informativeText = "Restarting an unresponsive Agent may release an active keyboard lock."
+    confirmation.informativeText = "Restarting an unresponsive agent may release an active keyboard lock."
     confirmation.addButton(withTitle: "Restart Agent")
     confirmation.addButton(withTitle: "Cancel")
 
@@ -472,9 +489,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     case let .ready(isLocked),
          let .accessibilityRequired(isLocked):
       isLocked
+    case let .checking(lastKnownLock):
+      // Same evidence standard as `AppCoordinator.toggle()`: a last-known-locked reading
+      // means the keyboard may still be locked, so quitting must keep the warning.
+      lastKnownLock ?? false
     case let .agentUpdateRequired(isLocked, _):
       isLocked ?? false
-    case .checking, .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
       false
     }
   }

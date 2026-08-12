@@ -424,22 +424,23 @@ final class AppCoordinator {
     let message = switch descriptor.replacementPhase {
     case .committed:
       """
-      An Agent replacement has been committed. New lock requests remain blocked while its \
-      coordinator finishes and the old Agent exits. If this state persists, restart macOS; \
-      another app instance cannot safely take over an unregister that may still be in flight.
+      A KeyboardLocker agent replacement has been committed. New lock requests remain \
+      blocked while its coordinator finishes and the old agent exits. If this state \
+      persists, restart macOS; another app instance cannot safely take over an unregister \
+      that may still be in flight.
       """
 
     case .prepared:
       """
-      An Agent replacement is being prepared. New lock requests remain blocked until its \
-      coordinator commits or the short preparation expires.
+      A KeyboardLocker agent replacement is being prepared. New lock requests remain \
+      blocked until its coordinator commits or the short preparation expires.
       """
 
     default:
       """
-      The Agent reports a replacement state this app does not recognize. New lock requests \
-      remain blocked to protect the current lock state. Update the app, or restart macOS if \
-      this state persists.
+      The KeyboardLocker agent reports a replacement state this app does not recognize. \
+      New lock requests remain blocked to protect the current lock state. Update the app, \
+      or restart macOS if this state persists.
       """
     }
 
@@ -507,7 +508,7 @@ final class AppCoordinator {
       let contextMessage = context.map { " \($0)" } ?? ""
       state = .unavailable(
         message: """
-        The background agent is enabled but could not be reached. \
+        The KeyboardLocker agent is enabled but could not be reached. \
         \(error.localizedDescription)\(contextMessage)
         """,
         canRestartAgent: true
@@ -624,7 +625,7 @@ private enum AgentUpdateError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .agentDidNotRestart:
-      "The background agent did not restart into a new process."
+      "The KeyboardLocker agent did not restart into a new process."
     }
   }
 }

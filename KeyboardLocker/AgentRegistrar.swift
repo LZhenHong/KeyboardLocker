@@ -149,7 +149,7 @@ enum AgentRegistrar {
     case .orderedAscending where supportsSafeReplacement:
       return .bundledAgentUpgradeAvailable(
         message: """
-        The running background agent is older than the version bundled with this app. \(details)
+        The running KeyboardLocker agent is older than the version bundled with this app. \(details)
         """,
         bundledBuild: requirements.agentBuild
       )
@@ -157,7 +157,7 @@ enum AgentRegistrar {
     case .orderedDescending:
       return .updateRequired(
         message: """
-        A newer background agent is running than the version bundled with this app. \
+        A newer KeyboardLocker agent is running than the version bundled with this app. \
         Replacing it will use the older bundled version. \(details)
         """,
         canReadLockState: canReadLockState,
@@ -167,7 +167,7 @@ enum AgentRegistrar {
     case nil, .orderedAscending, .orderedSame:
       return .updateRequired(
         message: """
-        The running background agent does not match the version bundled with this app. \(details)
+        The running KeyboardLocker agent does not match the version bundled with this app. \(details)
         """,
         canReadLockState: canReadLockState,
         supportsSafeReplacement: supportsSafeReplacement

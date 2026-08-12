@@ -106,9 +106,11 @@ extension KeyboardLockerSettings.Hotkey: Codable {
 // MARK: - Hotkey Display
 
 public extension KeyboardLockerSettings.Hotkey {
-  /// Human-readable representation of the hotkey (e.g., "⌃⌘L")
+  /// Human-readable representation of the hotkey (e.g., "⌃⌘L"). Falls back to a verbal
+  /// phrase — grammatical inside "Press … to unlock" sentences — when the key code has no
+  /// known glyph, so a raw "?" never reaches notification, widget, or CLI copy.
   var displayString: String {
-    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "?"
+    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "the configured unlock hotkey"
   }
 }
 

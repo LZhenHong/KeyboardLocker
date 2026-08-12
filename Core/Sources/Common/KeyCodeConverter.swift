@@ -12,7 +12,11 @@ public enum KeyCodeConverter {
   /// - Returns: Complete shortcut string (e.g., "⌥⌘L" or "⌥ ⌘ L") or nil if conversion fails
   public static func stringFromKeyCode(_ keyCode: CGKeyCode, modifiers: CGEventFlags, separator: String = "") -> String? {
     let modifierString = modifierSymbols(from: modifiers, separator: separator)
-    let keyChar = keyCharacter(for: keyCode)
+    // An unmappable key code must fail the whole conversion instead of surfacing a raw
+    // "?" glyph, so callers can fall back to verbal copy.
+    guard let keyChar = keyCharacter(for: keyCode) else {
+      return nil
+    }
 
     let result: String = if !modifierString.isEmpty, !separator.isEmpty {
       modifierString + separator + keyChar
@@ -51,9 +55,9 @@ public enum KeyCodeConverter {
 
   /// Get character representation for a key code
   /// - Parameter keyCode: CGKeyCode value
-  /// - Returns: Uppercase character or symbol
-  private static func keyCharacter(for keyCode: CGKeyCode) -> String {
-    characterFromKeyboardLayout(keyCode)?.uppercased() ?? "?"
+  /// - Returns: Uppercase character or symbol, nil when the keyboard layout cannot map it
+  private static func keyCharacter(for keyCode: CGKeyCode) -> String? {
+    characterFromKeyboardLayout(keyCode)?.uppercased()
   }
 
   /// Get character from the system keyboard layout using UCKeyTranslate.

@@ -168,8 +168,12 @@ enum KlockCLI {
   }
 
   /// Best-effort release of the lock this command created, bounded by the caller so the
-  /// process still exits when the Agent is unreachable. Internal (not private) so tests can
-  /// drive it directly — production reaches it only via the signal handler.
+  /// process still exits when the Agent is unreachable. The wire protocol carries no
+  /// generation token for interactive locks, so if this command's lock was already released
+  /// and another wrapper re-locked while this process waited, cleanup releases that newer
+  /// lock — permitted by the global-lock contract (any entry may unlock), and documented
+  /// here so the approximation stays explicit. Internal (not private) so tests can drive
+  /// it directly — production reaches it only via the signal handler.
   static func unlockBeforeTermination(
     client: any KlockClientServing,
     printError: (String) -> Void
@@ -241,12 +245,12 @@ enum KlockCLI {
     for _ in 0 ..< agentPoll.attempts {
       try? await Task.sleep(for: agentPoll.interval)
       if (try? await client.status()) != nil {
-        printOut("The background agent is registered and reachable.")
+        printOut("The KeyboardLocker agent is registered and reachable.")
         return ExitCode.success
       }
     }
 
-    reportError("The background agent is not reachable yet.", printError: printError)
+    reportError("The KeyboardLocker agent is not reachable yet.", printError: printError)
     printError(
       "  If KeyboardLocker appears in System Settings → General → Login Items, enable it, " +
         "then retry. Locking also requires Accessibility access for the agent."
@@ -276,6 +280,11 @@ enum KlockCLI {
     reportError(error.localizedDescription, printError: printError)
     if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
       printError("  \(suggestion)")
+    }
+    // The shared recovery text names the GUI registration path; point CLI users at the
+    // native equivalent so the hint stays actionable from Terminal.
+    if let clientError = error as? XPCClientError, case .serviceUnavailable = clientError {
+      printError("  Or run `klock register-agent` to register it from Terminal.")
     }
   }
 

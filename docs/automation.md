@@ -78,7 +78,7 @@ Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则�
 
 macOS 26 及以上提供 `Keyboard Lock` Control。Control 的 value provider 每次经 XPC 查询 Agent 的权威 Boolean；用户操作产生的是明确的 desired state：on 调用 `lock`,off 调用 `unlock`。它不会先读取旧值再做 client-side toggle,因此并发状态变化不会把一次操作翻译成错误方向。
 
-Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` Widget timeline 和 Control value。调用失败会由 App Intent 明确返回错误,也不会先刷新出未经确认的 UI 状态。Control API 在当前 macOS SDK 中从 macOS 26 起可用；macOS 13–15 不注册 Control,其中 macOS 14–15 的状态 Widget 可交互,macOS 13 的状态 Widget 只读。
+Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` Widget timeline 和 Control value。调用失败会由 App Intent 明确返回错误,也不会先刷新出未经确认的 UI 状态。Control 没有 extension 自绘的 unavailable 状态:value provider 失败时的呈现由系统决定,与 Widget 显式的 `Agent Unavailable` 布局不同。Control API 在当前 macOS SDK 中从 macOS 26 起可用；macOS 13–15 不注册 Control,其中 macOS 14–15 的状态 Widget 可交互,macOS 13 的状态 Widget 只读。
 
 ## Notifications
 
@@ -87,6 +87,8 @@ Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` W
 通知携带 `Unlock Now` 操作按钮。键盘被锁时鼠标与触控板仍然可用,点击按钮由 Agent 本地执行幂等 `unlock`,不需要拉起任何 App。
 
 通知是 presentation-only 的便利面:首次锁定时向系统请求通知权限,被拒绝或未授予时不发送、不报错;通知内容永远不是状态源。通知以 Agent 的 bundle 身份发布,在系统设置中显示为 KeyboardLocker(display name 与主 App 对齐)。
+
+因此权限被拒时,按设计静默的入口(Services、URL、AppleScript 的 `lock` / `unlock`)没有任何用户可见的成功反馈。需要确认结果的调用方应使用 `klock status --json`、Shortcuts 返回值或 AppleScript 返回值。
 
 ## AppleScript
 
@@ -119,7 +121,7 @@ end tell
 klock lock
 ```
 
-等待期间进程被终止(关闭终端窗口的 `SIGHUP`、`kill` 的 `SIGTERM`)时,`klock` 会在退出前尽力释放它创建的这轮锁(有界等待,随后无论如何退出)。`kill -9` 无法被捕获,此时遗留的锁仍由解锁热键、通知的 Unlock Now 或 auto-unlock 解开。该清理只适用于真正完成 `unlocked → locked` 转换的调用;`Already locked` 退出的命令不触碰既有锁。
+等待期间进程被终止(关闭终端窗口的 `SIGHUP`、`kill` 的 `SIGTERM`)时,`klock` 会在退出前尽力释放它创建的这轮锁(有界等待,随后无论如何退出)。`kill -9` 无法被捕获,此时遗留的锁仍由解锁热键、通知的 Unlock Now 或 auto-unlock 解开。该清理只适用于真正完成 `unlocked → locked` 转换的调用;`Already locked` 退出的命令不触碰既有锁。清理是不带 generation 标记的尽力释放:等待期间若本轮锁已被解开、另一入口随后重新锁定,退出清理会解开这个较新的锁——这与全局锁契约一致,但需要严格 ownership 语义时不应依赖它(见文末 lease/session 说明)。
 
 自动化应使用 one-shot 模式。它在 Agent 确认 locked 后立即退出,不会启用 `Ctrl+C`,也不参与终止清理：
 

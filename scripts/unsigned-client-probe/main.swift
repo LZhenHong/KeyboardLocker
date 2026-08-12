@@ -44,9 +44,11 @@ connection.remoteObjectInterface = NSXPCInterface(with: KeyboardLockerServicePro
 connection.invalidationHandler = {
   finish(0, "RESULT:REFUSED connection invalidated before any reply")
 }
+
 connection.interruptionHandler = {
   finish(0, "RESULT:REFUSED connection interrupted before any reply")
 }
+
 connection.activate()
 
 guard
@@ -58,9 +60,16 @@ else {
   exit(2)
 }
 
-// Simplest read method: any reply at all means the Agent accepted this client.
-service.status { _, _ in
-  finish(1, "RESULT:REPLIED agent answered a status request")
+// A descriptor reply proves acceptance and identifies the Agent generation if the listener's
+// fail-closed requirement is broken. Refusal still surfaces before any exported selector runs.
+service.serviceDescriptor { data, error in
+  if let descriptor = try? ServiceDescriptor.decodedFromXPC(data) {
+    finish(1, "RESULT:REPLIED \(descriptor.agentInstanceID.uuidString)")
+  } else if let error {
+    finish(1, "RESULT:REPLIED agent returned an error: \(error.localizedDescription)")
+  } else {
+    finish(1, "RESULT:REPLIED agent returned an invalid descriptor")
+  }
 }
 
 if finished.wait(timeout: .now() + 10) == .timedOut {
@@ -72,5 +81,6 @@ guard let result = outcome.current() else {
   print("RESULT:INDETERMINATE semaphore signalled without an outcome")
   exit(2)
 }
+
 print(result.line)
 exit(result.code)

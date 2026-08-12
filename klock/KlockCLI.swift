@@ -3,7 +3,7 @@ import Foundation
 
 /// The Agent operations `klock` depends on, mirroring the `XPCClient` signatures one-to-one so
 /// command execution can be driven by a fake in tests.
-protocol KlockClientServing {
+protocol KlockClientServing: Sendable {
   func currentSettings() async throws -> KeyboardLockerSettings
   func lockInteractively() async throws -> LockRequestOutcome
   func lock() async throws

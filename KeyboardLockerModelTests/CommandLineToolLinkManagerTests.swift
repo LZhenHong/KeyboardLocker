@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@MainActor
 @Suite(.serialized)
 final class CommandLineToolLinkManagerTests {
   private let temporaryDirectory: URL
@@ -19,7 +20,6 @@ final class CommandLineToolLinkManagerTests {
   }
 
   @Test
-  @MainActor
   func installAndUninstallManageOnlySymbolicLink() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
@@ -51,7 +51,6 @@ final class CommandLineToolLinkManagerTests {
   }
 
   @Test
-  @MainActor
   func installIsIdempotentForOwnedSymbolicLink() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
@@ -67,7 +66,6 @@ final class CommandLineToolLinkManagerTests {
   }
 
   @Test
-  @MainActor
   func ownedSymbolicLinkCanBeRemovedWhenBundledExecutableDisappears() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
@@ -92,7 +90,6 @@ final class CommandLineToolLinkManagerTests {
   }
 
   @Test
-  @MainActor
   func foreignItemIsReportedAndNeverOverwritten() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)
@@ -118,7 +115,6 @@ final class CommandLineToolLinkManagerTests {
   }
 
   @Test
-  @MainActor
   func missingPathDirectoryIsReportedWithoutEditingShellConfiguration() throws {
     let source = try makeExecutable(named: "klock")
     let binDirectory = temporaryDirectory.appendingPathComponent("bin", isDirectory: true)

@@ -23,7 +23,7 @@ extension LockEngine: LockEngineServing {}
 ///
 /// Lives in the `Service` library so the barrier, generation-fence, and error-mapping wiring
 /// is unit-testable; the `KeyboardLockerAgent` executable only bootstraps the listener.
-public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
+public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unchecked Sendable {
   private static let replacementPreparationDuration: TimeInterval = 30
 
   @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
@@ -51,7 +51,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   @MainActor
-  public convenience override init() {
+  override public convenience init() {
     let engine = LockEngine(dependencies: .live)
     let notifier = LockStatusNotifier(
       notifications: LiveLockStatusNotificationService(),
@@ -75,7 +75,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Bootstrap
 
   public func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       switch self.descriptorResult {
       case let .success(base):
         let descriptor = ServiceDescriptor(
@@ -104,7 +104,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Locking
 
   public func lockKeyboard(reply: @escaping (Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         _ = try self.performLock(allowsControlCUnlock: false)
         reply(nil)
@@ -117,7 +117,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   public func lockKeyboardInteractively(
     reply: @escaping (Bool, Error?) -> Void
   ) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         let outcome = try self.performLock(allowsControlCUnlock: true)
         reply(outcome == .acquired, nil)
@@ -130,7 +130,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   public func beginSafetyCheck(
     reply: @escaping (Bool, Error?) -> Void
   ) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         try self.ensureAcceptingLockRequests()
         var safetySettings = self.settings
@@ -152,7 +152,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     _ enabled: Bool,
     reply: @escaping (Error?) -> Void
   ) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         if enabled {
           try self.ensureAcceptingLockRequests()
@@ -169,22 +169,22 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   public func unlockKeyboard(reply: @escaping (Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       self.engine.unlock()
       reply(nil)
     }
   }
 
   public func status(reply: @escaping (Bool, Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       reply(self.engine.isLocked, nil)
     }
   }
 
   public func toggleKeyboard(reply: @escaping (Bool, Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
-        reply(try self.performToggle(), nil)
+        try reply(self.performToggle(), nil)
       } catch {
         reply(false, error)
       }
@@ -192,7 +192,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   }
 
   public func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         let data = try self.engine.statusSnapshot.encodedForXPC()
         reply(data, nil)
@@ -207,7 +207,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     expectedAgentInstanceID: UUID,
     reply: @escaping (Data?, Error?) -> Void
   ) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       guard case let .success(descriptor) = self.descriptorResult else {
         reply(nil, Self.replacementError(
           code: 2,
@@ -265,15 +265,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     ticket data: Data,
     reply: @escaping (Error?) -> Void
   ) {
+    let transferredReply = TransferredXPCReply(reply)
     let candidate: ServiceReplacementTicket
     do {
       candidate = try ServiceReplacementTicket.decodedFromXPC(data)
     } catch {
-      reply(error)
+      transferredReply.body(error)
       return
     }
 
-    executeOnMainActor {
+    executeOnMainActor(reply: transferredReply) { reply in
       do {
         try self.replacement.commit(ticket: candidate)
         self.replacementPreparationCancellation?()
@@ -289,15 +290,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     ticket data: Data,
     reply: @escaping (Data?, Error?) -> Void
   ) {
+    let transferredReply = TransferredXPCReply(reply)
     let candidate: ServiceReplacementTicket
     do {
       candidate = try ServiceReplacementTicket.decodedFromXPC(data)
     } catch {
-      reply(nil, error)
+      transferredReply.body(nil, error)
       return
     }
 
-    executeOnMainActor {
+    executeOnMainActor(reply: transferredReply) { reply in
       do {
         let data = try self.replacement.status(for: candidate).encodedForXPC()
         reply(data, nil)
@@ -311,15 +313,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     ticket data: Data,
     reply: @escaping (Error?) -> Void
   ) {
+    let transferredReply = TransferredXPCReply(reply)
     let candidate: ServiceReplacementTicket
     do {
       candidate = try ServiceReplacementTicket.decodedFromXPC(data)
     } catch {
-      reply(error)
+      transferredReply.body(error)
       return
     }
 
-    executeOnMainActor {
+    executeOnMainActor(reply: transferredReply) { reply in
       do {
         try self.replacement.cancel(ticket: candidate)
         self.replacementPreparationCancellation?()
@@ -334,13 +337,13 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Accessibility
 
   public func hasAccessibilityPermission(reply: @escaping (Bool) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       reply(AccessibilityManager.hasPermission())
     }
   }
 
   public func requestAccessibilityPermission(reply: @escaping (Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       AccessibilityManager.requestPermission()
       reply(nil)
     }
@@ -349,13 +352,13 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   // MARK: - Settings
 
   public func currentSettings(reply: @escaping (Data?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       reply(try? self.settings.encodedForXPC())
     }
   }
 
   public func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void) {
-    executeOnMainActor {
+    executeOnMainActor(reply: reply) { reply in
       do {
         let data = try self.settings.encodedForXPC()
         reply(data, nil)
@@ -467,8 +470,20 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
-  private func executeOnMainActor(_ operation: @escaping @MainActor () -> Void) {
-    let operation = MainActorOperation(operation)
+  private func executeOnMainActor<Reply>(
+    reply: Reply,
+    _ operation: @escaping @MainActor @Sendable (Reply) -> Void
+  ) {
+    executeOnMainActor(reply: TransferredXPCReply(reply), operation)
+  }
+
+  private func executeOnMainActor<Reply>(
+    reply: TransferredXPCReply<Reply>,
+    _ operation: @escaping @MainActor @Sendable (Reply) -> Void
+  ) {
+    let operation = MainActorOperation {
+      operation(reply.body)
+    }
     if Thread.isMainThread {
       MainActor.assumeIsolated {
         operation()
@@ -485,15 +500,25 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
 /// Immutable transfer object used to move an Objective-C XPC reply operation onto `MainActor`.
 private final class MainActorOperation: @unchecked Sendable {
-  private let body: @MainActor () -> Void
+  private let body: @MainActor @Sendable () -> Void
 
-  init(_ body: @escaping @MainActor () -> Void) {
+  init(_ body: @escaping @MainActor @Sendable () -> Void) {
     self.body = body
   }
 
   @MainActor
   func callAsFunction() {
     body()
+  }
+}
+
+/// Objective-C XPC reply blocks are not imported as `Sendable`, even though the connection owns
+/// their lifetime and supports invocation from the Agent's serialized main-actor boundary.
+private struct TransferredXPCReply<Reply>: @unchecked Sendable {
+  let body: Reply
+
+  init(_ body: Reply) {
+    self.body = body
   }
 }
 

@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 
+@MainActor
 @Suite(.serialized)
 struct KeyboardLockerServicesProviderTests {
   private let pasteboard = NSPasteboard(name: NSPasteboard.Name("KeyboardLockerServicesProviderTests"))
@@ -27,7 +28,6 @@ struct KeyboardLockerServicesProviderTests {
   }
 
   @Test
-  @MainActor
   func handlerPublishesFailureBeforeScheduledPresentationRuns() async {
     let presenter = RecordingServicesFailurePresenter()
     let provider = KeyboardLockerServicesProvider(
@@ -61,7 +61,6 @@ struct KeyboardLockerServicesProviderTests {
   }
 
   @Test
-  @MainActor
   func timedOutHandlerPresentsLateFailureAfterPublishingTimeout() async {
     let presenter = RecordingServicesFailurePresenter()
     let provider = KeyboardLockerServicesProvider(

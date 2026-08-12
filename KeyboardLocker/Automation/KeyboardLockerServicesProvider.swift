@@ -91,7 +91,7 @@ final nonisolated class KeyboardLockerServicesProvider: NSObject, @unchecked Sen
 
 /// One-shot cell carrying a service request's outcome back to the thread AppKit blocked on the
 /// handler.
-private final class ServicesRequestCompletion: @unchecked Sendable {
+private final nonisolated class ServicesRequestCompletion: @unchecked Sendable {
   enum Outcome: Equatable {
     case succeeded
     case failed(ExternalAutomationFailure)

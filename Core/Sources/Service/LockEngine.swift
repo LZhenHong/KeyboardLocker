@@ -286,7 +286,7 @@ struct LockEngineDependencies {
   var broadcastStateChange: () -> Void
   var now: () -> Date
 
-  static var live: Self {
+  @MainActor static var live: Self {
     Self(
       hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
       installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
@@ -456,7 +456,7 @@ final class LockEngine {
     runtimeState.statusSnapshot(capturedAt: dependencies.now())
   }
 
-  init(dependencies: LockEngineDependencies = .live) {
+  init(dependencies: LockEngineDependencies) {
     self.dependencies = dependencies
   }
 

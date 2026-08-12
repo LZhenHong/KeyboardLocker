@@ -57,7 +57,14 @@ public enum KeyCodeConverter {
   /// - Parameter keyCode: CGKeyCode value
   /// - Returns: Uppercase character or symbol, nil when the keyboard layout cannot map it
   private static func keyCharacter(for keyCode: CGKeyCode) -> String? {
-    characterFromKeyboardLayout(keyCode)?.uppercased()
+    let character: String? = if Thread.isMainThread {
+      characterFromKeyboardLayout(keyCode)
+    } else {
+      DispatchQueue.main.sync {
+        characterFromKeyboardLayout(keyCode)
+      }
+    }
+    return character?.uppercased()
   }
 
   /// Get character from the system keyboard layout using UCKeyTranslate.
@@ -67,6 +74,9 @@ public enum KeyCodeConverter {
   /// "?" precisely while the user is typing in a non-Latin context.
   /// - Parameter keyCode: CGKeyCode value
   /// - Returns: Character string or nil
+  /// TIS/TSM APIs abort the process when a UI process calls them concurrently. Keep the complete
+  /// input-source lookup and translation on the main thread so every wrapper shares one safe
+  /// process-local serialization boundary.
   private static func characterFromKeyboardLayout(_ keyCode: CGKeyCode) -> String? {
     let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource().takeRetainedValue()
     guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {

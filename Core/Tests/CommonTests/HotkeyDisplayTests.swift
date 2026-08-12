@@ -22,4 +22,29 @@ struct HotkeyDisplayTests {
 
     #expect(hotkey.displayString == "the configured unlock hotkey")
   }
+
+  @Test
+  func concurrentDisplayRequestsSerializeKeyboardLayoutAccess() async {
+    let hotkey = KeyboardLockerSettings.Hotkey(
+      keyCode: 37,
+      modifierFlags: [.maskCommand, .maskControl]
+    )
+
+    let values = await withTaskGroup(of: String.self, returning: [String].self) { group in
+      for _ in 0..<64 {
+        group.addTask {
+          hotkey.displayString
+        }
+      }
+
+      var values: [String] = []
+      for await value in group {
+        values.append(value)
+      }
+      return values
+    }
+
+    #expect(values.count == 64)
+    #expect(values.allSatisfy { $0 == "⌃⌘L" })
+  }
 }

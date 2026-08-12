@@ -570,11 +570,12 @@ private final class FakeLockEngine: LockEngineServing {
   }
 }
 
+@MainActor
 private final class ManualExpirationScheduler {
   private(set) var scheduledCount = 0
   private(set) var lastInterval: TimeInterval?
   private(set) var cancelCount = 0
-  private var pendingFire: (@MainActor () -> Void)?
+  private var pendingFire: (@MainActor @Sendable () -> Void)?
 
   var scheduler: MainActorTimerScheduler {
     { interval, fire in

@@ -374,13 +374,14 @@ private final class FakeInstalledEventTap: InstalledEventTap {
 /// Manual scheduler whose timers stay fireable after cancellation: a cancelled dispatch block
 /// may already be in flight, and the engine's generation guard must reject exactly that stale
 /// fire, so tests need to replay it.
+@MainActor
 private final class ManualTimerScheduler {
   final class Timer {
     let interval: TimeInterval
-    private let fireAction: @MainActor () -> Void
+    private let fireAction: @MainActor @Sendable () -> Void
     private(set) var isCancelled = false
 
-    init(interval: TimeInterval, fire: @escaping @MainActor () -> Void) {
+    init(interval: TimeInterval, fire: @escaping @MainActor @Sendable () -> Void) {
       self.interval = interval
       fireAction = fire
     }

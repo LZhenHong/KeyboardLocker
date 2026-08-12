@@ -272,7 +272,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     confirmation.addButton(withTitle: "Update Agent")
     confirmation.addButton(withTitle: "Cancel")
 
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activateForUserPresentation()
     if confirmation.runModal() == .alertFirstButtonReturn {
       coordinator.updateAgent()
     }
@@ -287,7 +287,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     confirmation.addButton(withTitle: "Restart Agent")
     confirmation.addButton(withTitle: "Cancel")
 
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activateForUserPresentation()
     if confirmation.runModal() == .alertFirstButtonReturn {
       coordinator.restartAgent()
     }
@@ -303,7 +303,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     alert.messageText = "KeyboardLocker"
     alert.informativeText = detailMessage
     alert.addButton(withTitle: "OK")
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activateForUserPresentation()
     alert.runModal()
   }
 
@@ -314,7 +314,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   @objc
   private func manageCommandLineTool() {
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activateForUserPresentation()
 
     switch commandLineToolManager.state {
     case let .installed(destination):

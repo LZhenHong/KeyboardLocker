@@ -38,7 +38,7 @@ struct AppKitExternalAutomationPresenter: ExternalAutomationPresenting {
     alert.messageText = message
     alert.informativeText = information
     alert.addButton(withTitle: "OK")
-    NSApp.activate(ignoringOtherApps: true)
+    NSApp.activateForUserPresentation()
     alert.runModal()
   }
 }

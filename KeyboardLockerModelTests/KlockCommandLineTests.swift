@@ -21,6 +21,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["lock"], .lock(wait: true)),
       (["lock", "--no-wait"], .lock(wait: false)),
       (["unlock"], .unlock),
+      (["toggle"], .toggle),
       (["register-agent"], .registerAgent),
       (["status"], .status(output: .humanReadable)),
       (["status", "--json"], .status(output: .json)),
@@ -58,6 +59,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["lock", "--no-wait", "extra"], .unexpectedArguments(["--no-wait", "extra"])),
       (["status", "--xml"], .unexpectedArguments(["--xml"])),
       (["unlock", "now"], .unexpectedArguments(["now"])),
+      (["toggle", "now"], .unexpectedArguments(["now"])),
       (["register-agent", "now"], .unexpectedArguments(["now"])),
       (["--help", "extra"], .unexpectedArguments(["extra"])),
       (["version", "extra"], .unexpectedArguments(["extra"])),
@@ -191,6 +193,33 @@ final class KlockCommandLineTests: XCTestCase {
     XCTAssertEqual(result.exitCode, 1)
     XCTAssertEqual(result.stdout, [])
     XCTAssertEqual(result.stderr, ["Error: unlock failed"])
+  }
+
+  func testTogglePrintsResultingStateAcrossRoundTrip() async {
+    let client = FakeKlockClient()
+    client.toggleResults = [.success(true), .success(false)]
+
+    var result = await runKlock(arguments: ["toggle"], client: client)
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(result.stdout, ["Locked."])
+
+    result = await runKlock(arguments: ["toggle"], client: client)
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(result.stdout, ["Unlocked."])
+
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(client.toggleCalls, 2)
+  }
+
+  func testToggleFailureReportsErrorOnStandardError() async {
+    let client = FakeKlockClient()
+    client.toggleResult = .failure(Self.makeError("toggle failed"))
+
+    let result = await runKlock(arguments: ["toggle"], client: client)
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout, [])
+    XCTAssertEqual(result.stderr, ["Error: toggle failed"])
   }
 
   func testStatusPrintsHumanReadableState() async {
@@ -477,6 +506,10 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   var lockInteractivelyResult: Result<LockRequestOutcome, Error> = .success(.acquired)
   var lockResult: Result<Void, Error> = .success(())
   var unlockResult: Result<Void, Error> = .success(())
+  var toggleResult: Result<Bool, Error> = .success(true)
+  /// Same scripting seam as `statusResults`: each `toggle()` consumes the next queued result
+  /// before falling back to `toggleResult`, so tests can drive a state round trip.
+  var toggleResults: [Result<Bool, Error>]?
   var statusResult: Result<Bool, Error> = .success(false)
   /// When set, each `status()` call consumes the next queued result before falling back to
   /// `statusResult`, so tests can script an Agent that becomes reachable after registration.
@@ -487,6 +520,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   private(set) var lockInteractivelyCalls = 0
   private(set) var lockCalls = 0
   private(set) var unlockCalls = 0
+  private(set) var toggleCalls = 0
   private(set) var statusCalls = 0
   private(set) var waitUntilUnlockedCalls = 0
 
@@ -508,6 +542,14 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   func unlock() async throws {
     unlockCalls += 1
     try unlockResult.get()
+  }
+
+  func toggle() async throws -> Bool {
+    toggleCalls += 1
+    if toggleResults?.isEmpty == false {
+      return try toggleResults!.removeFirst().get()
+    }
+    return try toggleResult.get()
   }
 
   func status() async throws -> Bool {

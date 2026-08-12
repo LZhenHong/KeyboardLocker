@@ -135,8 +135,11 @@ klock lock --no-wait
 klock status
 klock status --json
 klock unlock
+klock toggle
 klock register-agent
 ```
+
+`toggle` 在 Agent 串行边界内原子翻转并打印翻转后的权威状态(与 Shortcuts 的 `Toggle Keyboard Lock` 同一 wire method);老 Agent 无 toggle capability 时命令明确报错,不做 client-side 方向合成。
 
 `register-agent` 在 Agent 不可达时启动一次 KeyboardLocker App 来完成 `SMAppService` 注册(注册只能由 App bundle 执行),随后短暂轮询确认 Agent 可达；若出现 Login Items 批准或 Accessibility 授权要求,命令会指出对应的系统设置入口。Agent 已经可达时它不启动 App,直接报告。
 

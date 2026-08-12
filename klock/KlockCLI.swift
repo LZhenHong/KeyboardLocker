@@ -8,6 +8,7 @@ protocol KlockClientServing {
   func lockInteractively() async throws -> LockRequestOutcome
   func lock() async throws
   func unlock() async throws
+  func toggle() async throws -> Bool
   func status() async throws -> Bool
   func waitUntilUnlocked() async throws
 }
@@ -83,6 +84,9 @@ enum KlockCLI {
 
     case .unlock:
       return await executeUnlock(client: client, printOut: printOut, printError: printError)
+
+    case .toggle:
+      return await executeToggle(client: client, printOut: printOut, printError: printError)
 
     case .registerAgent:
       return await executeRegisterAgent(
@@ -219,6 +223,21 @@ enum KlockCLI {
     }
   }
 
+  private static func executeToggle(
+    client: any KlockClientServing,
+    printOut: (String) -> Void,
+    printError: (String) -> Void
+  ) async -> Int32 {
+    do {
+      let isLocked = try await client.toggle()
+      printOut(isLocked ? "Locked." : "Unlocked.")
+      return ExitCode.success
+    } catch {
+      reportFailure(error, printError: printError)
+      return ExitCode.error
+    }
+  }
+
   /// Registers the background Agent by launching the containing App — only the App bundle can
   /// hand its launchd plist to `SMAppService`. The command then polls briefly so a terminal
   /// user learns immediately whether registration produced a reachable Agent.
@@ -322,6 +341,7 @@ enum KlockCLI {
       COMMANDS:
         lock [--no-wait]    Lock the keyboard; by default, wait until it is unlocked.
         unlock              Unlock the keyboard.
+        toggle              Toggle the lock state and print the new state.
         status [--json]     Print the current lock state.
         register-agent      Launch KeyboardLocker once to register its background agent.
         help                Show this help message.

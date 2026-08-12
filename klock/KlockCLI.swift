@@ -131,34 +131,41 @@ enum KlockCLI {
       unlockHotkey = .failure(error)
     }
 
+    // Observe termination before sending the mutation. If a signal arrives while the XPC reply is
+    // in flight, the coordinator waits for the atomic acquisition outcome before deciding whether
+    // cleanup may touch the global lock.
+    let terminationCoordinator = KlockInteractiveTerminationCoordinator(
+      cleanup: {
+        await Self.unlockBeforeTermination(client: client, printError: printError)
+      }
+    )
+    let cancelTerminationGuard = terminationGuard.install { signal in
+      terminationCoordinator.receive(signal: signal)
+    }
+    defer {
+      cancelTerminationGuard()
+    }
+
     let outcome: LockRequestOutcome
     do {
       outcome = try await client.lockInteractively()
     } catch {
+      if let terminationExitCode = terminationCoordinator.resolveWithoutAcquisition() {
+        return terminationExitCode
+      }
       reportFailure(error, printError: printError)
       return ExitCode.error
     }
 
     guard outcome == .acquired else {
+      if let terminationExitCode = terminationCoordinator.resolveWithoutAcquisition() {
+        return terminationExitCode
+      }
       printOut("Already locked. This command did not create a new lock.")
       return ExitCode.success
     }
-
-    // The wait below keeps this process responsible for the lock it just created: a covered
-    // termination signal (terminal closed, kill) must release it rather than leave the keyboard
-    // locked with no visible owner. Ctrl+C never reaches the process — the Agent consumes it
-    // as an unlock gesture — so SIGINT is only a fallback for a tap that failed to engage.
-    let cancelTerminationGuard = terminationGuard.install { signal in
-      let finished = DispatchSemaphore(value: 0)
-      Task {
-        await Self.unlockBeforeTermination(client: client, printError: printError)
-        finished.signal()
-      }
-      _ = finished.wait(timeout: .now() + .seconds(2))
-      exit(128 + signal)
-    }
-    defer {
-      cancelTerminationGuard()
+    if let terminationExitCode = await terminationCoordinator.resolveAcquired() {
+      return terminationExitCode
     }
 
     switch unlockHotkey {
@@ -173,13 +180,19 @@ enum KlockCLI {
       )
     }
 
-    do {
+    switch await terminationCoordinator.waitUntilUnlocked({
       try await client.waitUntilUnlocked()
+    }) {
+    case .unlocked:
       printOut("Unlocked.")
       return ExitCode.success
-    } catch {
+
+    case let .failed(error):
       reportFailure(error, printError: printError)
       return ExitCode.error
+
+    case let .signaled(exitCode):
+      return exitCode
     }
   }
 

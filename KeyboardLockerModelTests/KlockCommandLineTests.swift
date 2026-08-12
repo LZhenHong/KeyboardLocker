@@ -490,7 +490,46 @@ final class KlockCommandLineTests: XCTestCase {
     XCTAssertEqual(terminationGuard.cancelCalls, 1)
   }
 
-  func testInteractiveLockAlreadyLockedSkipsTerminationGuard() async {
+  func testSignalDuringAcquisitionReleasesConfirmedLockBeforeTerminating() async {
+    let client = FakeKlockClient()
+    let terminationGuard = FakeKlockTerminationGuard()
+    client.onLockInteractively = {
+      terminationGuard.send(SIGTERM)
+    }
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
+    XCTAssertEqual(client.unlockCalls, 1)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testSignalDuringUnlockWaitWinsOverConcurrentNormalCompletion() async {
+    let client = FakeKlockClient()
+    let terminationGuard = FakeKlockTerminationGuard()
+    client.onWaitUntilUnlocked = {
+      terminationGuard.send(SIGTERM)
+    }
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
+    XCTAssertEqual(client.waitUntilUnlockedCalls, 1)
+    XCTAssertEqual(client.unlockCalls, 1)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testInteractiveLockAlreadyLockedInstallsAndCancelsTerminationGuard() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .success(.alreadyLocked)
     let terminationGuard = FakeKlockTerminationGuard()
@@ -502,10 +541,12 @@ final class KlockCommandLineTests: XCTestCase {
     )
 
     XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(terminationGuard.installCalls, 0)
+    XCTAssertEqual(client.unlockCalls, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
   }
 
-  func testInteractiveLockFailureSkipsTerminationGuard() async {
+  func testInteractiveLockFailureInstallsAndCancelsTerminationGuard() async {
     let client = FakeKlockClient()
     client.lockInteractivelyResult = .failure(Self.makeError("lock failed"))
     let terminationGuard = FakeKlockTerminationGuard()
@@ -517,7 +558,49 @@ final class KlockCommandLineTests: XCTestCase {
     )
 
     XCTAssertEqual(result.exitCode, 1)
-    XCTAssertEqual(terminationGuard.installCalls, 0)
+    XCTAssertEqual(client.unlockCalls, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testSignalDuringAlreadyLockedAcquisitionDoesNotUnlockExistingLock() async {
+    let client = FakeKlockClient()
+    client.lockInteractivelyResult = .success(.alreadyLocked)
+    let terminationGuard = FakeKlockTerminationGuard()
+    client.onLockInteractively = {
+      terminationGuard.send(SIGTERM)
+    }
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 128 + SIGTERM)
+    XCTAssertEqual(client.unlockCalls, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testSignalDuringFailedAcquisitionDoesNotUnlock() async {
+    let client = FakeKlockClient()
+    client.lockInteractivelyResult = .failure(Self.makeError("lock failed"))
+    let terminationGuard = FakeKlockTerminationGuard()
+    client.onLockInteractively = {
+      terminationGuard.send(SIGHUP)
+    }
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 128 + SIGHUP)
+    XCTAssertEqual(client.unlockCalls, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
   }
 
   func testInteractiveLockWaitFailureCancelsTerminationGuard() async {
@@ -642,6 +725,8 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   /// Same scripting seam as `statusResults`: drives the request-access pre-check and polls.
   var hasAccessibilityPermissionResults: [Result<Bool, Error>]?
   var requestAccessibilityPermissionResult: Result<Void, Error> = .success(())
+  var onLockInteractively: (() -> Void)?
+  var onWaitUntilUnlocked: (() -> Void)?
 
   private(set) var currentSettingsCalls = 0
   private(set) var lockInteractivelyCalls = 0
@@ -661,6 +746,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
 
   func lockInteractively() async throws -> LockRequestOutcome {
     lockInteractivelyCalls += 1
+    onLockInteractively?()
     return try lockInteractivelyResult.get()
   }
 
@@ -697,6 +783,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
 
   func waitUntilUnlocked() async throws {
     waitUntilUnlockedCalls += 1
+    onWaitUntilUnlocked?()
     try waitUntilUnlockedResult.get()
   }
 
@@ -717,12 +804,19 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
 private final class FakeKlockTerminationGuard: KlockTerminationGuarding, @unchecked Sendable {
   private(set) var installCalls = 0
   private(set) var cancelCalls = 0
+  private var onTermination: ((Int32) -> Void)?
 
-  func install(onTermination _: @escaping (Int32) -> Void) -> () -> Void {
+  func install(onTermination: @escaping (Int32) -> Void) -> () -> Void {
     installCalls += 1
+    self.onTermination = onTermination
     return { [self] in
       cancelCalls += 1
+      self.onTermination = nil
     }
+  }
+
+  func send(_ signal: Int32) {
+    onTermination?(signal)
   }
 }
 

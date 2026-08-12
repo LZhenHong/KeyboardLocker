@@ -369,18 +369,17 @@ public final class XPCClient: @unchecked Sendable {
     let connection = try currentConnection()
     let descriptor = try await serviceDescriptor(using: connection)
 
+    try XPCFeatureNegotiation.validate(
+      descriptor: descriptor,
+      requiring: capabilities
+    )
+
     if let expectedAgentInstanceID,
        descriptor.agentInstanceID != expectedAgentInstanceID {
       throw XPCClientError.agentChanged(
         expected: expectedAgentInstanceID,
         actual: descriptor.agentInstanceID
       )
-    }
-    if let missingCapability = capabilities
-      .subtracting(descriptor.capabilities)
-      .sorted(by: { $0.rawValue < $1.rawValue })
-      .first {
-      throw XPCClientError.missingCapability(missingCapability)
     }
     return connection
   }
@@ -512,6 +511,55 @@ public final class XPCClient: @unchecked Sendable {
   /// service-availability failure.
   static func normalizedProxyError(_: Error) -> Error {
     XPCClientError.serviceUnavailable
+  }
+}
+
+/// Validates one optional selector grant before its negotiated connection is used.
+///
+/// Capability names are only meaningful within the protocol major that defined them. The minor
+/// floor prevents an inconsistent descriptor from granting a selector before its wire shape was
+/// introduced, even if it advertises the capability string.
+enum XPCFeatureNegotiation {
+  private static let minimumMinorByCapability: [ServiceCapability: Int] = [
+    .accessibilityPrompt: 0,
+    .accessibilityStatus: 0,
+    .committedReplacementDrain: 1,
+    .currentSettings: 1,
+    .currentSettingsWithError: 2,
+    .focusFilterLock: 5,
+    .interactiveLock: 3,
+    .lockControl: 0,
+    .lockStatusSnapshot: 4,
+    .lockToggle: 6,
+    .prepareForReplacement: 0,
+  ]
+
+  static func validate(
+    descriptor: ServiceDescriptor,
+    requiring capabilities: Set<ServiceCapability>
+  ) throws {
+    let expectedMajor = ServiceContract.protocolVersion.major
+    guard descriptor.protocolVersion.major == expectedMajor else {
+      throw ServiceCompatibilityIssue.protocolMajorMismatch(
+        expected: expectedMajor,
+        actual: descriptor.protocolVersion.major
+      )
+    }
+
+    let requiredMinor = capabilities.compactMap { minimumMinorByCapability[$0] }.max() ?? 0
+    guard descriptor.protocolVersion.minor >= requiredMinor else {
+      throw ServiceCompatibilityIssue.protocolMinorTooOld(
+        required: requiredMinor,
+        actual: descriptor.protocolVersion.minor
+      )
+    }
+
+    if let missingCapability = capabilities
+      .subtracting(descriptor.capabilities)
+      .sorted(by: { $0.rawValue < $1.rawValue })
+      .first {
+      throw XPCClientError.missingCapability(missingCapability)
+    }
   }
 }
 

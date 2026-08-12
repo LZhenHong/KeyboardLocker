@@ -551,6 +551,8 @@ sequenceDiagram
 | `currentSettings` | protocol 1.1 legacy Client only | `AgentService` | 为既有 selector ABI 保留；编码失败只能返回 `nil` |
 | `currentSettingsWithError` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 启动时取得并持有的设置快照；本地 persisted payload 损坏时仅 Agent store 记录错误并回退 `.default`，而跨进程 payload 的缺失、损坏、过大或编码失败保持严格显式失败，wrapper 不自行回退默认值 |
 
+MVP 的 settings contract 有意保持只读,不包含 write selector 或设置编辑 UI；用户可编辑设置属于 post-MVP extension。未来新增写入能力时仍必须由 Agent XPC protocol 承载并由 Agent 持久化。
+
 Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使用 Accessibility API 的进程身份。App 获得 Accessibility 权限并不能让 Agent 创建 event tap。
 
 ## Connection 生命周期不等于锁生命周期

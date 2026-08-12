@@ -15,7 +15,7 @@
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
 6. wrapper 通过 `LockStateSubscriber.subscribe(initialState:_:)`(返回 `ObserverToken`)或 `LockStateSubscriber.stateChanges`(`AsyncStream<Bool>`)观察状态。subscriber 会在 observer 安装完成后立即拉取一次权威初始状态,后续信号串行合并并再次查询 —— 绝不从"我这次调用是否成功"或通知 payload 推断。
 
-> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 对物理运行状态是**严格幂等**的：已锁时重复调用不会重建 event tap、修改当前设置、锁定起点或 auto-unlock deadline。唯一的 metadata 变化是普通 wrapper 的显式 `lock` 会接管 Focus 创建的当前 generation,使之后的 Focus disable 不再撤销这个更新的用户意图。Focus 本身是 activation-triggered：一次 activation 最多创建一个 Focus-owned generation,不承诺在 Focus active 期间持续 relock；显式 unlock、热键、timeout、event-tap failure 或 Agent restart 都可以让它提前结束。只有显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window。不存在客户端持有的通用"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
+> 锁是一个由 Agent 拥有的全局布尔值,且 `lock()` 对物理运行状态是**严格幂等**的：已锁时重复调用不会重建 event tap、修改当前设置、锁定起点或 auto-unlock deadline。唯一的 metadata 变化是普通 wrapper 的显式 `lock` 会接管 Focus 创建的当前 generation,使之后的 Focus disable 不再撤销这个更新的用户意图。Focus 本身是 activation-triggered：一次 activation 最多创建一个 Focus-owned generation,不承诺在 Focus active 期间持续 relock；显式 unlock、热键、timeout、event-tap failure 或 Agent restart 都可以让它提前结束。只有 `LockEngine` 的显式 settings update 才会重新应用设置并从该次更新重新开始 timeout window；这是内部语义与 post-MVP 写入接入点,不是 MVP 用户 capability。不存在客户端持有的通用"会话";每次调用都是一次性的。Agent 必须经 `SMAppService` 注册,`launchd` 才能按需拉起它 —— App 在启动时通过 `AgentRegistrar` 完成这件事(见下文)。
 
 ## 组件地图
 
@@ -79,10 +79,10 @@
 
 ## 常见任务
 
-### 新增一个设置项
+### Post-MVP：新增用户可编辑设置
 1. 给 `KeyboardLockerSettings` 加一个 `Codable`/`Sendable` 属性,并更新 `.default`。
 2. 如果引擎会消费它,在 `LockEngine.lock(settings:allowsControlCUnlock:)` / `updateSettings(_:)` 中读取。
-3. 目前 wrapper 只能通过 `XPCClient.currentSettings()` **读取**设置(由 Agent 经 `KeyboardLockerSettingsStore` 加载)。写入路径(`applySettings` + UI)尚未接线;要让用户改设置,先在 Agent + `KeyboardLockerServiceProtocol` 上补写入方法(见"新增一个 XPC 方法"),再由 Agent 持久化 —— wrapper **不得**拥有 store(见架构契约)。
+3. 当前 MVP 有意只支持 wrapper 通过 `XPCClient.currentSettings()` **读取** Agent-owned 默认/持久化设置,不包含写入 API 或 UI。扩展到用户可编辑设置时,先在 Agent + `KeyboardLockerServiceProtocol` 上新增写入方法(见"新增一个 XPC 方法"),再由 Agent 持久化；wrapper **不得**拥有 store(见架构契约)。
 
 ### 新增一个 XPC 方法
 1. 先判断它是否 optional/additive。不得在同一 protocol major 内修改或移除既有 selector、参数顺序或 reply 形状;破坏性变化需要新 major,无法保留 selector union 时需要新 Mach service。

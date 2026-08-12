@@ -13,7 +13,7 @@
 - **分层分对了,轴选错了。** 旧方案按"关注点"垂直分层非常漂亮,却没有先按"进程边界"水平切分,于是每一层都被复制进三个进程。
   → **教训**:干净的类型分层 ≠ 正确的系统架构。有多个入口进程时,**第一刀切在进程边界(谁执行 / 谁只是 wrapper),再谈类型优雅**。
 - **各进程独立读 `UserDefaults` → 设置漂移。** 旧方案每个进程各持一份配置,CLI 改了热键 App 不知道。
-  → **教训**:设置也只能有一个真相源(Agent),wrapper 只经 XPC 读写(见下文"各职责的归属")。
+  → **教训**:设置也只能有一个真相源(Agent)。MVP 中 wrapper 只经 XPC 读取；post-MVP 若加入写入,也必须经同一 XPC 边界(见下文"各职责的归属")。
 
 一句话:**有进程边界时,先按进程切,再谈类型优雅;单例和回调是进程内工具,不要拿来跨进程。** 下面的规则都是这句话的展开。
 
@@ -45,7 +45,7 @@ Widget ──────┘              ├─ Settings ownership (source of t
 | 关注点 | 归属 | 规则 |
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
-| 设置(真相源) | **Agent** | Agent 加载并拥有设置、负责应用它们。wrapper 绝不自己持有 `UserDefaults`,只经 XPC 访问。当前仅暴露读取(`XPCClient.currentSettings()`);写入(`applySettings`)尚未接线,加入时同样必须经 Agent,绝不在 wrapper 侧落地。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
+| 设置(真相源) | **Agent** | Agent 加载并拥有默认/持久化设置、负责应用它们。MVP 有意只向 wrapper 暴露读取(`XPCClient.currentSettings()`),不包含用户可编辑设置的 API 或 UI；因此没有 `applySettings` 不构成 MVP 缺口。设置编辑属于 post-MVP extension,未来加入时仍必须经 Agent XPC 写入并由 Agent 持久化,绝不在 wrapper 侧落地。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
 | 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline 与 active settings。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
@@ -64,7 +64,7 @@ App 可以持久化纯 presentation 状态,例如“是否已完成首次安全�
 - locked 的输入范围是 macOS 交付给 `CGEventTap` 的键盘来源事件：标准 `keyDown` / `keyUp` / `flagsChanged`,以及 `NX_SUBTYPE_AUX_CONTROL_BUTTONS`、`NX_SUBTYPE_EJECT_KEY`、`NX_SUBTYPE_POWER_KEY` 这三类 system-defined keyboard control。音量、亮度和播放控制因此必须被消费；鼠标 / 触控板 pointer event(包括 `NX_SUBTYPE_AUX_MOUSE_BUTTONS`)必须继续可用。macOS 没有交付给 event tap 的硬件或系统保留路径不在可保证范围内。
 - 锁操作是**无状态的一次性 XPC 调用**(`lock` / `unlock` / `toggle` / `status`),彼此对称。不要把锁建模成客户端"拥有"的"会话"—— wrapper 的连接生命周期与锁的生命周期无关。
 - `toggle` 是同一全局锁的原子翻转:在 Agent 的串行执行边界内于同一 execution turn 完成"读当前状态 + 反向 mutation",并向调用方返回翻转后的布尔值。锁定方向使用普通非交互 `lock` 语义(含 Focus persistence takeover),解锁方向等价于显式 `unlock`;wrapper 不得先读 `status()` 再自行决定方向来模拟 toggle。
-- `lock` 对物理运行状态是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改 event tap、当前设置、输入手势、锁定起点或 auto-unlock deadline；只有显式 settings update 才能重新应用设置并重新计算 timeout window。唯一的内部 metadata 变化是：若该代锁由 Focus Filter 创建,之后来自普通 wrapper 的显式 `lock` 会接管其持久性,使 Focus 关闭时不再解除这个更新的用户意图。
+- `lock` 对物理运行状态是严格幂等操作。Agent 已处于 locked 时,重复 `lock` 直接成功且不修改 event tap、当前设置、输入手势、锁定起点或 auto-unlock deadline；只有 `LockEngine` 的显式 settings update 才能重新应用设置并重新计算 timeout window。它是当前的内部语义与 post-MVP 写入接入点,不是 MVP 对用户暴露的 capability。唯一的内部 metadata 变化是：若该代锁由 Focus Filter 创建,之后来自普通 wrapper 的显式 `lock` 会接管其持久性,使 Focus 关闭时不再解除这个更新的用户意图。
 - safety check 是 capability-gated 的一次性 Agent 操作：仅在 unlocked 时创建新锁,沿用 Agent 持久化的解锁热键,但把该轮 active settings 的 auto-unlock 强制为固定 10 秒。fail-safe timer 由 Agent/`LockEngine` 持有,因此 App 退出、崩溃或 XPC 断开都不能让测试失去自动解锁兜底；该 override 不写回 settings store。若调用时已 locked,Agent 原子返回 already locked 且不修改既有锁。App 只在重新查询到权威 unlocked 后把 presentation completion 标记为完成。
 - interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。发起并等待中的 CLI 进程对本轮锁负有退出清理责任：它观察 SIGTERM/SIGHUP/SIGINT,退出前尽力释放锁(有界等待后无论如何退出)。wire protocol 不携带 interactive lock 的代际令牌,清理无法区分自己创建的锁与等待期间由他入口重建的锁——若本轮锁已被解开且另一入口重新锁定,清理会释放较新的锁,这与任意入口可解锁同一全局锁的契约一致;SIGKILL/SIGSTOP 不可观察,遗留锁仍由解锁热键、通知 Unlock Now、auto-unlock 等全局途径解开。这是输入手势语义的进程侧延伸,不构成 session 或所有权。
 - Focus Filter 是 **activation-triggered acquisition**,不是“Focus active 期间持续保持 locked”的 policy。Focus 激活时的 `true` 最多尝试一次 `unlocked → locked`,并只在成功创建锁时记录该 Focus-owned generation；Focus 关闭时的 `false` 只条件性解除仍由它创建且未被普通 `lock` 接管的同一代。已有普通锁不会被 Focus 认领。显式 unlock、解锁热键、auto-unlock timeout、event-tap failure 或 Agent 退出 / 重启都可以在 Focus 仍 active 时提前结束该 generation；实现不会查询当前 Focus 后自动重建锁,也不会在同一次 Focus activation 内持续 relock。这个进程内 marker 不暴露给 wrapper,也不改变“任意入口可显式 unlock 同一个全局锁”的契约。

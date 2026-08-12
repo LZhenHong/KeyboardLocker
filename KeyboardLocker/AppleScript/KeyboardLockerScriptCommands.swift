@@ -77,12 +77,6 @@ enum AppleScriptErrorPresentation {
   }
 
   static func message(for error: Error) -> String {
-    let error = error as NSError
-    guard let recoverySuggestion = error.localizedRecoverySuggestion,
-          !recoverySuggestion.isEmpty
-    else {
-      return error.localizedDescription
-    }
-    return "\(error.localizedDescription) \(recoverySuggestion)"
+    NSErrorMessageFormatter.message(for: error)
   }
 }

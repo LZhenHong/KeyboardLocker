@@ -62,6 +62,10 @@ final class KeyboardLockerScriptCommandTests: XCTestCase {
       for: XPCClientError.serviceUnavailable
     )
 
+    XCTAssertEqual(
+      message,
+      ExternalAutomationFailure(error: XPCClientError.serviceUnavailable).message
+    )
     XCTAssertTrue(message.contains("The KeyboardLocker agent is not reachable."))
     XCTAssertTrue(message.contains("Open KeyboardLocker once"))
   }

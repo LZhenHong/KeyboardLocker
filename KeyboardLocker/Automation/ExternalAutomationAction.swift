@@ -16,6 +16,19 @@ nonisolated enum ExternalAutomationSource: String, Equatable, Sendable {
   case urlScheme = "URL"
 }
 
+nonisolated enum NSErrorMessageFormatter {
+  static func message(for error: Error) -> String {
+    let error = error as NSError
+    guard let recoverySuggestion = error.localizedRecoverySuggestion,
+          !recoverySuggestion.isEmpty
+    else {
+      return error.localizedDescription
+    }
+
+    return "\(error.localizedDescription) \(recoverySuggestion)"
+  }
+}
+
 nonisolated struct ExternalAutomationFailure: Equatable, Sendable {
   let message: String
 
@@ -24,14 +37,6 @@ nonisolated struct ExternalAutomationFailure: Equatable, Sendable {
   }
 
   init(error: Error) {
-    let error = error as NSError
-    guard let recoverySuggestion = error.localizedRecoverySuggestion,
-          !recoverySuggestion.isEmpty
-    else {
-      self.init(message: error.localizedDescription)
-      return
-    }
-
-    self.init(message: "\(error.localizedDescription) \(recoverySuggestion)")
+    self.init(message: NSErrorMessageFormatter.message(for: error))
   }
 }

@@ -3,6 +3,24 @@ import Foundation
 import XCTest
 
 final class AppCoordinatorTests: XCTestCase {
+  func testStateProjectsKnownLockEvidenceConsistently() {
+    let cases: [(AppCoordinator.State, Bool?)] = [
+      (.checking(lastKnownLock: true), true),
+      (.checking(lastKnownLock: nil), nil),
+      (.agentApprovalRequired, nil),
+      (.agentReplacementInProgress(message: "Replacing"), nil),
+      (.agentUpdateRequired(isLocked: false, message: "Update"), false),
+      (.agentUpdateRequired(isLocked: nil, message: "Update"), nil),
+      (.accessibilityRequired(isLocked: true), true),
+      (.ready(isLocked: false), false),
+      (.unavailable(message: "Unavailable", canRestartAgent: true), nil),
+    ]
+
+    for (state, expected) in cases {
+      XCTAssertEqual(state.knownLockState, expected, "state: \(state)")
+    }
+  }
+
   @MainActor
   func testReconcilePublishesAuthoritativeReadySnapshot() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)

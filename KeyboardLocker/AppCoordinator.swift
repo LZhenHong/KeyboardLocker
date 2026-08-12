@@ -12,6 +12,20 @@ final class AppCoordinator {
     case accessibilityRequired(isLocked: Bool)
     case ready(isLocked: Bool)
     case unavailable(message: String, canRestartAgent: Bool)
+
+    var knownLockState: Bool? {
+      switch self {
+      case let .checking(lastKnownLock):
+        lastKnownLock
+      case let .agentUpdateRequired(isLocked, _):
+        isLocked
+      case let .accessibilityRequired(isLocked),
+           let .ready(isLocked):
+        isLocked
+      case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+        nil
+      }
+    }
   }
 
   enum Activity: Equatable {
@@ -271,17 +285,7 @@ final class AppCoordinator {
     reconciliationTask?.cancel()
     stopStateObservation()
 
-    let lastKnownLock: Bool? = switch state {
-    case let .checking(lastKnownLock):
-      lastKnownLock
-    case let .agentUpdateRequired(isLocked, _):
-      isLocked
-    case let .accessibilityRequired(isLocked),
-         let .ready(isLocked):
-      isLocked
-    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
-      nil
-    }
+    let lastKnownLock = state.knownLockState
 
     needsFollowUpReconciliation = false
     state = .checking(lastKnownLock: lastKnownLock)
@@ -590,19 +594,7 @@ final class AppCoordinator {
       return
     }
 
-    let initialState: Bool? = switch state {
-    case let .checking(lastKnownLock):
-      lastKnownLock
-    case let .agentUpdateRequired(isLocked, _):
-      isLocked
-    case let .accessibilityRequired(isLocked),
-         let .ready(isLocked):
-      isLocked
-    case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
-      nil
-    }
-
-    stateToken = lockStateObserver.subscribe(initialState: initialState) { [weak self] isLocked in
+    stateToken = lockStateObserver.subscribe(initialState: state.knownLockState) { [weak self] isLocked in
       self?.receiveLockState(isLocked)
     }
   }

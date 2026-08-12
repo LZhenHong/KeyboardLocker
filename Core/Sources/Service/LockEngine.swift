@@ -435,7 +435,7 @@ public final class LockEngine {
   }
 
   /// Suppress standard keys and keyboard-originated system controls without observing pointer input.
-  static let eventMasks: CGEventMask =
+  nonisolated static let eventMasks: CGEventMask =
     (1 << CGEventType.keyDown.rawValue) |
     (1 << CGEventType.keyUp.rawValue) |
     (1 << CGEventType.flagsChanged.rawValue) |

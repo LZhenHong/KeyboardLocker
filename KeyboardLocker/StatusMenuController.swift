@@ -444,6 +444,38 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   @objc
   private func quit() {
-    NSApp.terminate(nil)
+    guard snapshotShowsLockedKeyboard else {
+      NSApp.terminate(nil)
+      return
+    }
+
+    // Quitting removes the only in-App lock indicator while the Agent-owned lock stays active.
+    // Make sure the user leaves knowing how to get out of the lock.
+    let confirmation = NSAlert()
+    confirmation.alertStyle = .warning
+    confirmation.messageText = "Quit KeyboardLocker while the keyboard is locked?"
+    confirmation.informativeText = """
+      The lock stays active without the menu bar indicator. You can still unlock with the \
+      configured unlock hotkey, the notification's Unlock Now button, or `klock unlock`.
+      """
+    confirmation.addButton(withTitle: "Quit")
+    confirmation.addButton(withTitle: "Cancel")
+
+    NSApp.activateForUserPresentation()
+    if confirmation.runModal() == .alertFirstButtonReturn {
+      NSApp.terminate(nil)
+    }
+  }
+
+  private var snapshotShowsLockedKeyboard: Bool {
+    switch currentSnapshot.state {
+    case let .ready(isLocked),
+         let .accessibilityRequired(isLocked):
+      isLocked
+    case let .agentUpdateRequired(isLocked, _):
+      isLocked ?? false
+    case .checking, .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
+      false
+    }
   }
 }

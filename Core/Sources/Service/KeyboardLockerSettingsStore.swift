@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Persists `KeyboardLockerSettings` to `UserDefaults`
-public final class KeyboardLockerSettingsStore {
+final class KeyboardLockerSettingsStore {
   private static let logger = Logger(
     subsystem: SharedConstants.machServiceName,
     category: "SettingsStore"
@@ -13,7 +13,7 @@ public final class KeyboardLockerSettingsStore {
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
 
-  public init(
+  init(
     userDefaults: UserDefaults = .standard,
     storageKey: String = "keyboardlocker.settings"
   ) {
@@ -27,7 +27,7 @@ public final class KeyboardLockerSettingsStore {
   /// A present-but-undecodable payload means the stored bytes no longer match the schema.
   /// The Agent stays functional by falling back to defaults, but the corruption is always
   /// logged instead of being silently swallowed.
-  public func load() -> KeyboardLockerSettings {
+  func load() -> KeyboardLockerSettings {
     guard let data = userDefaults.data(forKey: storageKey) else {
       return .default
     }

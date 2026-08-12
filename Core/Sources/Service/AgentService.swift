@@ -2,7 +2,7 @@ import Common
 import Foundation
 
 /// The `LockEngine` surface `AgentService` drives. Seamed so ServiceTests can substitute a
-/// deterministic double; production wires the real singleton.
+/// deterministic double; production creates one engine owned by the process-wide service.
 @MainActor
 protocol LockEngineServing {
   var isLocked: Bool { get }
@@ -29,6 +29,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
   @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
   @MainActor private let settings: KeyboardLockerSettings
   @MainActor private let engine: any LockEngineServing
+  @MainActor private var lockStatusNotifier: LockStatusNotifier?
   @MainActor private let expirationScheduler: MainActorTimerScheduler
   @MainActor private var replacement = ReplacementTransaction()
   @MainActor private var replacementPreparationCancellation: (() -> Void)?
@@ -51,12 +52,24 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
 
   @MainActor
   public convenience override init() {
+    let engine = LockEngine(dependencies: .live)
+    let notifier = LockStatusNotifier(
+      notifications: LiveLockStatusNotificationService(),
+      snapshot: { engine.statusSnapshot },
+      unlock: { engine.unlock() }
+    )
+    engine.setStateChangeHandler { [weak notifier] in
+      notifier?.lockStateDidChange()
+    }
+
     self.init(
       descriptorResult: Result { try Self.makeServiceDescriptor() },
       settings: KeyboardLockerSettingsStore().load(),
-      engine: LockEngine.shared,
+      engine: engine,
       expirationScheduler: liveMainActorTimerScheduler
     )
+    lockStatusNotifier = notifier
+    notifier.start()
   }
 
   // MARK: - Bootstrap

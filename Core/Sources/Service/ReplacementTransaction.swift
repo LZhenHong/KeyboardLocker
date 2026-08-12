@@ -4,9 +4,9 @@ import Foundation
 /// Server-side state machine for replacing the launchd-managed Agent.
 ///
 /// The caller must serialize access. `AgentService` does this on the main queue.
-public struct ReplacementTransaction {
-  public struct Preparation: Equatable, Sendable {
-    public let ticket: ServiceReplacementTicket
+struct ReplacementTransaction {
+  struct Preparation: Equatable, Sendable {
+    let ticket: ServiceReplacementTicket
 
     fileprivate let generation: UInt64
   }
@@ -20,9 +20,9 @@ public struct ReplacementTransaction {
   private var generation: UInt64 = 0
   private var phase: Phase = .idle
 
-  public init() {}
+  init() {}
 
-  public var isPending: Bool {
+  var isPending: Bool {
     switch phase {
     case .committed, .prepared:
       true
@@ -31,14 +31,14 @@ public struct ReplacementTransaction {
     }
   }
 
-  public var isCommitted: Bool {
+  var isCommitted: Bool {
     if case .committed = phase {
       return true
     }
     return false
   }
 
-  public var servicePhase: ServiceReplacementPhase {
+  var servicePhase: ServiceReplacementPhase {
     switch phase {
     case .committed:
       .committed
@@ -49,7 +49,7 @@ public struct ReplacementTransaction {
     }
   }
 
-  public mutating func prepare(
+  mutating func prepare(
     ticket: ServiceReplacementTicket
   ) throws -> Preparation {
     guard case .idle = phase else {
@@ -63,7 +63,7 @@ public struct ReplacementTransaction {
   }
 
   /// Moves the drain into its fail-closed phase. Repeating the same commit is idempotent.
-  public mutating func commit(ticket: ServiceReplacementTicket) throws {
+  mutating func commit(ticket: ServiceReplacementTicket) throws {
     switch phase {
     case let .prepared(preparation) where preparation.ticket == ticket:
       phase = .committed(ticket)
@@ -76,7 +76,7 @@ public struct ReplacementTransaction {
     }
   }
 
-  public func status(for ticket: ServiceReplacementTicket) -> ServiceReplacementStatus {
+  func status(for ticket: ServiceReplacementTicket) -> ServiceReplacementStatus {
     let statusPhase: ServiceReplacementPhase = switch phase {
     case let .committed(activeTicket) where activeTicket == ticket:
       .committed
@@ -89,7 +89,7 @@ public struct ReplacementTransaction {
   }
 
   /// Cancels only work that has not yet been committed to Service Management.
-  public mutating func cancel(ticket: ServiceReplacementTicket) throws {
+  mutating func cancel(ticket: ServiceReplacementTicket) throws {
     switch phase {
     case let .prepared(preparation) where preparation.ticket == ticket:
       phase = .idle
@@ -104,7 +104,7 @@ public struct ReplacementTransaction {
 
   /// Expires exactly the scheduled preparation. A stale timer cannot clear newer state.
   @discardableResult
-  public mutating func expire(
+  mutating func expire(
     preparation: Preparation
   ) -> Bool {
     guard case let .prepared(activePreparation) = phase,
@@ -118,12 +118,12 @@ public struct ReplacementTransaction {
   }
 }
 
-public enum ReplacementTransactionError: Error, Equatable, LocalizedError {
+enum ReplacementTransactionError: Error, Equatable, LocalizedError {
   case alreadyInProgress
   case committedCannotCancel
   case ticketInactive
 
-  public var errorDescription: String? {
+  var errorDescription: String? {
     switch self {
     case .alreadyInProgress:
       "Another agent replacement is already in progress."

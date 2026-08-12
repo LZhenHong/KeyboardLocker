@@ -1,5 +1,5 @@
 import Common
-import Service
+@testable import Service
 import XCTest
 
 final class ReplacementTransactionTests: XCTestCase {

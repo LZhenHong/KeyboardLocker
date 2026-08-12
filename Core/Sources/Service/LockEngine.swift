@@ -279,7 +279,6 @@ protocol InstalledEventTap: AnyObject {
 
 /// Every side effect `LockEngine` performs on the outside world, injected so `ServiceTests`
 /// can drive the engine without Quartz, TCC, real timers, or system notifications.
-/// `LockEngine.shared` runs on `.live`.
 struct LockEngineDependencies {
   var hasAccessibilityPermission: @MainActor () -> Bool
   var installEventTap: @MainActor (LockEngine) throws -> any InstalledEventTap
@@ -292,13 +291,7 @@ struct LockEngineDependencies {
       hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
       installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
       scheduleTimer: liveMainActorTimerScheduler,
-      broadcastStateChange: {
-        LockStateBroadcaster.broadcast()
-        // Both call sites run on the main actor after the state mutation completed.
-        MainActor.assumeIsolated {
-          LockStatusNotifier.shared.lockStateDidChange()
-        }
-      },
+      broadcastStateChange: { LockStateBroadcaster.broadcast() },
       now: { Date() }
     )
   }
@@ -402,18 +395,16 @@ private final class CoreGraphicsEventTap: InstalledEventTap {
 }
 
 @MainActor
-public final class LockEngine {
-  public static let shared = LockEngine()
-
+final class LockEngine {
   static let logger = Logger(subsystem: SharedConstants.machServiceName, category: "LockEngine")
 
-  public enum LockEngineError: Error, LocalizedError {
+  enum LockEngineError: Error, LocalizedError {
     case accessibilityPermissionDenied
     case eventTapCreationFailed
     case eventTapEnableFailed
     case runLoopSourceCreationFailed
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
       switch self {
       case .accessibilityPermissionDenied:
         "Accessibility permission is required to lock keyboard input."
@@ -426,7 +417,7 @@ public final class LockEngine {
       }
     }
 
-    public var recoverySuggestion: String? {
+    var recoverySuggestion: String? {
       switch self {
       case .accessibilityPermissionDenied:
         "Open System Settings → Privacy & Security → Accessibility and enable access for the KeyboardLocker agent."
@@ -454,23 +445,29 @@ public final class LockEngine {
   private var eventTapGeneration: UInt64 = 0
   private var cancelScheduledAutoUnlock: (() -> Void)?
   private var runtimeState = LockRuntimeState()
+  private var stateChangeHandler: () -> Void = {}
 
-  public var isLocked: Bool {
+  var isLocked: Bool {
     runtimeState.isLocked
   }
 
   /// One coherent Agent-owned snapshot for read-only wrappers and presentation surfaces.
-  public var statusSnapshot: LockStatusSnapshot {
+  var statusSnapshot: LockStatusSnapshot {
     runtimeState.statusSnapshot(capturedAt: dependencies.now())
   }
 
-  /// `shared` runs on live system dependencies; tests inject deterministic fakes.
   init(dependencies: LockEngineDependencies = .live) {
     self.dependencies = dependencies
   }
 
+  /// Wires Agent-owned presentation after both the engine and its observer exist. The production
+  /// composition root installs exactly one handler before exposing the XPC listener.
+  func setStateChangeHandler(_ handler: @escaping () -> Void) {
+    stateChangeHandler = handler
+  }
+
   @discardableResult
-  public func lock(
+  func lock(
     settings: KeyboardLockerSettings = .default,
     allowsControlCUnlock: Bool = false
   ) throws -> LockRequestOutcome {
@@ -483,7 +480,7 @@ public final class LockEngine {
 
   /// Applies the Focus Filter's desired state without giving Focus ownership of a pre-existing
   /// global lock. Deactivation releases only the exact lock generation created by Focus.
-  public func setFocusFilterLockEnabled(
+  func setFocusFilterLockEnabled(
     _ enabled: Bool,
     settings: KeyboardLockerSettings = .default
   ) throws {
@@ -535,7 +532,7 @@ public final class LockEngine {
 
   /// Updates the active settings. If a lock is running, changes take effect immediately
   /// (e.g. a new auto-unlock timeout re-arms the timer); otherwise they seed the next lock.
-  public func updateSettings(_ settings: KeyboardLockerSettings) {
+  func updateSettings(_ settings: KeyboardLockerSettings) {
     runtimeState.updateSettings(settings)
 
     if runtimeState.isLocked {
@@ -550,7 +547,7 @@ public final class LockEngine {
 
   private func markLocked() {
     configureAutoUnlockTimerIfNeeded()
-    dependencies.broadcastStateChange()
+    publishStateChange()
     Self.logger.info("Locked")
   }
 
@@ -589,7 +586,7 @@ public final class LockEngine {
     runtimeState.setAutoUnlockTargetDate(nil)
   }
 
-  public func unlock() {
+  func unlock() {
     guard runtimeState.isLocked else {
       return
     }
@@ -614,8 +611,13 @@ public final class LockEngine {
   private func resetLockState() {
     runtimeState.end()
 
-    dependencies.broadcastStateChange()
+    publishStateChange()
     Self.logger.info("Unlocked")
+  }
+
+  private func publishStateChange() {
+    dependencies.broadcastStateChange()
+    stateChangeHandler()
   }
 
   func handleDisabledEvent(_ event: CGEvent) -> Unmanaged<CGEvent>? {

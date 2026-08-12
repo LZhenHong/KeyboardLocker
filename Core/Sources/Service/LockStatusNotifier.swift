@@ -31,19 +31,10 @@ protocol LockStatusNotifying: AnyObject, Sendable {
 /// The notification is a presentation-only convenience: it carries a presentation cache of the
 /// unlock affordances, never authoritative state, and a denied authorization degrades silently.
 @MainActor
-public final class LockStatusNotifier {
+final class LockStatusNotifier {
   static let notificationIdentifier = "keyboard-locked"
   static let categoryIdentifier = "KEYBOARD_LOCKED"
   static let unlockActionIdentifier = "UNLOCK_NOW"
-
-  /// Process-wide instance wired to the shared engine. Created lazily; `KeyboardLockerAgent`
-  /// calls `start()` during bootstrap so the action category and stale-notification cleanup
-  /// are in place before any lock can be created.
-  public static let shared = LockStatusNotifier(
-    notifications: LiveLockStatusNotificationService(),
-    snapshot: { LockEngine.shared.statusSnapshot },
-    unlock: { LockEngine.shared.unlock() }
-  )
 
   private let notifications: any LockStatusNotifying
   private let snapshot: @MainActor () -> LockStatusSnapshot
@@ -67,7 +58,7 @@ public final class LockStatusNotifier {
 
   /// Installs the action category and removes any notification left behind by a previous Agent
   /// generation — its exit already released the lock, so the leftover can only be stale.
-  public func start() {
+  func start() {
     notifications.installUnlockActionCategory()
     enqueue { [notifications] in
       notifications.removeLocked(identifier: LockStatusNotifier.notificationIdentifier)

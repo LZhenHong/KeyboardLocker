@@ -9,6 +9,7 @@ final class LockEngineTests: XCTestCase {
   private var scheduler: ManualTimerScheduler!
   private var installCount = 0
   private var broadcastCount = 0
+  private var stateChangeCount = 0
   private var hasAccessibilityPermission = true
   private var now: Date!
 
@@ -18,6 +19,7 @@ final class LockEngineTests: XCTestCase {
     scheduler = ManualTimerScheduler()
     installCount = 0
     broadcastCount = 0
+    stateChangeCount = 0
     hasAccessibilityPermission = true
     now = Date(timeIntervalSinceReferenceDate: 1_000)
   }
@@ -252,6 +254,15 @@ final class LockEngineTests: XCTestCase {
     XCTAssertNil(engine.statusSnapshot.autoUnlockTargetDate)
   }
 
+  func testStateChangeHandlerFollowsCommittedLockTransitions() throws {
+    let engine = makeEngine()
+
+    _ = try engine.lock(settings: makeSettings())
+    engine.unlock()
+
+    XCTAssertEqual(stateChangeCount, 2)
+  }
+
   // MARK: - Focus ownership
 
   func testFocusDeactivationReleasesFocusOwnedLock() throws {
@@ -282,7 +293,7 @@ final class LockEngineTests: XCTestCase {
   // MARK: - Helpers
 
   private func makeEngine() -> LockEngine {
-    LockEngine(dependencies: LockEngineDependencies(
+    let engine = LockEngine(dependencies: LockEngineDependencies(
       hasAccessibilityPermission: { self.hasAccessibilityPermission },
       installEventTap: { _ in
         self.installCount += 1
@@ -292,6 +303,8 @@ final class LockEngineTests: XCTestCase {
       broadcastStateChange: { self.broadcastCount += 1 },
       now: { self.now }
     ))
+    engine.setStateChangeHandler { self.stateChangeCount += 1 }
+    return engine
   }
 
   private func makeSettings(

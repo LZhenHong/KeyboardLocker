@@ -8,7 +8,7 @@ struct EventTapInstallationTests {
     var actions: [String] = []
 
     #expect(throws: EventTapInstallationError.eventTapCreationFailed) {
-      try self.makeInstallation(
+      try makeInstallation(
         actions: &actions,
         tap: nil,
         source: 2,
@@ -23,7 +23,7 @@ struct EventTapInstallationTests {
     var actions: [String] = []
 
     #expect(throws: EventTapInstallationError.runLoopSourceCreationFailed) {
-      try self.makeInstallation(
+      try makeInstallation(
         actions: &actions,
         tap: 1,
         source: nil,
@@ -38,7 +38,7 @@ struct EventTapInstallationTests {
     var actions: [String] = []
 
     #expect(throws: EventTapInstallationError.eventTapEnableFailed) {
-      try self.makeInstallation(
+      try makeInstallation(
         actions: &actions,
         tap: 1,
         source: 2,

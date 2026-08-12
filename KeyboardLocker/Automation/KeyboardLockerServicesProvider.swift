@@ -76,9 +76,9 @@ final nonisolated class KeyboardLockerServicesProvider: NSObject, @unchecked Sen
       error.pointee = failure.message as NSString
     case .timedOut:
       error.pointee = """
-        KeyboardLocker did not finish the service request within \(Int(waitTimeout)) seconds; \
-        it may still complete.
-        """ as NSString
+      KeyboardLocker did not finish the service request within \(Int(waitTimeout)) seconds; \
+      it may still complete.
+      """ as NSString
     }
 
     if let failure = completion.publishResultChannel() {

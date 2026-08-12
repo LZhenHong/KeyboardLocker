@@ -88,9 +88,9 @@ struct AgentReplacementCoordinator {
   func replace(_ plan: AgentUpdatePlan) async -> Outcome {
     switch plan.mode {
     case let .safe(descriptor, isLocked):
-      return await replaceWithTransaction(descriptor: descriptor, isLocked: isLocked)
+      await replaceWithTransaction(descriptor: descriptor, isLocked: isLocked)
     case let .forced(descriptor, isLocked):
-      return await replaceForced(descriptor: descriptor, isLocked: isLocked)
+      await replaceForced(descriptor: descriptor, isLocked: isLocked)
     }
   }
 
@@ -121,7 +121,7 @@ struct AgentReplacementCoordinator {
         return .replacementInProgress(descriptor)
       }
 
-      return .failed(error: error, currentLockState: try? await client.status())
+      return await .failed(error: error, currentLockState: try? client.status())
     }
 
     return await restart(
@@ -144,7 +144,7 @@ struct AgentReplacementCoordinator {
       do {
         try await client.unlock()
       } catch {
-        return .failed(error: error, currentLockState: try? await client.status())
+        return await .failed(error: error, currentLockState: try? client.status())
       }
     }
 

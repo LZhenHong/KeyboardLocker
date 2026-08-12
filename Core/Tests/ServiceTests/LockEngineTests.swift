@@ -22,7 +22,7 @@ final class LockEngineTests {
     broadcastCount = 0
     stateChangeCount = 0
     hasAccessibilityPermission = true
-    now = Date(timeIntervalSinceReferenceDate: 1_000)
+    now = Date(timeIntervalSinceReferenceDate: 1000)
   }
 
   // MARK: - Acquisition

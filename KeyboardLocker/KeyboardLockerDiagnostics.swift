@@ -97,6 +97,7 @@ struct KeyboardLockerDiagnosticsCollector {
         "Replacement: \(value.replacementPhase.rawValue)",
         "Capabilities: \(value.capabilities.map(\.rawValue).sorted().joined(separator: ", "))",
       ])
+
     case let .failure(error):
       lines.append("Status: unavailable (\(redact(error.localizedDescription) ?? "unknown error"))")
     }
@@ -118,6 +119,7 @@ struct KeyboardLockerDiagnosticsCollector {
         "Policy: \(value.settings.autoUnlockPolicy.diagnosticDescription)",
         "Unlock Hotkey: \(value.settings.unlockHotkey.displayString)",
       ])
+
     case let .failure(error):
       lines.append("Status: unavailable (\(redact(error.localizedDescription) ?? "unknown error"))")
     }
@@ -129,7 +131,7 @@ struct KeyboardLockerDiagnosticsCollector {
     _ operation: @MainActor @Sendable () async throws -> Value
   ) async -> Result<Value, Error> {
     do {
-      return .success(try await operation())
+      return try await .success(operation())
     } catch {
       return .failure(error)
     }

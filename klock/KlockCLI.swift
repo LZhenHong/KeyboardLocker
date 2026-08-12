@@ -51,11 +51,11 @@ enum KlockCLI {
         return ExitCode.success
       }
       command = parsedCommand
-    } catch KlockCommandLineError.unknownCommand(let name) {
+    } catch let KlockCommandLineError.unknownCommand(name) {
       reportError("Unknown command: \(name)", printError: printError)
       printUsage(to: printOut)
       return ExitCode.error
-    } catch KlockCommandLineError.unexpectedArguments(let unexpected) {
+    } catch let KlockCommandLineError.unexpectedArguments(unexpected) {
       reportError(
         "Unexpected argument\(unexpected.count == 1 ? "" : "s"): \(unexpected.joined(separator: " "))",
         printError: printError
@@ -273,7 +273,7 @@ enum KlockCLI {
     printOut: (String) -> Void,
     printError: (String) -> Void
   ) async -> Int32 {
-    if (try? await client.status()) != nil {
+    if await (try? client.status()) != nil {
       printOut("The KeyboardLocker agent is already registered and reachable.")
       return ExitCode.success
     }
@@ -286,9 +286,9 @@ enum KlockCLI {
     }
     printOut("Launched KeyboardLocker to register its background agent.")
 
-    for _ in 0 ..< agentPoll.attempts {
+    for _ in 0..<agentPoll.attempts {
       try? await Task.sleep(for: agentPoll.interval)
-      if (try? await client.status()) != nil {
+      if await (try? client.status()) != nil {
         printOut("The KeyboardLocker agent is registered and reachable.")
         return ExitCode.success
       }
@@ -323,7 +323,7 @@ enum KlockCLI {
           "waiting for the grant…"
       )
 
-      for _ in 0 ..< accessPoll.attempts {
+      for _ in 0..<accessPoll.attempts {
         try? await Task.sleep(for: accessPoll.interval)
         if try await client.hasAccessibilityPermission() {
           printOut("Accessibility access granted.")
@@ -352,9 +352,9 @@ enum KlockCLI {
     do {
       switch output {
       case .humanReadable, .json:
-        printOut(output.render(isLocked: try await client.status()))
+        try await printOut(output.render(isLocked: client.status()))
       case .snapshot:
-        printOut(KlockStatusOutput.render(snapshot: try await client.lockStatusSnapshot()))
+        try await printOut(KlockStatusOutput.render(snapshot: client.lockStatusSnapshot()))
       }
       return ExitCode.success
     } catch {

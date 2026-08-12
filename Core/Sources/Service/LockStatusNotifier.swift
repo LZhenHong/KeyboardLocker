@@ -160,12 +160,12 @@ final class LiveLockStatusNotificationService: LockStatusNotifying {
   func requestAlertAuthorization() async -> Bool {
     let settings = await center.notificationSettings()
     switch settings.authorizationStatus {
-    case .authorized, .provisional, .ephemeral:
+    case .authorized, .ephemeral, .provisional:
       return true
     case .denied:
       return false
     case .notDetermined:
-      return (try? await center.requestAuthorization(options: [.alert])) ?? false
+      return await (try? center.requestAuthorization(options: [.alert])) ?? false
     @unknown default:
       return false
     }

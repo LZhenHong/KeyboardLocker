@@ -57,10 +57,9 @@ connection.interruptionHandler = {
 
 connection.activate()
 
-guard
-  let service = connection.remoteObjectProxyWithErrorHandler({ error in
-    finish(2, "RESULT:INDETERMINATE authorized proxy error: \(error.localizedDescription)")
-  }) as? KeyboardLockerServiceProtocol
+guard let service = connection.remoteObjectProxyWithErrorHandler({ error in
+  finish(2, "RESULT:INDETERMINATE authorized proxy error: \(error.localizedDescription)")
+}) as? KeyboardLockerServiceProtocol
 else {
   print("RESULT:INDETERMINATE could not create an authorized remote object proxy")
   exit(2)

@@ -40,7 +40,7 @@ final class KeyboardLockerSettingsStoreTests {
           modifierFlags: [.maskControl, .maskAlternate]
         )
       )
-      defaults.set(try JSONEncoder().encode(custom), forKey: "settings")
+      try defaults.set(JSONEncoder().encode(custom), forKey: "settings")
 
       let store = KeyboardLockerSettingsStore(userDefaults: defaults, storageKey: "settings")
       #expect(store.load() == custom)
@@ -64,7 +64,7 @@ final class KeyboardLockerSettingsStoreTests {
         autoUnlockPolicy: .disabled,
         unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 4, modifierFlags: .maskShift)
       )
-      defaults.set(try JSONEncoder().encode(custom), forKey: "settings")
+      try defaults.set(JSONEncoder().encode(custom), forKey: "settings")
 
       _ = KeyboardLockerSettingsStore(userDefaults: defaults, storageKey: "settings")
       let persisted = try #require(defaults.data(forKey: "settings"))

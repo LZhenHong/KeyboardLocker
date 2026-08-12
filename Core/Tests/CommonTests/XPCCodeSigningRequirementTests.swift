@@ -26,10 +26,9 @@ struct XPCCodeSigningRequirementTests {
     )
 
     #expect(requirement == """
-      anchor apple generic and certificate leaf[subject.OU] = "A1B2C3D4E5" and \
-      (identifier "io.example.app" or identifier "io.example.tool")
-      """
-    )
+    anchor apple generic and certificate leaf[subject.OU] = "A1B2C3D4E5" and \
+    (identifier "io.example.app" or identifier "io.example.tool")
+    """)
 
     var compiledRequirement: SecRequirement?
     #expect(

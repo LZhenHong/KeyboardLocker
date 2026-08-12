@@ -31,7 +31,7 @@ final class LockStatusNotifierTests {
   func lockTransitionPostsNotificationWithHotkeyAndDeadline() async throws {
     snapshot = Self.makeSnapshot(
       isLocked: true,
-      autoUnlockTargetDate: Date(timeIntervalSinceReferenceDate: 1_060)
+      autoUnlockTargetDate: Date(timeIntervalSinceReferenceDate: 1060)
     )
     let notifier = makeNotifier()
 
@@ -141,9 +141,9 @@ final class LockStatusNotifierTests {
     autoUnlockTargetDate: Date? = nil
   ) -> LockStatusSnapshot {
     LockStatusSnapshot(
-      capturedAt: Date(timeIntervalSinceReferenceDate: 1_000),
+      capturedAt: Date(timeIntervalSinceReferenceDate: 1000),
       isLocked: isLocked,
-      startedAt: isLocked ? Date(timeIntervalSinceReferenceDate: 1_000) : nil,
+      startedAt: isLocked ? Date(timeIntervalSinceReferenceDate: 1000) : nil,
       autoUnlockTargetDate: autoUnlockTargetDate,
       settings: .default
     )

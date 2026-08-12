@@ -585,9 +585,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     confirmation.alertStyle = .warning
     confirmation.messageText = "Quit KeyboardLocker while the keyboard is locked?"
     confirmation.informativeText = """
-      The lock stays active without the menu bar indicator. You can still unlock with the \
-      configured unlock hotkey, the notification's Unlock Now button, or `klock unlock`.
-      """
+    The lock stays active without the menu bar indicator. You can still unlock with the \
+    configured unlock hotkey, the notification's Unlock Now button, or `klock unlock`.
+    """
     confirmation.addButton(withTitle: "Quit")
     confirmation.addButton(withTitle: "Cancel")
 
@@ -599,8 +599,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   private var snapshotShowsLockedKeyboard: Bool {
     switch currentSnapshot.state {
-    case let .ready(isLocked),
-         let .accessibilityRequired(isLocked):
+    case let .accessibilityRequired(isLocked),
+         let .ready(isLocked):
       isLocked
     case let .checking(lastKnownLock):
       // Same evidence standard as `AppCoordinator.performDisplayedLockAction()`: a

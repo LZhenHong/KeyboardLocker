@@ -74,6 +74,22 @@ enum AgentRegistrar {
     return false
   }
 
+  /// Read-only Service Management state for user-initiated diagnostics.
+  static var registrationStatusDescription: String {
+    switch agent.status {
+    case .requiresApproval:
+      "approval-required"
+    case .enabled:
+      "enabled"
+    case .notFound:
+      "not-found"
+    case .notRegistered:
+      "not-registered"
+    @unknown default:
+      "unknown"
+    }
+  }
+
   /// Ensures the Agent is registered and returns the user-visible lifecycle state.
   static func ensureEnabled() -> State {
     ensureEnabled(

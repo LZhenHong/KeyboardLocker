@@ -4,8 +4,10 @@ import SystemSurfaces
 
 @MainActor
 protocol AgentControlServing: Sendable {
+  func beginSafetyCheck() async throws -> LockRequestOutcome
   func lock() async throws
   func unlock() async throws
+  func waitUntilUnlocked() async throws
   func requestAccessibilityPermission() async throws
   func resetConnection()
 }
@@ -68,14 +70,17 @@ protocol AgentClientServing:
 @MainActor
 struct LiveAgentClient: AgentClientServing {
   typealias Mutation = @Sendable () async throws -> Void
+  typealias SafetyCheckMutation = @Sendable () async throws -> LockRequestOutcome
   typealias StatusQuery = @Sendable () async throws -> Bool
   typealias ToggleMutation = @Sendable () async throws -> Bool
 
+  private let beginSafetyCheckMutation: SafetyCheckMutation
   private let lockMutation: Mutation
   private let statusQuery: StatusQuery
   private let surfaceInvalidator: LockStateSurfaceInvalidator
   private let toggleMutation: ToggleMutation
   private let unlockMutation: Mutation
+  private let waitUntilUnlockedOperation: Mutation
 
   nonisolated init() {
     self.init(
@@ -91,6 +96,12 @@ struct LiveAgentClient: AgentClientServing {
       toggle: {
         try await XPCClient.shared.toggle()
       },
+      beginSafetyCheck: {
+        try await XPCClient.shared.beginSafetyCheck()
+      },
+      waitUntilUnlocked: {
+        try await XPCClient.shared.waitUntilUnlocked()
+      },
       surfaceInvalidator: .live
     )
   }
@@ -100,12 +111,20 @@ struct LiveAgentClient: AgentClientServing {
     unlock: @escaping Mutation,
     status: @escaping StatusQuery,
     toggle: @escaping ToggleMutation,
+    beginSafetyCheck: @escaping SafetyCheckMutation = {
+      try await XPCClient.shared.beginSafetyCheck()
+    },
+    waitUntilUnlocked: @escaping Mutation = {
+      try await XPCClient.shared.waitUntilUnlocked()
+    },
     surfaceInvalidator: LockStateSurfaceInvalidator
   ) {
+    beginSafetyCheckMutation = beginSafetyCheck
     lockMutation = lock
     unlockMutation = unlock
     statusQuery = status
     toggleMutation = toggle
+    waitUntilUnlockedOperation = waitUntilUnlocked
     self.surfaceInvalidator = surfaceInvalidator
   }
 
@@ -116,6 +135,14 @@ struct LiveAgentClient: AgentClientServing {
   func lock() async throws {
     try await lockMutation()
     surfaceInvalidator.invalidate()
+  }
+
+  func beginSafetyCheck() async throws -> LockRequestOutcome {
+    let outcome = try await beginSafetyCheckMutation()
+    if outcome == .acquired {
+      surfaceInvalidator.invalidate()
+    }
+    return outcome
   }
 
   func unlock() async throws {
@@ -131,6 +158,10 @@ struct LiveAgentClient: AgentClientServing {
     let isLocked = try await toggleMutation()
     surfaceInvalidator.invalidate()
     return isLocked
+  }
+
+  func waitUntilUnlocked() async throws {
+    try await waitUntilUnlockedOperation()
   }
 
   func prepareForReplacement(

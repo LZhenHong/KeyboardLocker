@@ -7,24 +7,34 @@ import ServiceManagement
 final class StatusMenuController: NSObject, NSMenuDelegate {
   private let commandLineToolManager: CommandLineToolLinkManager
   private let coordinator: AppCoordinator
+  private let diagnosticsCollector: KeyboardLockerDiagnosticsCollector
   private let menu = NSMenu()
+  private let safetyCheckStore: SafetyCheckExperienceStore
   private let statusItem: NSStatusItem
   private var currentSnapshot: AppCoordinator.Snapshot
   private var detailMessage: String?
+  private var hasOfferedSafetyCheckThisLaunch = false
+  private var lastHandledSafetyCheckState: AppCoordinator.SafetyCheckState = .idle
 
   convenience init(coordinator: AppCoordinator) {
     self.init(
       coordinator: coordinator,
-      commandLineToolManager: CommandLineToolLinkManager()
+      commandLineToolManager: CommandLineToolLinkManager(),
+      diagnosticsCollector: .live,
+      safetyCheckStore: SafetyCheckExperienceStore()
     )
   }
 
   init(
     coordinator: AppCoordinator,
-    commandLineToolManager: CommandLineToolLinkManager
+    commandLineToolManager: CommandLineToolLinkManager,
+    diagnosticsCollector: KeyboardLockerDiagnosticsCollector,
+    safetyCheckStore: SafetyCheckExperienceStore
   ) {
     self.coordinator = coordinator
     self.commandLineToolManager = commandLineToolManager
+    self.diagnosticsCollector = diagnosticsCollector
+    self.safetyCheckStore = safetyCheckStore
     currentSnapshot = coordinator.snapshot
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     super.init()
@@ -58,6 +68,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
 
     rebuildMenu(statusTitle: appearance.title)
+    handleSafetyCheckExperience(snapshot)
   }
 
   private func rebuildMenu(statusTitle: String) {
@@ -76,12 +87,22 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
       addAction(title: "Show Details…", action: #selector(showDetails))
     }
 
+    if currentSnapshot.activity == nil,
+       case .ready(isLocked: false) = currentSnapshot.state,
+       currentSnapshot.safetyCheckState != .running {
+      addAction(
+        title: "Run 10-Second Safety Check…",
+        action: #selector(runSafetyCheck)
+      )
+    }
+
     menu.addItem(.separator())
     addAction(
       title: "Refresh Status",
       action: #selector(refresh),
       isEnabled: currentSnapshot.activity == nil
     )
+    addAction(title: "Copy Diagnostics", action: #selector(copyDiagnostics))
     menu.addItem(.separator())
     addAction(title: "Command Line Tool…", action: #selector(manageCommandLineTool))
     menu.addItem(.separator())
@@ -153,6 +174,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         "KeyboardLocker — Requesting Access…"
       case .restartingAgent:
         "KeyboardLocker — Restarting Agent…"
+      case .startingSafetyCheck:
+        "KeyboardLocker — Starting Safety Check…"
       case .unlocking:
         "KeyboardLocker — Unlocking…"
       case .updatingAgent:
@@ -246,6 +269,54 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     return messages.isEmpty ? nil : messages.joined(separator: "\n\n")
   }
 
+  private func handleSafetyCheckExperience(_ snapshot: AppCoordinator.Snapshot) {
+    let previousState = lastHandledSafetyCheckState
+    lastHandledSafetyCheckState = snapshot.safetyCheckState
+
+    switch snapshot.safetyCheckState {
+    case .completed where previousState != .completed:
+      safetyCheckStore.markCompleted()
+      presentSafetyCheckResult(
+        title: "Safety Check Complete",
+        message: "Keyboard input is available again. KeyboardLocker is ready to use."
+      )
+
+    case let .failed(message) where snapshot.safetyCheckState != previousState:
+      presentSafetyCheckResult(
+        title: "Safety Check Failed",
+        message: message
+      )
+
+    case .completed, .failed, .idle, .running:
+      break
+    }
+
+    guard !safetyCheckStore.hasCompletedSafetyCheck,
+          !hasOfferedSafetyCheckThisLaunch,
+          snapshot.activity == nil,
+          snapshot.safetyCheckState == .idle,
+          case .ready(isLocked: false) = snapshot.state
+    else {
+      return
+    }
+
+    hasOfferedSafetyCheckThisLaunch = true
+    Task { @MainActor [weak self] in
+      self?.runSafetyCheck()
+    }
+  }
+
+  private func presentSafetyCheckResult(title: String, message: String) {
+    Task { @MainActor in
+      let alert = NSAlert()
+      alert.messageText = title
+      alert.informativeText = message
+      alert.addButton(withTitle: "OK")
+      NSApp.activateForUserPresentation()
+      alert.runModal()
+    }
+  }
+
   @objc
   private func performDisplayedLockAction() {
     coordinator.performDisplayedLockAction()
@@ -254,6 +325,48 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   @objc
   private func requestAccessibilityPermission() {
     coordinator.requestAccessibilityPermission()
+  }
+
+  @objc
+  private func runSafetyCheck() {
+    let alert = NSAlert()
+    alert.messageText = "Run a 10-Second Safety Check?"
+    alert.informativeText = """
+    KeyboardLocker will temporarily block keyboard input and keyboard system controls. The mouse \
+    and trackpad remain available, and the Agent will unlock automatically after 10 seconds even \
+    if this App exits. You can also unlock earlier with the configured hotkey or the notification's \
+    Unlock Now action.
+    """
+    alert.addButton(withTitle: "Start Safety Check")
+    alert.addButton(withTitle: "Not Now")
+
+    NSApp.activateForUserPresentation()
+    guard alert.runModal() == .alertFirstButtonReturn else {
+      return
+    }
+    coordinator.startSafetyCheck()
+  }
+
+  @objc
+  private func copyDiagnostics() {
+    let snapshot = currentSnapshot
+    Task { @MainActor [weak self] in
+      guard let self else {
+        return
+      }
+
+      let report = await diagnosticsCollector.report(appSnapshot: snapshot)
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.setString(report, forType: .string)
+
+      let alert = NSAlert()
+      alert.messageText = "Diagnostics Copied"
+      alert.informativeText = "The report contains runtime state and version information, but no keyboard input, user name, host name, or file paths."
+      alert.addButton(withTitle: "OK")
+      NSApp.activateForUserPresentation()
+      alert.runModal()
+    }
   }
 
   @objc

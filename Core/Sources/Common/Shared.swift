@@ -24,6 +24,9 @@ public enum SharedConstants {
   /// Default unlock key code for 'L' key (⌃⌘L)
   public static let defaultUnlockKeyCode: UInt16 = 37
 
+  /// Fixed fail-safe window used by the first-run safety check.
+  public static let safetyCheckDuration: TimeInterval = 10
+
   /// Exact code-signing identifiers allowed to talk to the Agent's Mach service.
   public static let authorizedClientBundleIdentifiers: Set<String> = [
     appBundleIdentifier,
@@ -74,6 +77,12 @@ public protocol KeyboardLockerServiceProtocol {
   /// exists; the request may still take persistence over from a Focus-owned generation.
   func lockKeyboardInteractively(
     reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
+
+  /// Atomically starts a fixed-duration lock for first-run recovery verification. The Agent owns
+  /// the timer, so the lock still releases if the requesting App exits after receiving the reply.
+  func beginSafetyCheck(
+    reply: @escaping (_ didStart: Bool, _ error: Error?) -> Void
   )
 
   /// Applies the Focus Filter's desired state. Disabling releases only a lock generation that

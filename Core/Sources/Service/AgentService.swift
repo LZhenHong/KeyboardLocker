@@ -127,6 +127,27 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol {
     }
   }
 
+  public func beginSafetyCheck(
+    reply: @escaping (Bool, Error?) -> Void
+  ) {
+    executeOnMainActor {
+      do {
+        try self.ensureAcceptingLockRequests()
+        var safetySettings = self.settings
+        safetySettings.autoUnlockPolicy = .timed(
+          seconds: SharedConstants.safetyCheckDuration
+        )
+        let outcome = try self.engine.lock(
+          settings: safetySettings,
+          allowsControlCUnlock: false
+        )
+        reply(outcome == .acquired, nil)
+      } catch {
+        reply(false, error)
+      }
+    }
+  }
+
   public func setFocusFilterLockEnabled(
     _ enabled: Bool,
     reply: @escaping (Error?) -> Void

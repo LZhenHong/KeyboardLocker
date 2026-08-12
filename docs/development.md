@@ -9,7 +9,7 @@
 所有面都通过 `KeyboardLockerServiceProtocol` 与 Agent 通信(Mach 服务 `io.lzhlovesjyq.keyboardlocker.agent`)。
 
 1. App 建立 connection 后先调用 `XPCClient.serviceDescriptor()`,验证 protocol version、required capabilities 和 bundled Agent build;只有兼容后才调用新增 selector。descriptor 在 fresh connection 上重试后仍失败、但旧 `status` 成功时，只能按 unverified base contract 处理，不能断言它一定是 legacy Agent。capability-gated Client API 会在同一条具体 connection generation 上重新握手，先验证 major 相同及该 selector 的引入 minor，再检查 capability 并发送 selector；connection 变化后不能复用旧 grant。
-2. wrapper(App/CLI/……)通过异步的 `XPCClient` 发出一次**无状态一次性调用**:`lock` / `unlock` / `status` / `lockStatusSnapshot` / `currentSettings`。App 还经同一边界查询 Agent 的 Accessibility 状态,并可由明确用户动作请求 Agent 触发权限 prompt。失败会抛错(Agent 挂掉时表现为抛出的错误,绝不挂起)。
+2. wrapper(App/CLI/……)通过异步的 `XPCClient` 发出一次**无状态一次性调用**:`lock` / `unlock` / `status` / `lockStatusSnapshot` / `currentSettings`。App 的首次安全测试使用独立的 `beginSafetyCheck`,由 Agent 强制该轮锁在 10 秒后自动解锁。App 还经同一边界查询 Agent 的 Accessibility 状态,并可由明确用户动作请求 Agent 触发权限 prompt。失败会抛错(Agent 挂掉时表现为抛出的错误,绝不挂起)。
 3. Client 与 Listener 都在 activate 前安装同 Team + 精确 signing identifier 的 XPC requirement；系统完成双向认证后，Agent 的 `ServiceDelegate` 才接受连接并路由到 `AgentService`。
 4. Agent bootstrap 创建一个贯穿进程生命周期的 `AgentService`，它拥有设置真相源(`KeyboardLockerSettingsStore`,位于 `Service`)和唯一的 `LockEngine` 实例，并驱动 `lock(settings:allowsControlCUnlock:)` / `unlock()`；所有 listener connection 都接收同一个 service object。
 5. `LockEngine` 创建 CGEventTap,并在任何状态变化时调用 `LockStateBroadcaster.broadcast()`。
@@ -22,7 +22,7 @@
 只列出不那么显而易见的职责;签名请读源码。
 
 **Common**(`Core/Sources/Common/`)—— 所有 target 共享
-- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive/Focus 锁操作、lock status snapshot、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector；protocol 1.4 新增 capability-gated `lockStatusSnapshot`；protocol 1.5 新增 capability-gated `setFocusFilterLockEnabled`,旧 `status` / `lockKeyboard` ABI 保持不变。protocol 1.6 新增 capability-gated `toggleKeyboard`,把原子翻转放进 Agent 串行边界并返回翻转后状态。
+- `Shared.swift`:`KeyboardLockerServiceProtocol`(bootstrap descriptor、legacy/interactive/Focus/safety-check 锁操作、lock status snapshot、replacement drain、Accessibility 状态 / 请求、settings snapshot)、`LockRequestOutcome`、`SharedConstants`(Mach 名、Agent ID、client allowlist)、`NotificationNames.stateChanged`。protocol 1.1 的 `currentSettings` 只为旧 Client 保留；当前 Client 经 additive `currentSettingsWithError` 读取并接收显式编码错误。protocol 1.3 新增 capability-gated interactive lock selector；protocol 1.4 新增 capability-gated `lockStatusSnapshot`；protocol 1.5 新增 capability-gated `setFocusFilterLockEnabled`,旧 `status` / `lockKeyboard` ABI 保持不变。protocol 1.6 新增 capability-gated `toggleKeyboard`,把原子翻转放进 Agent 串行边界并返回翻转后状态；protocol 1.7 新增 capability-gated `beginSafetyCheck`,由 Agent 为该轮锁强制安装固定 10 秒 auto-unlock fail-safe。
 - `LockStatusSnapshot.swift`:`LockStatusSnapshot` format 1 和有大小上限的 JSON XPC 编解码。snapshot 原子携带 capture time、布尔状态、锁定起点、auto-unlock deadline 与 active settings；duration/countdown 由 consumer 根据权威时间点派生,不作为会迅速过期的 transport 字段。
 - `ServiceDescriptor.swift`:`ServiceDescriptor`、protocol version、稳定字符串 capability、additive replacement phase、opaque `ServiceReplacementTicket` 与 ticket-specific status;以有大小上限的 JSON `Data` 跨 XPC。descriptor 显式 decode 永久 bootstrap 字段,为 additive 字段提供默认值,未知字段/capability 可由旧 Client 忽略。
 - `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成同 Team + 精确 identifier 的双向 XPC requirement 字符串,并用 `SecRequirementCreateWithString` 校验其可编译(编译结果仅作一次性校验后丢弃;安装到连接时由系统重新解析字符串);unsigned/ad-hoc 进程 fail closed。
@@ -50,7 +50,9 @@
 
 **App**(`KeyboardLocker/`)—— 长命的 menu-bar 薄 wrapper，并承载一次性系统 action；领域操作只调用 Client,presentation refresh 只调用 SystemSurfaces
 - `AgentRegistrar.swift`:通过 `SMAppService.agent(plistName:)` 确保注册,读取 bundled Agent metadata 并比较运行中 descriptor;replacement 会等待旧 Agent 退出后重新注册 bundled 版本。
-- `KeyboardLockerApplication.swift` / `StatusMenuController.swift`:进程级 AppKit 生命周期与 status-menu presentation。它们只渲染 `AppCoordinator.Snapshot` 并把用户动作转发给 coordinator,不直接读取或持有锁/设置状态。
+- `KeyboardLockerApplication.swift` / `StatusMenuController.swift`:进程级 AppKit 生命周期与 status-menu presentation。它们只渲染 `AppCoordinator.Snapshot` 并把用户动作转发给 coordinator,不直接读取或持有锁/设置状态。首次 readiness 达到 ready + unlocked 后,menu controller 会提示一次可跳过的 10 秒安全测试；菜单也始终保留手动入口。
+- `SafetyCheckExperienceStore.swift`:只持久化 App presentation 层的“安全测试已完成”标记,不存储或推导锁状态、settings 或 Accessibility 状态。只有 Agent 已创建测试锁、且 App 后续重新取得权威 unlocked 时才写入完成。
+- `KeyboardLockerDiagnostics.swift`:按用户动作实时收集 App/Agent 版本、protocol/capability、Service Management、Accessibility、权威 lock snapshot 与最近错误,生成可复制的稳定文本报告。报告不采集 keyboard input、username、hostname 或 file path；错误文本还会对 path-like token 做二次脱敏。单项查询失败会成为显式 unavailable/error 行,不阻断其余诊断。
 - `AppIntents/KeyboardLockAppIntents.swift`:可在 Shortcuts 中组合的 `Lock Keyboard`、`Unlock Keyboard`、`Toggle Keyboard Lock` 与返回 `Bool` 的 `Get Keyboard Lock Status` action。它们是 one-shot wrapper，每次执行只经 `AgentLockActionServing` 调用 Agent，不缓存状态、不订阅通知。`Toggle Keyboard Lock` 调用 Agent 串行边界内的原子 `toggle` 并返回翻转后的 `Bool`,不做 client-side 状态合成。`AppIntents/KeyboardLockerShortcuts.swift` 在 macOS 26+ 声明 `AppShortcutsProvider`,为 lock / unlock / toggle 注册 promoted App Shortcuts 与 invocation phrases;更早的 macOS 只从 Shortcuts action library 暴露这些 intent。
 - `AppleScript/KeyboardLockerScriptCommands.swift` / `KeyboardLocker.sdef`:向 Cocoa Scripting 暴露 `lock keyboard`、`unlock keyboard` 与 `get keyboard lock status`。命令先 suspend 当前 Apple event，异步调用同一个 `AgentLockActionServing`，再以结果或显式错误 resume；它们不持有本地状态，也不把 XPC 不可达猜成 unlocked。
 - `Automation/ExternalAutomationController.swift`:Services 与 URL event 共用的串行 one-shot executor。每个 action 只调用 `AgentLockActionServing` 的对应 desired-state/query method；跨多次 submit 也保持接收顺序,并把 authoritative status 或合并后的 failure 交给 presentation boundary。
@@ -139,6 +141,7 @@ Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget �
 - `AgentService` 是 nonisolated XPC adapter；它把所有 Agent 可变状态与引擎操作切到 `MainActor`,以便在同一隔离域维护 CFRunLoop、timer、settings 和 replacement transaction。
 - 系统可能禁用 event tap(超时 / 用户输入);`LockEngine` 会尝试重新启用。若重新启用仍失败，会清理 tap/timer、切换为 unlocked 并广播，绝不继续报告虚假的 locked 状态。
 - App 协调器通过 protocol injection 与 presentation layer 解耦。`KeyboardLockerModelTests` 是 non-hosted test target,通过 fake Client/lifecycle/state observer 覆盖确定性协调流程,不触碰 live `SMAppService`/XPC。
+- 首次安全测试的 ModelTests 覆盖 Agent 成功创建后等待权威 unlocked 才完成、并发既有锁拒绝与 presentation invalidation；ServiceTests 覆盖固定 10 秒 override、沿用持久化热键、不写回 settings store 及 replacement drain 拒绝。真实 Quartz event tap、TCC prompt 和用户按键解锁仍属于真机手动验证边界。
 
 ### 覆盖边界与已知限制
 

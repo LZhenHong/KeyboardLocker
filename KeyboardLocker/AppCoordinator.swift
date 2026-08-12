@@ -32,14 +32,23 @@ final class AppCoordinator {
     case locking
     case requestingAccessibility
     case restartingAgent
+    case startingSafetyCheck
     case unlocking
     case updatingAgent
+  }
+
+  enum SafetyCheckState: Equatable {
+    case completed
+    case failed(String)
+    case idle
+    case running
   }
 
   struct Snapshot: Equatable {
     let state: State
     let activity: Activity?
     let lastError: String?
+    let safetyCheckState: SafetyCheckState
   }
 
   private(set) var state: State = .checking(lastKnownLock: nil) {
@@ -60,8 +69,19 @@ final class AppCoordinator {
     }
   }
 
+  private(set) var safetyCheckState: SafetyCheckState = .idle {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
   var snapshot: Snapshot {
-    Snapshot(state: state, activity: activity, lastError: lastError)
+    Snapshot(
+      state: state,
+      activity: activity,
+      lastError: lastError,
+      safetyCheckState: safetyCheckState
+    )
   }
 
   var onSnapshotChange: ((Snapshot) -> Void)? {
@@ -180,6 +200,48 @@ final class AppCoordinator {
         preserving: actionError,
         allowsAutomaticAgentUpdate: allowsAutomaticAgentUpdateAfterAction
       )
+    }
+  }
+
+  /// Starts the Agent-owned ten-second recovery check, then waits for authoritative unlock.
+  /// The App never owns the timer; quitting after acquisition still leaves the Agent fail-safe.
+  func startSafetyCheck() {
+    guard case .ready(isLocked: false) = state,
+          activity == nil,
+          safetyCheckState != .running
+    else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .startingSafetyCheck
+    safetyCheckState = .running
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        let outcome = try await client.beginSafetyCheck()
+        guard outcome == .acquired else {
+          throw SafetyCheckError.lockAlreadyActive
+        }
+
+        // Acquisition is complete, so ordinary global unlock actions must remain available while
+        // this task only waits for the Agent's authoritative state to return to unlocked.
+        activity = nil
+        startReconciliation()
+        try await client.waitUntilUnlocked()
+        safetyCheckState = .completed
+        startReconciliation()
+      } catch {
+        let message = error.localizedDescription
+        activity = nil
+        safetyCheckState = .failed(message)
+        startReconciliation(preserving: message)
+      }
     }
   }
 
@@ -621,6 +683,17 @@ private enum AgentUpdateError: Error, LocalizedError {
     switch self {
     case .agentDidNotRestart:
       "The KeyboardLocker agent did not restart into a new process."
+    }
+  }
+}
+
+private enum SafetyCheckError: Error, LocalizedError {
+  case lockAlreadyActive
+
+  var errorDescription: String? {
+    switch self {
+    case .lockAlreadyActive:
+      "The safety check did not start because the keyboard was already locked. Unlock it and try again."
     }
   }
 }

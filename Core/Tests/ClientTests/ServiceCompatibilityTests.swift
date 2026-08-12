@@ -125,6 +125,13 @@ final class ServiceCompatibilityTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 6)
   }
 
+  func testCurrentContractRequiresSafetyCheckSelector() {
+    XCTAssertTrue(
+      ServiceContract.requiredCapabilities.contains(.safetyCheckLock)
+    )
+    XCTAssertGreaterThanOrEqual(ServiceContract.protocolVersion.minor, 7)
+  }
+
   func testAgentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(

@@ -50,6 +50,7 @@ public struct ServiceCapability: Codable, Equatable, Hashable, RawRepresentable,
   public static let lockStatusSnapshot = Self(rawValue: "lock-status-snapshot")
   public static let lockToggle = Self(rawValue: "lock-toggle")
   public static let prepareForReplacement = Self(rawValue: "prepare-for-replacement")
+  public static let safetyCheckLock = Self(rawValue: "safety-check-lock")
 }
 
 /// Additive replacement phase exposed for recovery without revealing the ownership ticket.
@@ -78,7 +79,7 @@ public struct ServiceReplacementPhase: Codable, Equatable, RawRepresentable, Sen
 
 /// Current bootstrap contract advertised by the bundled Agent.
 public enum ServiceContract {
-  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 6)
+  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 7)
 
   public static let requiredCapabilities: Set<ServiceCapability> = [
     .accessibilityPrompt,
@@ -92,6 +93,7 @@ public enum ServiceContract {
     .lockStatusSnapshot,
     .lockToggle,
     .prepareForReplacement,
+    .safetyCheckLock,
   ]
 }
 

@@ -141,6 +141,27 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
+  /// Starts the Agent-owned first-run safety lock.
+  ///
+  /// The reply describes whether this request created the lock. A timeout remains unknown because
+  /// observing `locked` cannot distinguish this request from a concurrent wrapper's acquisition.
+  public func beginSafetyCheck() async throws -> LockRequestOutcome {
+    let connection = try await negotiatedConnection(
+      requiring: [.safetyCheckLock]
+    )
+
+    do {
+      let didStart: Bool = try await withProxyReturning(
+        using: connection
+      ) { service, resume in
+        service.beginSafetyCheck { resume($0, $1) }
+      }
+      return didStart ? .acquired : .alreadyLocked
+    } catch XPCClientError.timedOut {
+      throw XPCClientError.operationOutcomeUnknown
+    }
+  }
+
   /// Applies the system Focus Filter state through an ownership-aware Agent operation.
   public func setFocusFilterLockEnabled(_ enabled: Bool) async throws {
     // Both enable and disable are idempotent, but status alone cannot reveal whether Focus owns
@@ -532,6 +553,7 @@ enum XPCFeatureNegotiation {
     .lockStatusSnapshot: 4,
     .lockToggle: 6,
     .prepareForReplacement: 0,
+    .safetyCheckLock: 7,
   ]
 
   static func validate(

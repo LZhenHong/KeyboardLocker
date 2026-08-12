@@ -78,6 +78,7 @@ final class XPCClientErrorTests: XCTestCase {
       .lockStatusSnapshot: 4,
       .lockToggle: 6,
       .prepareForReplacement: 0,
+      .safetyCheckLock: 7,
     ]
 
     for (capability, introductionMinor) in introductionMinorByCapability {

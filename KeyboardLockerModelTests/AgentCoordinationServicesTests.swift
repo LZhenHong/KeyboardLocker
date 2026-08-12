@@ -111,6 +111,17 @@ final class AgentCoordinationServicesTests: XCTestCase {
   }
 
   @MainActor
+  func testSuccessfulSafetyCheckInvalidatesWidgetThenControl() async throws {
+    let recorder = CallRecorder()
+    let client = makeClient(recorder: recorder)
+
+    let outcome = try await client.beginSafetyCheck()
+
+    XCTAssertEqual(outcome, .acquired)
+    XCTAssertEqual(recorder.calls, [.safetyCheck, .widget, .control])
+  }
+
+  @MainActor
   func testFailedToggleDoesNotInvalidateSurfaces() async {
     let recorder = CallRecorder()
     let client = LiveAgentClient(
@@ -185,6 +196,11 @@ final class AgentCoordinationServicesTests: XCTestCase {
         recorder.record(.toggle)
         return true
       },
+      beginSafetyCheck: {
+        recorder.record(.safetyCheck)
+        return .acquired
+      },
+      waitUntilUnlocked: {},
       surfaceInvalidator: makeInvalidator(recorder: recorder)
     )
   }
@@ -211,6 +227,7 @@ private final class CallRecorder: @unchecked Sendable {
   enum Call: Equatable {
     case control
     case lock
+    case safetyCheck
     case status
     case toggle
     case unlock

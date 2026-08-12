@@ -42,7 +42,8 @@ final class AppCoordinatorTests: XCTestCase {
     XCTAssertEqual(coordinator.snapshot, AppCoordinator.Snapshot(
       state: .ready(isLocked: false),
       activity: nil,
-      lastError: nil
+      lastError: nil,
+      safetyCheckState: .idle
     ))
     XCTAssertEqual(observer.initialStates, [false])
     XCTAssertEqual(snapshots.last, coordinator.snapshot)
@@ -101,6 +102,53 @@ final class AppCoordinatorTests: XCTestCase {
   }
 
   @MainActor
+  func testSafetyCheckWaitsForAuthoritativeUnlockAndCompletes() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.startSafetyCheck()
+    try await waitUntil {
+      coordinator.safetyCheckState == .completed
+    }
+
+    XCTAssertEqual(client.beginSafetyCheckCallCount, 1)
+    XCTAssertEqual(client.waitUntilUnlockedCallCount, 1)
+    XCTAssertFalse(client.isLocked)
+    XCTAssertNil(coordinator.activity)
+  }
+
+  @MainActor
+  func testSafetyCheckReportsConcurrentExistingLock() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    client.safetyCheckOutcome = .alreadyLocked
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.startSafetyCheck()
+    try await waitUntil {
+      if case .failed = coordinator.safetyCheckState {
+        return true
+      }
+      return false
+    }
+
+    guard case let .failed(message) = coordinator.safetyCheckState else {
+      return XCTFail("Expected a failed safety check.")
+    }
+    XCTAssertTrue(message.contains("already locked"))
+    XCTAssertEqual(client.waitUntilUnlockedCallCount, 0)
+  }
+
+  @MainActor
   private func makeCoordinator(
     client: FakeAgentClient,
     lifecycle: FakeAgentLifecycle,
@@ -135,10 +183,13 @@ final class AppCoordinatorTests: XCTestCase {
 
 @MainActor
 private final class FakeAgentClient: AgentClientServing {
+  private(set) var beginSafetyCheckCallCount = 0
   private(set) var lockCallCount = 0
   private(set) var unlockCallCount = 0
+  private(set) var waitUntilUnlockedCallCount = 0
   var accessibilityPermissionGranted: Bool
   var isLocked: Bool
+  var safetyCheckOutcome: LockRequestOutcome = .acquired
 
   private let descriptor = ServiceDescriptor(
     protocolVersion: ServiceContract.protocolVersion,
@@ -161,6 +212,14 @@ private final class FakeAgentClient: AgentClientServing {
   func lock() async throws {
     lockCallCount += 1
     isLocked = true
+  }
+
+  func beginSafetyCheck() async throws -> LockRequestOutcome {
+    beginSafetyCheckCallCount += 1
+    if safetyCheckOutcome == .acquired {
+      isLocked = true
+    }
+    return safetyCheckOutcome
   }
 
   func unlock() async throws {
@@ -199,6 +258,11 @@ private final class FakeAgentClient: AgentClientServing {
   }
 
   func requestAccessibilityPermission() async throws {}
+
+  func waitUntilUnlocked() async throws {
+    waitUntilUnlockedCallCount += 1
+    isLocked = false
+  }
 
   func resetConnection() {}
 }

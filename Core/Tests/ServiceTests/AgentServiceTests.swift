@@ -39,6 +39,10 @@ final class AgentServiceTests: XCTestCase {
     XCTAssertEqual(interactiveOutcome, false)
     assertReplacementError(interactiveError, code: 1)
 
+    var safetyCheckError: Error?
+    service.beginSafetyCheck { _, error in safetyCheckError = error }
+    assertReplacementError(safetyCheckError, code: 1)
+
     var focusError: Error?
     service.setFocusFilterLockEnabled(true) { focusError = $0 }
     assertReplacementError(focusError, code: 1)
@@ -289,6 +293,51 @@ final class AgentServiceTests: XCTestCase {
     XCTAssertEqual(engine.focusCalls.first?.settings, customSettings)
   }
 
+  func testSafetyCheckUsesFixedTimedOverrideWithoutChangingPersistedSettings() {
+    let service = makeService()
+
+    var didStart: Bool?
+    var safetyError: Error?
+    service.beginSafetyCheck { started, error in
+      didStart = started
+      safetyError = error
+    }
+
+    XCTAssertNil(safetyError)
+    XCTAssertEqual(didStart, true)
+    XCTAssertEqual(
+      engine.lockCalls.first?.settings.autoUnlockPolicy,
+      .timed(seconds: SharedConstants.safetyCheckDuration)
+    )
+    XCTAssertEqual(
+      engine.lockCalls.first?.settings.unlockHotkey,
+      customSettings.unlockHotkey
+    )
+    XCTAssertEqual(engine.lockCalls.first?.allowsControlCUnlock, false)
+
+    engine.unlock()
+    var lockError: Error?
+    service.lockKeyboard { lockError = $0 }
+    XCTAssertNil(lockError)
+    XCTAssertEqual(engine.lockCalls.last?.settings, customSettings)
+  }
+
+  func testSafetyCheckReportsAnExistingLockWithoutChangingIt() {
+    engine.lockOutcome = .alreadyLocked
+    let service = makeService()
+
+    var didStart: Bool?
+    var safetyError: Error?
+    service.beginSafetyCheck { started, error in
+      didStart = started
+      safetyError = error
+    }
+
+    XCTAssertNil(safetyError)
+    XCTAssertEqual(didStart, false)
+    XCTAssertEqual(engine.unlockCallCount, 0)
+  }
+
   // MARK: - Toggle
 
   func testToggleLocksUnlockedEngineWithPersistedSettings() {
@@ -447,6 +496,7 @@ private enum StubError: Error {
 private final class FakeLockEngine: LockEngineServing {
   var isLocked: Bool
   var lockError: Error?
+  var lockOutcome: LockRequestOutcome = .acquired
   var onUnlock: (() -> Void)?
 
   private let snapshot: LockStatusSnapshot
@@ -479,8 +529,10 @@ private final class FakeLockEngine: LockEngineServing {
     if let lockError {
       throw lockError
     }
-    isLocked = true
-    return .acquired
+    if lockOutcome == .acquired {
+      isLocked = true
+    }
+    return lockOutcome
   }
 
   func setFocusFilterLockEnabled(

@@ -48,7 +48,7 @@ KeyboardLocker 在 macOS 的 **Services** 菜单注册三个不依赖当前选�
 
 它们可以从其他 App 的 Services 菜单调用,也可以在 **System Settings > Keyboard > Keyboard Shortcuts > Services** 中绑定全局快捷键。三个入口都交给同一个串行 executor：lock/unlock 直接发送 desired state,status 从 Agent 读取权威 Boolean 后显示提示；并发到达的 action 按接收顺序执行。
 
-AppKit Services 的 handler 没有与异步 XPC 对应的 suspend/resume contract,因此 provider 只同步受理请求并立即返回,不会阻塞主线程等待 Agent。后续失败由 KeyboardLocker 激活并显示明确错误。需要调用方拿到事务级结果或 machine-readable status 时,使用 AppleScript、Shortcuts action 或 `klock status --json`,不要把 Services 的返回当作完成确认。
+handler 会在有界超时(默认 15s,覆盖 XPC 应答窗口加一次幂等重试)内同步等待串行 executor 的结果:失败经 AppKit Services 的 error out-pointer 回传调用方 App,超时则报告"请求未完成、可能仍会完成";KeyboardLocker 内的失败 alert 同时保留。error 通道只承载失败文本,status 的权威结果仍只在 KeyboardLocker 内提示;需要 machine-readable status 时使用 AppleScript、Shortcuts action 或 `klock status --json`。
 
 ## URL Scheme
 

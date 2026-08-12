@@ -118,6 +118,62 @@ final class ExternalAutomationControllerTests: XCTestCase {
     XCTAssertEqual(client.calls, [.lock, .unlock])
     XCTAssertFalse(client.isLocked)
   }
+
+  @MainActor
+  func testSubmitAndWaitReturnsNilWhenActionSucceeds() async {
+    let client = RecordingExternalAutomationClient(isLocked: false)
+    let presenter = RecordingExternalAutomationPresenter()
+    let controller = ExternalAutomationController(client: client, presenter: presenter)
+
+    let failure = await controller.submitAndWait(.lock, source: .service)
+
+    XCTAssertNil(failure)
+    XCTAssertEqual(client.calls, [.lock])
+    XCTAssertTrue(client.isLocked)
+    XCTAssertTrue(presenter.failureBatches.isEmpty)
+  }
+
+  @MainActor
+  func testSubmitAndWaitReturnsAndPresentsFailure() async {
+    let client = RecordingExternalAutomationClient(
+      isLocked: false,
+      error: XPCClientError.serviceUnavailable
+    )
+    let presenter = RecordingExternalAutomationPresenter()
+    let controller = ExternalAutomationController(client: client, presenter: presenter)
+
+    let failure = await controller.submitAndWait(.lock, source: .service)
+
+    XCTAssertTrue(failure?.message.contains("not reachable") == true)
+    XCTAssertEqual(presenter.failureBatches.count, 1)
+    XCTAssertEqual(presenter.failureBatches.first?.failures.first, failure)
+    XCTAssertEqual(presenter.failureBatches.first?.source, .service)
+  }
+
+  @MainActor
+  func testSubmitAndWaitStaysSerializedBehindPendingSubmission() async {
+    let gate = AsyncGate()
+    let client = RecordingExternalAutomationClient(isLocked: false, lockGate: gate)
+    let controller = ExternalAutomationController(
+      client: client,
+      presenter: RecordingExternalAutomationPresenter()
+    )
+
+    controller.submit(.lock, source: .service)
+    await gate.waitUntilEntered()
+
+    async let awaitedFailure = controller.submitAndWait(.unlock, source: .service)
+    await Task.yield()
+
+    XCTAssertEqual(client.calls, [.lock])
+
+    await gate.open()
+    let failure = await awaitedFailure
+
+    XCTAssertNil(failure)
+    XCTAssertEqual(client.calls, [.lock, .unlock])
+    XCTAssertFalse(client.isLocked)
+  }
 }
 
 @MainActor

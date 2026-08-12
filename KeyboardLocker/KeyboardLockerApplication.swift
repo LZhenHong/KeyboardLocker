@@ -81,9 +81,7 @@ private final class KeyboardLockerApplicationDelegate: NSObject, NSApplicationDe
     let automationController = ExternalAutomationController()
     self.automationController = automationController
     servicesProvider = KeyboardLockerServicesProvider { action in
-      Task { @MainActor in
-        automationController.submit(action, source: .service)
-      }
+      await automationController.submitAndWait(action, source: .service)
     }
     super.init()
   }

@@ -11,6 +11,8 @@ protocol KlockClientServing {
   func toggle() async throws -> Bool
   func status() async throws -> Bool
   func waitUntilUnlocked() async throws
+  func hasAccessibilityPermission() async throws -> Bool
+  func requestAccessibilityPermission() async throws
 }
 
 extension XPCClient: KlockClientServing {}
@@ -36,6 +38,7 @@ enum KlockCLI {
     client: any KlockClientServing,
     openKeyboardLockerApp: @escaping () throws -> Void = KlockAppOpener.openContainingApp,
     agentPoll: (attempts: Int, interval: Duration) = (attempts: 5, interval: .seconds(1)),
+    accessPoll: (attempts: Int, interval: Duration) = (attempts: 30, interval: .seconds(1)),
     terminationGuard: any KlockTerminationGuarding = LiveKlockTerminationGuard(),
     printOut: (String) -> Void,
     printError: @escaping (String) -> Void
@@ -87,6 +90,14 @@ enum KlockCLI {
 
     case .toggle:
       return await executeToggle(client: client, printOut: printOut, printError: printError)
+
+    case .requestAccess:
+      return await executeRequestAccess(
+        client: client,
+        accessPoll: accessPoll,
+        printOut: printOut,
+        printError: printError
+      )
 
     case .registerAgent:
       return await executeRegisterAgent(
@@ -277,6 +288,47 @@ enum KlockCLI {
     return ExitCode.error
   }
 
+  /// Requests the system Accessibility prompt through the Agent, then polls briefly for the
+  /// authoritative state: the prompt is asynchronous, so a sent request proves nothing about
+  /// the grant. Exit 0 only when the Agent reports permission within the poll window.
+  private static func executeRequestAccess(
+    client: any KlockClientServing,
+    accessPoll: (attempts: Int, interval: Duration),
+    printOut: (String) -> Void,
+    printError: (String) -> Void
+  ) async -> Int32 {
+    do {
+      if try await client.hasAccessibilityPermission() {
+        printOut("Accessibility access is already granted.")
+        return ExitCode.success
+      }
+
+      try await client.requestAccessibilityPermission()
+      printOut(
+        "Requested the system Accessibility prompt for the KeyboardLocker agent; " +
+          "waiting for the grant…"
+      )
+
+      for _ in 0 ..< accessPoll.attempts {
+        try? await Task.sleep(for: accessPoll.interval)
+        if try await client.hasAccessibilityPermission() {
+          printOut("Accessibility access granted.")
+          return ExitCode.success
+        }
+      }
+    } catch {
+      reportFailure(error, printError: printError)
+      return ExitCode.error
+    }
+
+    printOut(
+      "Accessibility access is not granted yet. " +
+        "Enable KeyboardLocker in System Settings → Privacy & Security → Accessibility, " +
+        "then re-run `klock request-access`."
+    )
+    return ExitCode.error
+  }
+
   private static func executeStatus(
     output: KlockStatusOutput,
     client: any KlockClientServing,
@@ -344,6 +396,7 @@ enum KlockCLI {
         toggle              Toggle the lock state and print the new state.
         status [--json]     Print the current lock state.
         register-agent      Launch KeyboardLocker once to register its background agent.
+        request-access      Request Accessibility access for the agent.
         help                Show this help message.
         version             Show the klock version.
 

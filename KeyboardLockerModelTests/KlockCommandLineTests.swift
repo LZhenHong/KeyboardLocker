@@ -23,6 +23,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["unlock"], .unlock),
       (["toggle"], .toggle),
       (["register-agent"], .registerAgent),
+      (["request-access"], .requestAccess),
       (["status"], .status(output: .humanReadable)),
       (["status", "--json"], .status(output: .json)),
     ]
@@ -61,6 +62,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["unlock", "now"], .unexpectedArguments(["now"])),
       (["toggle", "now"], .unexpectedArguments(["now"])),
       (["register-agent", "now"], .unexpectedArguments(["now"])),
+      (["request-access", "now"], .unexpectedArguments(["now"])),
       (["--help", "extra"], .unexpectedArguments(["extra"])),
       (["version", "extra"], .unexpectedArguments(["extra"])),
     ]
@@ -273,6 +275,74 @@ final class KlockCommandLineTests: XCTestCase {
     )
   }
 
+  // MARK: - Request Access
+
+  func testRequestAccessReportsAlreadyGrantedWithoutPrompting() async {
+    let client = FakeKlockClient()
+    client.hasAccessibilityPermissionResult = .success(true)
+
+    let result = await runKlock(arguments: ["request-access"], client: client)
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(result.stdout, ["Accessibility access is already granted."])
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 0)
+  }
+
+  func testRequestAccessPromptsThenPollsUntilGranted() async {
+    let client = FakeKlockClient()
+    client.hasAccessibilityPermissionResults = [
+      .success(false),
+      .success(false),
+      .success(true),
+    ]
+
+    let result = await runKlock(
+      arguments: ["request-access"],
+      client: client,
+      accessPoll: (attempts: 5, interval: .zero)
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(
+      result.stdout,
+      [
+        "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…",
+        "Accessibility access granted.",
+      ]
+    )
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 1)
+    XCTAssertEqual(client.hasAccessibilityPermissionCalls, 3)
+  }
+
+  func testRequestAccessReportsPendingWhenWindowExpires() async {
+    let client = FakeKlockClient()
+
+    let result = await runKlock(
+      arguments: ["request-access"],
+      client: client,
+      accessPoll: (attempts: 2, interval: .zero)
+    )
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout.first, "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…")
+    XCTAssertEqual(result.stdout.last, "Accessibility access is not granted yet. Enable KeyboardLocker in System Settings → Privacy & Security → Accessibility, then re-run `klock request-access`.")
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(client.requestAccessibilityPermissionCalls, 1)
+  }
+
+  func testRequestAccessFailureReportsErrorOnStandardError() async {
+    let client = FakeKlockClient()
+    client.requestAccessibilityPermissionResult = .failure(Self.makeError("prompt failed"))
+
+    let result = await runKlock(arguments: ["request-access"], client: client)
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout, [])
+    XCTAssertEqual(result.stderr, ["Error: prompt failed"])
+  }
+
   // MARK: - Register Agent
 
   func testRegisterAgentReportsAlreadyReachableWithoutOpeningApp() async {
@@ -477,6 +547,7 @@ final class KlockCommandLineTests: XCTestCase {
     client: FakeKlockClient,
     openKeyboardLockerApp: @escaping () throws -> Void = {},
     agentPoll: (attempts: Int, interval: Duration) = (attempts: 1, interval: .zero),
+    accessPoll: (attempts: Int, interval: Duration) = (attempts: 1, interval: .zero),
     terminationGuard: any KlockTerminationGuarding = NullKlockTerminationGuard()
   ) async -> (exitCode: Int32, stdout: [String], stderr: [String]) {
     var stdout: [String] = []
@@ -486,6 +557,7 @@ final class KlockCommandLineTests: XCTestCase {
       client: client,
       openKeyboardLockerApp: openKeyboardLockerApp,
       agentPoll: agentPoll,
+      accessPoll: accessPoll,
       terminationGuard: terminationGuard,
       printOut: { stdout.append($0) },
       printError: { stderr.append($0) }
@@ -515,6 +587,10 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   /// `statusResult`, so tests can script an Agent that becomes reachable after registration.
   var statusResults: [Result<Bool, Error>]?
   var waitUntilUnlockedResult: Result<Void, Error> = .success(())
+  var hasAccessibilityPermissionResult: Result<Bool, Error> = .success(false)
+  /// Same scripting seam as `statusResults`: drives the request-access pre-check and polls.
+  var hasAccessibilityPermissionResults: [Result<Bool, Error>]?
+  var requestAccessibilityPermissionResult: Result<Void, Error> = .success(())
 
   private(set) var currentSettingsCalls = 0
   private(set) var lockInteractivelyCalls = 0
@@ -523,6 +599,8 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   private(set) var toggleCalls = 0
   private(set) var statusCalls = 0
   private(set) var waitUntilUnlockedCalls = 0
+  private(set) var hasAccessibilityPermissionCalls = 0
+  private(set) var requestAccessibilityPermissionCalls = 0
 
   func currentSettings() async throws -> KeyboardLockerSettings {
     currentSettingsCalls += 1
@@ -563,6 +641,19 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   func waitUntilUnlocked() async throws {
     waitUntilUnlockedCalls += 1
     try waitUntilUnlockedResult.get()
+  }
+
+  func hasAccessibilityPermission() async throws -> Bool {
+    hasAccessibilityPermissionCalls += 1
+    if hasAccessibilityPermissionResults?.isEmpty == false {
+      return try hasAccessibilityPermissionResults!.removeFirst().get()
+    }
+    return try hasAccessibilityPermissionResult.get()
+  }
+
+  func requestAccessibilityPermission() async throws {
+    requestAccessibilityPermissionCalls += 1
+    try requestAccessibilityPermissionResult.get()
   }
 }
 

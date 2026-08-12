@@ -31,7 +31,7 @@ final class AppCoordinatorTests: XCTestCase {
   }
 
   @MainActor
-  func testToggleLocksThroughClientThenReconcilesAuthoritativeState() async throws {
+  func testDisplayedLockActionLocksThroughClientThenReconcilesAuthoritativeState() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let lifecycle = FakeAgentLifecycle()
     let observer = FakeLockStateObserver()
@@ -44,7 +44,7 @@ final class AppCoordinatorTests: XCTestCase {
     var activities: [AppCoordinator.Activity?] = []
     coordinator.onSnapshotChange = { activities.append($0.activity) }
 
-    coordinator.toggle()
+    coordinator.performDisplayedLockAction()
     try await waitUntil {
       coordinator.state == .ready(isLocked: true) && coordinator.activity == nil
     }

@@ -101,13 +101,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     case let .agentUpdateRequired(isLocked, _):
       if isLocked == true {
-        addAction(title: "Unlock Keyboard", action: #selector(toggleLock))
+        addAction(title: "Unlock Keyboard", action: #selector(performDisplayedLockAction))
       }
       addAction(title: "Update KeyboardLocker Agent…", action: #selector(updateAgent))
 
     case let .accessibilityRequired(isLocked):
       if isLocked {
-        addAction(title: "Unlock Keyboard", action: #selector(toggleLock))
+        addAction(title: "Unlock Keyboard", action: #selector(performDisplayedLockAction))
       }
       addAction(
         title: "Grant Accessibility Access…",
@@ -121,7 +121,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     case let .ready(isLocked):
       addAction(
         title: isLocked ? "Unlock Keyboard" : "Lock Keyboard",
-        action: #selector(toggleLock)
+        action: #selector(performDisplayedLockAction)
       )
 
     case let .unavailable(_, canRestartAgent):
@@ -247,8 +247,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   }
 
   @objc
-  private func toggleLock() {
-    coordinator.toggle()
+  private func performDisplayedLockAction() {
+    coordinator.performDisplayedLockAction()
   }
 
   @objc
@@ -490,7 +490,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
          let .accessibilityRequired(isLocked):
       isLocked
     case let .checking(lastKnownLock):
-      // Same evidence standard as `AppCoordinator.toggle()`: a last-known-locked reading
+      // Same evidence standard as `AppCoordinator.performDisplayedLockAction()`: a
+      // last-known-locked reading
       // means the keyboard may still be locked, so quitting must keep the warning.
       lastKnownLock ?? false
     case let .agentUpdateRequired(isLocked, _):

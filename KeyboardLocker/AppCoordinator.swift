@@ -108,7 +108,10 @@ final class AppCoordinator {
     startReconciliation()
   }
 
-  func toggle() {
+  /// Performs the direction the menu currently displays, as an explicit idempotent lock/unlock.
+  /// Deliberately not the atomic `toggle()`: the escape-hatch states below must only ever
+  /// unlock, and explicit verbs still work on legacy agents without the `lockToggle` capability.
+  func performDisplayedLockAction() {
     guard activity == nil else {
       return
     }

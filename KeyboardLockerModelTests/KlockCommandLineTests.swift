@@ -26,6 +26,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["request-access"], .requestAccess),
       (["status"], .status(output: .humanReadable)),
       (["status", "--json"], .status(output: .json)),
+      (["status", "--snapshot"], .status(output: .snapshot)),
     ]
 
     for (arguments, expected) in cases {
@@ -59,6 +60,7 @@ final class KlockCommandLineTests: XCTestCase {
       (["lock", "extra"], .unexpectedArguments(["extra"])),
       (["lock", "--no-wait", "extra"], .unexpectedArguments(["--no-wait", "extra"])),
       (["status", "--xml"], .unexpectedArguments(["--xml"])),
+      (["status", "--json", "--snapshot"], .unexpectedArguments(["--json", "--snapshot"])),
       (["unlock", "now"], .unexpectedArguments(["now"])),
       (["toggle", "now"], .unexpectedArguments(["now"])),
       (["register-agent", "now"], .unexpectedArguments(["now"])),
@@ -253,6 +255,46 @@ final class KlockCommandLineTests: XCTestCase {
     result = await runKlock(arguments: ["status", "--json"], client: client)
     XCTAssertEqual(result.exitCode, 0)
     XCTAssertEqual(result.stdout, [#"{"locked":false}"#])
+  }
+
+  func testStatusSnapshotPrintsSnapshotContract() async {
+    let client = FakeKlockClient()
+    client.lockStatusSnapshotResult = .success(
+      LockStatusSnapshot(
+        capturedAt: Date(timeIntervalSince1970: 1_700_000_030),
+        isLocked: true,
+        startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        autoUnlockTargetDate: Date(timeIntervalSince1970: 1_700_000_060),
+        settings: .testFixture
+      )
+    )
+
+    let result = await runKlock(arguments: ["status", "--snapshot"], client: client)
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(
+      result.stdout,
+      [
+        """
+        {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+        """,
+      ]
+    )
+    XCTAssertEqual(result.stderr, [])
+    XCTAssertEqual(client.lockStatusSnapshotCalls, 1)
+    XCTAssertEqual(client.statusCalls, 0)
+  }
+
+  func testStatusSnapshotFailureReportsErrorWithoutFallback() async {
+    let client = FakeKlockClient()
+    client.lockStatusSnapshotResult = .failure(Self.makeError("snapshot unsupported"))
+
+    let result = await runKlock(arguments: ["status", "--snapshot"], client: client)
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(result.stdout, [])
+    XCTAssertEqual(result.stderr, ["Error: snapshot unsupported"])
+    XCTAssertEqual(client.statusCalls, 0)
   }
 
   func testInteractiveLockExitsWithErrorWhenWaitingForUnlockFails() async throws {
@@ -586,6 +628,15 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   /// When set, each `status()` call consumes the next queued result before falling back to
   /// `statusResult`, so tests can script an Agent that becomes reachable after registration.
   var statusResults: [Result<Bool, Error>]?
+  var lockStatusSnapshotResult: Result<LockStatusSnapshot, Error> = .success(
+    LockStatusSnapshot(
+      capturedAt: Date(timeIntervalSince1970: 0),
+      isLocked: false,
+      startedAt: nil,
+      autoUnlockTargetDate: nil,
+      settings: .testFixture
+    )
+  )
   var waitUntilUnlockedResult: Result<Void, Error> = .success(())
   var hasAccessibilityPermissionResult: Result<Bool, Error> = .success(false)
   /// Same scripting seam as `statusResults`: drives the request-access pre-check and polls.
@@ -598,6 +649,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   private(set) var unlockCalls = 0
   private(set) var toggleCalls = 0
   private(set) var statusCalls = 0
+  private(set) var lockStatusSnapshotCalls = 0
   private(set) var waitUntilUnlockedCalls = 0
   private(set) var hasAccessibilityPermissionCalls = 0
   private(set) var requestAccessibilityPermissionCalls = 0
@@ -636,6 +688,11 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
       return try statusResults!.removeFirst().get()
     }
     return try statusResult.get()
+  }
+
+  func lockStatusSnapshot() async throws -> LockStatusSnapshot {
+    lockStatusSnapshotCalls += 1
+    return try lockStatusSnapshotResult.get()
   }
 
   func waitUntilUnlocked() async throws {

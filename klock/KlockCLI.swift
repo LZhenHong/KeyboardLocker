@@ -10,6 +10,7 @@ protocol KlockClientServing {
   func unlock() async throws
   func toggle() async throws -> Bool
   func status() async throws -> Bool
+  func lockStatusSnapshot() async throws -> LockStatusSnapshot
   func waitUntilUnlocked() async throws
   func hasAccessibilityPermission() async throws -> Bool
   func requestAccessibilityPermission() async throws
@@ -336,8 +337,12 @@ enum KlockCLI {
     printError: (String) -> Void
   ) async -> Int32 {
     do {
-      let isLocked = try await client.status()
-      printOut(output.render(isLocked: isLocked))
+      switch output {
+      case .humanReadable, .json:
+        printOut(output.render(isLocked: try await client.status()))
+      case .snapshot:
+        printOut(KlockStatusOutput.render(snapshot: try await client.lockStatusSnapshot()))
+      }
       return ExitCode.success
     } catch {
       reportFailure(error, printError: printError)
@@ -403,6 +408,7 @@ enum KlockCLI {
       OPTIONS:
         --no-wait          Return after lock is confirmed; do not enable Ctrl+C unlock.
         --json             Emit a stable JSON object for status automation.
+        --snapshot         Emit the full lock snapshot as JSON.
         -h, --help         Show this help message.
         -v, --version      Show the klock version.
       """

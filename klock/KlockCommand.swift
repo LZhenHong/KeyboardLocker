@@ -70,6 +70,9 @@ enum KlockCommandLineParser {
       case ["--json"]:
         return .status(output: .json)
 
+      case ["--snapshot"]:
+        return .status(output: .snapshot)
+
       case let unexpectedArguments:
         throw KlockCommandLineError.unexpectedArguments(unexpectedArguments)
       }

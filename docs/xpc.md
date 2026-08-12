@@ -11,7 +11,7 @@
 ## 先记住四个结论
 
 1. **`Core` 不是进程，也不是后台服务。** 它只是一个本地 Swift Package，构建时向不同 executable 提供代码模块。
-2. **两侧共享的是协议和数据定义，不是内存或单例。** `Common` 会编译进 wrapper 和 Agent，但唯一的锁状态只存在于 Agent 进程的 `LockEngine.shared` 中。
+2. **两侧共享的是协议和数据定义，不是内存或单例。** `Common` 会编译进 wrapper 和 Agent，但唯一的锁状态只存在于 Agent bootstrap 创建的进程生命周期 `AgentService` 所私有持有的那一个 `LockEngine` 实例中；所有 listener connection 共用这个 service object。
 3. **wrapper 与 Agent 没有互相直接调用 Swift 对象。** wrapper 取得的是 `KeyboardLockerServiceProtocol` 的远程 proxy；macOS 把方法参数和 reply 序列化后跨进程传输。
 4. **XPC connection 不拥有锁。** connection、App 或 CLI 退出后，锁仍由 Agent 持有；只有显式/自动 unlock、解锁热键或 Agent 退出才会释放 event tap。
 
@@ -88,7 +88,7 @@ flowchart LR
   FocusClient -->|"NSXPCConnection"| Mach
   subgraph AgentProcess["KeyboardLockerAgent process"]
     Listener["NSXPCListener"] --> AgentService["AgentService"]
-    AgentService --> Engine["LockEngine.shared"]
+    AgentService --> Engine["one LockEngine instance"]
     AgentService --> Settings["Settings store"]
     AgentService --> Accessibility["Accessibility APIs"]
   end
@@ -196,7 +196,7 @@ KeyboardLocker.app
 
 | 字段 | 用途 |
 |---|---|
-| `protocolVersion.major/minor` | major 必须相等；running minor 必须不低于 Client 要求 |
+| `protocolVersion.major/minor` | major 必须相等；App 完整兼容性检查要求 running minor 不低于 Client contract，每个 feature call 另要求 running minor 不低于对应 selector 的引入版本 |
 | `capabilities` | Client 只调用 Agent 明确声明支持的 optional selector；未知字符串由旧 Client 保留并忽略 |
 | `agentBundleIdentifier` | 与 bundled Agent metadata 比较,发现错误/旧 executable |
 | `agentVersion` / `agentBuild` | 判断运行中 Agent 是否就是 App 当前携带的构建 |
@@ -206,7 +206,7 @@ KeyboardLocker.app
 
 `agentBundleIdentifier`、version 和 build 是远端自报的兼容性信息,不是安全凭证。它们只有在 connection 已完成 peer authentication 后才有意义；不能用 descriptor 替代代码签名 requirement。
 
-descriptor/capability grant 还必须绑定到读取它的 **同一条 client-side connection generation**。`XPCClient` 的 capability-gated API 会先在一条具体 connection 上读取 descriptor，再用同一个 `NSXPCConnection` 发送 feature selector；若这条 connection interruption/invalidation，Client 会 invalidate 该 object，后续调用以新 connection 重新协商，不能把 Agent A 的 capability grant 用于 Agent B。replacement request 还把 expected `agentInstanceID` 放进 wire message：Agent 在安装 barrier 前原子比较自己的 instance ID，Client 再校验返回 ticket，形成两侧 generation fence。
+descriptor/capability grant 还必须绑定到读取它的 **同一条 client-side connection generation**。`XPCClient` 的 capability-gated API 会先在一条具体 connection 上读取 descriptor，按顺序验证 protocol major、selector-specific minimum minor 与 capability，再用同一个 `NSXPCConnection` 发送 feature selector；major 不兼容时 capability string 没有可复用的语义，不能授权 selector。若这条 connection interruption/invalidation，Client 会 invalidate 该 object，后续调用以新 connection 重新协商，不能把 Agent A 的 capability grant 用于 Agent B。replacement request 还把 expected `agentInstanceID` 放进 wire message：Agent 在安装 barrier 前原子比较自己的 instance ID，Client 再校验返回 ticket，形成两侧 generation fence。
 
 App 的 readiness 顺序是：
 
@@ -278,7 +278,7 @@ flowchart LR
 
   AgentConnectionA --> SharedService["Shared AgentService"]
   AgentConnectionB --> SharedService
-  SharedService --> Engine["LockEngine.shared"]
+  SharedService --> Engine["one LockEngine instance"]
 ```
 
 | 对象 | 所在进程 | 当前数量 | 作用 |
@@ -346,7 +346,7 @@ serverConnection.exportedObject
                   │
                   └─ shared AgentService
                            │
-                           └─ LockEngine.shared
+                           └─ one LockEngine instance
 ```
 
 Client 的 `remoteObjectProxy` 也不是 Agent 的 `AgentService`。前者是 wrapper 进程中的本地动态代理；对它调用 method 时，Foundation 才把 invocation 编码并传到 Agent，由后者真正执行。
@@ -457,7 +457,7 @@ Agent peer connection
 7. Agent Listener 收到 connection request 后，XPC runtime 先执行 Listener 的 code-signing requirement；只有通过的 peer 才会创建 Agent-side `NSXPCConnection` 并进入 delegate。
 8. delegate 设置 `exportedInterface/object`、activate connection 并返回 `true`；返回 `false` 会拒绝并 invalidate 它。
 9. Foundation 在 Agent-side connection 上解码 invocation，并调用 `AgentService.status(reply:)`。
-10. `AgentService` 读取 `LockEngine.shared.isLocked`，再调用 `reply(isLocked, nil)`。
+10. 进程生命周期的 `AgentService` 读取自己持有的 `LockEngine.isLocked`，再调用 `reply(isLocked, nil)`。
 11. 这里的 reply closure 不是把 Client 的 Swift closure 复制到 Agent 执行；它是 Foundation 提供的跨进程 reply capability。调用它会生成响应 message。
 12. Client connection 收到响应后，在自己的 connection queue 上执行 reply handler；`XPCClient` 再恢复 Swift continuation。
 
@@ -525,7 +525,7 @@ sequenceDiagram
 6. `XPCServerConnection` 为 Agent-side connection 设置 protocol，并把同一个 `AgentService` 实例设置为 `exportedObject`。
 7. 对 remote proxy 的 legacy `lockKeyboard(reply:)` 或 additive `lockKeyboardInteractively(reply:)` 调用被系统编码，通过两侧 peer connection 送达并派发给 `AgentService`。
 8. `AgentService` 把领域操作切到 `MainActor`，Agent 可变状态、event tap 和 CFRunLoop 生命周期都在这里维护。
-9. `LockEngine.shared.lock(settings:allowsControlCUnlock:)` 检查 Agent 自己的 Accessibility 权限并创建 event tap；physical duplicate 在创建资源前直接返回 already locked,且只可能清除 Focus 的内部 release marker。
+9. 进程生命周期 `AgentService` 持有的 `LockEngine` 调用 `lock(settings:allowsControlCUnlock:)`，检查 Agent 自己的 Accessibility 权限并创建 event tap；physical duplicate 在创建资源前直接返回 already locked,且只可能清除 Focus 的内部 release marker。
 10. reply 通过 XPC 返回，`XPCClient` 把 callback bridge 成 Swift async/throwing API。
 
 `AgentService` 位于 `Service` 模块,是把 wire protocol 翻译成领域调用的 adapter；放在 library 里是为了让 barrier、generation fence 与错误码映射可以被 `ServiceTests` 确定性覆盖。`Service` product 本身不会启动进程；真正创建 listener、保持 RunLoop 的是 `KeyboardLockerAgent/main.swift` 这个极薄的 bootstrap。
@@ -549,7 +549,7 @@ sequenceDiagram
 | `hasAccessibilityPermission` | `hasAccessibilityPermission()` | `AccessibilityManager` | 查询 **Agent 进程** 当前是否受信任 |
 | `requestAccessibilityPermission` | `requestAccessibilityPermission()` | `AccessibilityManager` | 请求系统异步显示 Agent 的授权 prompt；reply 不代表用户已授权 |
 | `currentSettings` | protocol 1.1 legacy Client only | `AgentService` | 为既有 selector ABI 保留；编码失败只能返回 `nil` |
-| `currentSettingsWithError` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 持有的设置快照；缺失、损坏、过大或编码失败均显式抛错，不在 wrapper 侧回退默认值 |
+| `currentSettingsWithError` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 启动时取得并持有的设置快照；本地 persisted payload 损坏时仅 Agent store 记录错误并回退 `.default`，而跨进程 payload 的缺失、损坏、过大或编码失败保持严格显式失败，wrapper 不自行回退默认值 |
 
 Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使用 Accessibility API 的进程身份。App 获得 Accessibility 权限并不能让 Agent 创建 event tap。
 
@@ -643,6 +643,8 @@ Focus App Intents extension 同样保持 App Sandbox 与 `APPLICATION_EXTENSION_
 
 `klock` 是裸 Mach-O command-line tool，因此 target 必须生成并嵌入 `__TEXT,__info_plist`；否则 `PRODUCT_BUNDLE_IDENTIFIER` 不会成为实际 code-signing identifier，`codesign` 会退回可执行文件名 `klock`，并被 Listener requirement 正确拒绝。`CREATE_INFOPLIST_SECTION_IN_BINARY` 和 `GENERATE_INFOPLIST_FILE` 属于 XPC 身份契约，不能当作无关构建设置移除。
 
+端到端拒绝证据由 `scripts/verify-unsigned-client-refusal.sh` 手动验证。脚本不会把同名进程存在或一次 connection failure 当作 PASS：它先用本地 bundled `klock` 的 Team signing identity 和精确 identifier 签出临时 authorized control，在 ad-hoc probe 前后立即分别读取 descriptor，并要求两次 `agentInstanceID` 相同。只有同一 Agent generation 在 probe 前后都响应 authorized control、同时 ad-hoc client 被拒绝才 PASS；这两个 bracket sample 不声称证明采样间隔内的连续可用性。authorized control 不可达、Agent 被替换或本地 signing identity 不可用均以 exit 2 报告 `INDETERMINATE`。
+
 ## `SMAppService` 状态和 XPC 状态不要混为一谈
 
 | 观察结果 | 含义 | App 行为 |
@@ -668,7 +670,7 @@ locked Agent 不能自动 restart,因为 Agent 退出本身会释放正在工作
 3. 只使用 Objective-C/XPC 能表达的参数和 reply 类型；复杂 Swift value 编码成有明确 schema 和大小上限的 `Data`。
 4. 在 `Core/Sources/Service/AgentService.swift` 实现 protocol adapter,并在 descriptor 声明 capability。
 5. 把真实领域行为放在 `Service`，不要堆进 App、CLI 或 wire adapter。
-6. 在 `Core/Sources/Client/XPCClient.swift` 增加薄的 async/throwing 封装；调用方先 handshake 并检查 capability。
+6. 在 `Core/Sources/Client/XPCClient.swift` 增加薄的 async/throwing 封装，在 selector minimum-minor 表登记引入版本；调用方在同一 connection 上先验证 major、minimum minor 和 capability，再发出 feature call。
 7. wrapper 只调用 `XPCClient`；App/CLI 不得 import `Service`。
 8. 明确方法是 query 还是 mutation，并定义 timeout 后能否确认最终结果。
 9. 如果状态可能在调用之外变化，继续用“notification signal + XPC query”，不要把通知 payload 变成第二个状态源。

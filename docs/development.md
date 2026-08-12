@@ -27,7 +27,7 @@
 - `ServiceDescriptor.swift`:`ServiceDescriptor`、protocol version、稳定字符串 capability、additive replacement phase、opaque `ServiceReplacementTicket` 与 ticket-specific status;以有大小上限的 JSON `Data` 跨 XPC。descriptor 显式 decode 永久 bootstrap 字段,为 additive 字段提供默认值,未知字段/capability 可由旧 Client 忽略。
 - `XPCCodeSigningRequirement.swift`:从当前进程已验证的 Apple 签名读取 Team ID,生成同 Team + 精确 identifier 的双向 XPC requirement 字符串,并用 `SecRequirementCreateWithString` 校验其可编译(编译结果仅作一次性校验后丢弃;安装到连接时由系统重新解析字符串);unsigned/ad-hoc 进程 fail closed。
 - `KeyboardLockerSettings.swift`:`KeyboardLockerSettings`(`autoUnlockPolicy` = `.disabled`/`.timed(seconds:)`、`unlockHotkey`)+ `.default` + throwing `encodedForXPC()`/`decodedFromXPC(_:)`(跨 `@objc` 边界、有大小上限的 JSON 传输)。缺失、损坏或过大的 Agent payload 会显式失败，wrapper 不会伪造 `.default` 快照。
-- `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。
+- `KeyCodeConverter.swift`:通过 `UCKeyTranslate` 做布局感知的 `CGKeyCode` → 快捷键字符串(⌃⌥⇧⌘ 顺序)。读取 **ASCII-capable keyboard layout**(`TISCopyCurrentASCIICapableKeyboardLayoutInputSource`)而非当前 input source——拼音等输入法不带 Unicode layout data,会把热键渲染成 `?`。
 
 **Client**(`Core/Sources/Client/`)—— App/CLI 使用,绝不 import `Service`
 - `XPCClient.swift`:异步 / 可抛错的 `XPCClient.shared`,持有一条按需重建的连接;interruption 会主动 invalidate 当前 object，阻止它透明附着到另一代 Agent 后复用旧 capability grant。所有调用共享有界响应超时,超时只失效对应连接。`unlock` 超时后可用权威 Boolean 状态校准；普通 `lock` 与 Focus selector 的成功还包含本地状态看不到的 provenance,因此首次 timeout 后会在 fresh connection 上重发同一个幂等请求,第二次仍超时则明确报告 outcome unknown。`lockInteractively()`、`lockStatusSnapshot()` 与 `setFocusFilterLockEnabled()` 都在同一 connection 上完成 descriptor/capability gate 后调用对应 selector。replacement wire request 与 ticket 双重绑定 `agentInstanceID`,并提供 prepare/commit/status/cancel 与显式 connection reset。没有业务 "session" 类型。

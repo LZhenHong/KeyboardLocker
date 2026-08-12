@@ -56,11 +56,15 @@ public enum KeyCodeConverter {
     characterFromKeyboardLayout(keyCode)?.uppercased() ?? "?"
   }
 
-  /// Get character from system keyboard layout using UCKeyTranslate
+  /// Get character from the system keyboard layout using UCKeyTranslate.
+  ///
+  /// Reads the ASCII-capable layout rather than the current input source: an active input
+  /// method (e.g. Pinyin) may carry no Unicode layout data, which would render the hotkey as
+  /// "?" precisely while the user is typing in a non-Latin context.
   /// - Parameter keyCode: CGKeyCode value
   /// - Returns: Character string or nil
   private static func characterFromKeyboardLayout(_ keyCode: CGKeyCode) -> String? {
-    let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+    let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource().takeRetainedValue()
     guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
       return nil
     }

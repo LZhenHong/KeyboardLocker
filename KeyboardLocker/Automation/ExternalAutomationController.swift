@@ -82,8 +82,8 @@ final class ExternalAutomationController {
   }
 
   /// Submits one action through the same serial chain and reports the outcome to the caller.
-  /// Sources with a synchronous result channel (Services) use this to surface failures
-  /// themselves; the in-app failure alert is still presented.
+  /// Sources with a synchronous result channel (Services) publish that result before scheduling
+  /// their presentation, so a modal alert cannot delay the result channel.
   func submitAndWait(
     _ action: ExternalAutomationAction,
     source: ExternalAutomationSource
@@ -94,16 +94,12 @@ final class ExternalAutomationController {
     let task = Task { @MainActor in
       await previous?.value
 
-      let failure = await Self.execute(
+      return await Self.execute(
         action,
         client: client,
         presenter: presenter,
         source: source
       )
-      if let failure {
-        presenter.presentFailures([failure], source: source)
-      }
-      return failure
     }
     tail = Task { @MainActor in
       _ = await task.value

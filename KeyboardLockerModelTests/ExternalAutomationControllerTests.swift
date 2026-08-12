@@ -134,7 +134,7 @@ final class ExternalAutomationControllerTests: XCTestCase {
   }
 
   @MainActor
-  func testSubmitAndWaitReturnsAndPresentsFailure() async {
+  func testSubmitAndWaitReturnsFailureWithoutPresentingIt() async {
     let client = RecordingExternalAutomationClient(
       isLocked: false,
       error: XPCClientError.serviceUnavailable
@@ -145,9 +145,7 @@ final class ExternalAutomationControllerTests: XCTestCase {
     let failure = await controller.submitAndWait(.lock, source: .service)
 
     XCTAssertTrue(failure?.message.contains("not reachable") == true)
-    XCTAssertEqual(presenter.failureBatches.count, 1)
-    XCTAssertEqual(presenter.failureBatches.first?.failures.first, failure)
-    XCTAssertEqual(presenter.failureBatches.first?.source, .service)
+    XCTAssertTrue(presenter.failureBatches.isEmpty)
   }
 
   @MainActor

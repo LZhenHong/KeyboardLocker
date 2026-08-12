@@ -19,7 +19,7 @@
 
 ## 单核原则
 
-**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、Notifications、扩展)都是**薄 wrapper**,职责仅限两件事:
+**Agent 是唯一执行真实工作的地方。** 其他所有面(App、CLI、Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、Widgets、扩展)都是**薄 wrapper**,职责仅限两件事:
 
 1. 把用户意图翻译成对 Agent 的一次 XPC 调用;
 2. 通过通知观察全局状态。
@@ -33,8 +33,9 @@ Shortcut ────┤
 Services/URL ┤
 Focus ───────┼── XPC ──▶ Agent  ◀── the ONLY executor
 AppleScript ─┤              ├─ LockEngine        (event tap, lock lifecycle)
-Notifications┤              ├─ Settings ownership (source of truth)
-Widget ──────┘              └─ Accessibility      (permission gate)
+Widget ──────┘              ├─ Settings ownership (source of truth)
+                            ├─ Accessibility      (permission gate)
+                            └─ Lock notification (discoverability surface)
 ```
 
 这里的 `Core`、SwiftPM product、运行进程和 XPC connection 是不同层次。完整的构建依赖图、进程图和调用时序见 [XPC 实现与使用指南](xpc.md)。
@@ -48,6 +49,7 @@ Widget ──────┘              └─ Accessibility      (permission 
 | 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline 与 active settings。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
+| 锁定可发现性通知 | **Agent**(`LockStatusNotifier`) | "Keyboard Locked" 通知的投递与移除跟随引擎的同一次状态转换,任何入口、App 是否运行都覆盖;wrapper 不发布锁状态通知。Agent 启动时清除上一代退出留下的残留。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
 
 App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management、XPC 两个系统边界之间的应用层编排,不是第二份锁核心。它必须保持为无锁状态真相源的薄协调器：`AppCoordinator` 只消费 Agent/系统查询并暴露应用状态与动作，不依赖 presentation framework；后续 UI 只能映射这些状态与动作。任何 CGEventTap、设置持久化和 Accessibility 判定仍只在 Agent 内执行。

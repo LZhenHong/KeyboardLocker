@@ -1,52 +1,62 @@
-import Client
+import Common
 import Foundation
 import UserNotifications
 
-/// Notification-center surface used by `LockNotificationController`.
-/// The live implementation wraps `UNUserNotificationCenter`; tests drive a recording fake.
-/// Class-constrained so the controller can install its action handler on a `let` reference.
+/// Notification-center surface used by `LockStatusNotifier`. The live implementation wraps
+/// `UNUserNotificationCenter`; tests drive a recording fake. Class-constrained so the notifier
+/// can install its action handler on a `let` reference.
 @MainActor
-protocol LockNotificationServing: AnyObject, Sendable {
+protocol LockStatusNotifying: AnyObject, Sendable {
   /// Invoked (from any thread) when the user chooses the notification's Unlock Now action.
   var actionHandler: (@Sendable (String) -> Void)? { get set }
   /// Registers the locked category and its action with the system.
   func installUnlockActionCategory()
-  /// Asks the system for permission to post alerts. This surface degrades silently on denial.
-  func requestAuthorization() async -> Bool
-  /// Whether the app may currently deliver user-visible notifications.
-  func canPost() async -> Bool
+  /// Returns whether the Agent may deliver a user-visible alert, requesting authorization on
+  /// first use. A denied or silent-only status degrades to no notification without an error.
+  func requestAlertAuthorization() async -> Bool
   /// Posts the locked notification immediately; a repeated identifier replaces the previous one.
   func postLocked(identifier: String, categoryIdentifier: String, title: String, body: String)
   /// Removes the locked notification from Notification Center and any pending delivery.
   func removeLocked(identifier: String)
 }
 
-/// Presentation-only wrapper: while the App observes the keyboard as locked it keeps a single
-/// notification on screen whose Unlock Now action performs an idempotent desired-state unlock.
-/// The notification never carries authoritative state; its content is a presentation cache
-/// refreshed from the Agent's snapshot on every locked signal.
+/// Owns the single "Keyboard Locked" notification from inside the Agent process.
+///
+/// The lock's discoverability surface must live and die with the lock itself, and only the
+/// Agent is guaranteed to be alive for the lock's whole lifetime — menu-bar App, CLI, or Focus
+/// extension may come and go. Posting here also pairs delivery with removal on the same state
+/// transition, so a stale notification cannot outlive the lock (an Agent that exits while
+/// locked drops its event tap, and the next launch clears the leftover via `start()`).
+///
+/// The notification is a presentation-only convenience: it carries a presentation cache of the
+/// unlock affordances, never authoritative state, and a denied authorization degrades silently.
 @MainActor
-final class LockNotificationController {
+public final class LockStatusNotifier {
   static let notificationIdentifier = "keyboard-locked"
   static let categoryIdentifier = "KEYBOARD_LOCKED"
   static let unlockActionIdentifier = "UNLOCK_NOW"
 
-  private let notifications: any LockNotificationServing
-  private let lockStateObserver: any AgentLockStateObserving
-  private let snapshotQuery: @Sendable () async throws -> LockStatusSnapshot
-  private let unlock: @Sendable () async throws -> Void
-  private var stateToken: ObserverToken?
+  /// Process-wide instance wired to the shared engine. Created lazily; `KeyboardLockerAgent`
+  /// calls `start()` during bootstrap so the action category and stale-notification cleanup
+  /// are in place before any lock can be created.
+  public static let shared = LockStatusNotifier(
+    notifications: LiveLockStatusNotificationService(),
+    snapshot: { LockEngine.shared.statusSnapshot },
+    unlock: { LockEngine.shared.unlock() }
+  )
+
+  private let notifications: any LockStatusNotifying
+  private let snapshot: @MainActor () -> LockStatusSnapshot
+  private let unlock: @MainActor () -> Void
   private var tail: Task<Void, Never>?
 
   init(
-    notifications: any LockNotificationServing,
-    lockStateObserver: any AgentLockStateObserving,
-    snapshotQuery: @escaping @Sendable () async throws -> LockStatusSnapshot,
-    unlock: @escaping @Sendable () async throws -> Void
+    notifications: any LockStatusNotifying,
+    snapshot: @escaping @MainActor () -> LockStatusSnapshot,
+    unlock: @escaping @MainActor () -> Void
   ) {
     self.notifications = notifications
-    self.lockStateObserver = lockStateObserver
-    self.snapshotQuery = snapshotQuery
+    self.snapshot = snapshot
     self.unlock = unlock
     notifications.actionHandler = { @Sendable actionIdentifier in
       Task { @MainActor [weak self] in
@@ -55,60 +65,51 @@ final class LockNotificationController {
     }
   }
 
-  func start() {
+  /// Installs the action category and removes any notification left behind by a previous Agent
+  /// generation — its exit already released the lock, so the leftover can only be stale.
+  public func start() {
     notifications.installUnlockActionCategory()
-    // Long-lived wrapper form: subscribe to the signal, then re-query for presentation content.
-    // The subscription outlives the controller via the App delegate's ownership.
-    stateToken = lockStateObserver.subscribe(initialState: nil) { [weak self] isLocked in
-      self?.handleLockStateChange(isLocked)
-    }
     enqueue { [notifications] in
-      _ = await notifications.requestAuthorization()
+      notifications.removeLocked(identifier: LockStatusNotifier.notificationIdentifier)
     }
   }
 
-  private func handleLockStateChange(_ isLocked: Bool) {
-    if isLocked {
+  /// Engine state-change hook, invoked after the mutation completed so the snapshot read here
+  /// already describes the new state.
+  func lockStateDidChange() {
+    if snapshot().isLocked {
       enqueue { [weak self] in
         await self?.postLockedNotification()
       }
     } else {
       enqueue { [notifications] in
-        notifications.removeLocked(identifier: LockNotificationController.notificationIdentifier)
+        notifications.removeLocked(identifier: LockStatusNotifier.notificationIdentifier)
       }
     }
   }
 
-  /// Internal so tests can drive action delivery deterministically; production reaches it only
-  /// through the notification delegate's `actionHandler` hop.
-  func handleAction(_ actionIdentifier: String) {
+  private func handleAction(_ actionIdentifier: String) {
     guard actionIdentifier == Self.unlockActionIdentifier else {
       return
     }
-    // Desired-state unlock is idempotent; on failure the lock (and its notification) stays.
-    enqueue { [weak self] in
-      try? await self?.unlock()
-    }
+    // Desired-state unlock is idempotent; the engine's state-change hook removes the
+    // notification once the unlock lands.
+    unlock()
   }
 
   private func postLockedNotification() async {
-    guard await notifications.canPost() else {
+    guard await notifications.requestAlertAuthorization() else {
       return
     }
-    // The action remains valid without snapshot details: it re-proves state at the Agent.
-    let snapshot = try? await snapshotQuery()
     notifications.postLocked(
       identifier: Self.notificationIdentifier,
       categoryIdentifier: Self.categoryIdentifier,
       title: "Keyboard Locked",
-      body: Self.makeBody(snapshot: snapshot)
+      body: Self.makeBody(snapshot: snapshot())
     )
   }
 
-  private static func makeBody(snapshot: LockStatusSnapshot?) -> String {
-    guard let snapshot else {
-      return "Choose Unlock Now to unlock."
-    }
+  private static func makeBody(snapshot: LockStatusSnapshot) -> String {
     var lines = ["Press \(snapshot.settings.unlockHotkey.displayString) or choose Unlock Now."]
     if let target = snapshot.autoUnlockTargetDate {
       lines.append("Auto-unlocks at \(target.formatted(date: .omitted, time: .shortened)).")
@@ -131,9 +132,9 @@ final class LockNotificationController {
   }
 }
 
-/// Production `LockNotificationServing` backed by `UNUserNotificationCenter`.
+/// Production `LockStatusNotifying` backed by `UNUserNotificationCenter`.
 @MainActor
-final class LiveLockNotificationService: LockNotificationServing {
+final class LiveLockStatusNotificationService: LockStatusNotifying {
   private let center: UNUserNotificationCenter
   private let delegateBridge: NotificationDelegateBridge
 
@@ -149,37 +150,33 @@ final class LiveLockNotificationService: LockNotificationServing {
   init(center: UNUserNotificationCenter = .current()) {
     self.center = center
     delegateBridge = NotificationDelegateBridge()
-    // Installed during App-delegate init — before launch completes — so an Unlock Now response
-    // that relaunched the App is still delivered.
     center.delegate = delegateBridge
   }
 
   func installUnlockActionCategory() {
     let unlockAction = UNNotificationAction(
-      identifier: LockNotificationController.unlockActionIdentifier,
+      identifier: LockStatusNotifier.unlockActionIdentifier,
       title: "Unlock Now"
     )
     let category = UNNotificationCategory(
-      identifier: LockNotificationController.categoryIdentifier,
+      identifier: LockStatusNotifier.categoryIdentifier,
       actions: [unlockAction],
       intentIdentifiers: []
     )
     center.setNotificationCategories([category])
   }
 
-  func requestAuthorization() async -> Bool {
-    (try? await center.requestAuthorization(options: [.alert])) ?? false
-  }
-
-  func canPost() async -> Bool {
+  func requestAlertAuthorization() async -> Bool {
     let settings = await center.notificationSettings()
-    return switch settings.authorizationStatus {
-    case .authorized, .provisional:
-      true
-    case .denied, .notDetermined:
-      false
+    switch settings.authorizationStatus {
+    case .authorized, .provisional, .ephemeral:
+      return true
+    case .denied:
+      return false
+    case .notDetermined:
+      return (try? await center.requestAuthorization(options: [.alert])) ?? false
     @unknown default:
-      false
+      return false
     }
   }
 
@@ -215,14 +212,5 @@ private final class NotificationDelegateBridge: NSObject, UNUserNotificationCent
       actionHandler?(actionIdentifier)
     }
     completionHandler()
-  }
-
-  nonisolated func userNotificationCenter(
-    _: UNUserNotificationCenter,
-    willPresent _: UNNotification,
-    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-  ) {
-    // The App is a menu-bar accessory; show the banner even while it is active.
-    completionHandler([.banner, .list])
   }
 }

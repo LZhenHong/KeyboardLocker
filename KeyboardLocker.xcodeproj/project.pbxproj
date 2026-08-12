@@ -24,20 +24,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		F21304D42ECDC53D00735580 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = F21304202ECDAD3500735580 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = F213049A2ECDC1AA00735580;
-			remoteInfo = KeyboardLockerAgent;
-		};
-		F21304D62ECDC53D00735580 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = F21304202ECDAD3500735580 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = F21304B32ECDC26400735580;
-			remoteInfo = klock;
-		};
 		B2000000000000000000000E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F21304202ECDAD3500735580 /* Project object */;
@@ -51,6 +37,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = D40000000000000000000003;
 			remoteInfo = KeyboardLockerFocusIntents;
+		};
+		F21304D42ECDC53D00735580 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F21304202ECDAD3500735580 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F213049A2ECDC1AA00735580;
+			remoteInfo = KeyboardLockerAgent;
+		};
+		F21304D62ECDC53D00735580 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F21304202ECDAD3500735580 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F21304B32ECDC26400735580;
+			remoteInfo = klock;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -143,19 +143,10 @@
 			);
 			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
 		};
-		F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-				io.lzhlovesjyq.keyboardlocker.agent.plist,
-			);
-			target = F21304272ECDAD3500735580 /* KeyboardLocker */;
-		};
 		B20000000000000000000010 /* Exceptions for "KeyboardLockerWidgets" folder in "KeyboardLockerWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				KeyboardLockerWidgets.entitlements,
 			);
 			target = B20000000000000000000003 /* KeyboardLockerWidgets */;
 		};
@@ -165,7 +156,6 @@
 				Info.plist,
 				KeyboardLockerControl.swift,
 				KeyboardLockerStatusWidget.swift,
-				KeyboardLockerWidgets.entitlements,
 				KeyboardLockerWidgetsBundle.swift,
 			);
 			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
@@ -181,7 +171,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				KeyboardLockerFocusIntents.entitlements,
 			);
 			target = D40000000000000000000003 /* KeyboardLockerFocusIntents */;
 		};
@@ -190,9 +179,16 @@
 			membershipExceptions = (
 				AppIntentsExtension.swift,
 				Info.plist,
-				KeyboardLockerFocusIntents.entitlements,
 			);
 			target = A10000000000000000000003 /* KeyboardLockerModelTests */;
+		};
+		F213055D2ECE3D5B00735580 /* Exceptions for "KeyboardLocker" folder in "KeyboardLocker" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				io.lzhlovesjyq.keyboardlocker.agent.plist,
+			);
+			target = F21304272ECDAD3500735580 /* KeyboardLocker */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -358,9 +354,9 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A10000000000000000000002 /* KeyboardLockerModelTests */,
-				F213042A2ECDAD3500735580 /* KeyboardLocker */,
-				D40000000000000000000002 /* KeyboardLockerFocusIntents */,
 				B20000000000000000000002 /* KeyboardLockerWidgets */,
+				D40000000000000000000002 /* KeyboardLockerFocusIntents */,
+				F213042A2ECDAD3500735580 /* KeyboardLocker */,
 				F21304B52ECDC26400735580 /* klock */,
 			);
 			name = KeyboardLockerModelTests;
@@ -637,16 +633,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		F21304D52ECDC53D00735580 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = F213049A2ECDC1AA00735580 /* KeyboardLockerAgent */;
-			targetProxy = F21304D42ECDC53D00735580 /* PBXContainerItemProxy */;
-		};
-		F21304D72ECDC53D00735580 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = F21304B32ECDC26400735580 /* klock */;
-			targetProxy = F21304D62ECDC53D00735580 /* PBXContainerItemProxy */;
-		};
 		B2000000000000000000000F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = B20000000000000000000003 /* KeyboardLockerWidgets */;
@@ -656,6 +642,16 @@
 			isa = PBXTargetDependency;
 			target = D40000000000000000000003 /* KeyboardLockerFocusIntents */;
 			targetProxy = D4000000000000000000000E /* PBXContainerItemProxy */;
+		};
+		F21304D52ECDC53D00735580 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F213049A2ECDC1AA00735580 /* KeyboardLockerAgent */;
+			targetProxy = F21304D42ECDC53D00735580 /* PBXContainerItemProxy */;
+		};
+		F21304D72ECDC53D00735580 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F21304B32ECDC26400735580 /* klock */;
+			targetProxy = F21304D62ECDC53D00735580 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1016,6 +1012,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = KeyboardLocker;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -1054,6 +1051,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_CFBundleDisplayName = KeyboardLocker;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

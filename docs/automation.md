@@ -1,6 +1,6 @@
 # 自动化
 
-KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget、Control 与 Notifications 都是同一个 Agent capability 的薄 wrapper。首次使用任一入口前,先启动一次 KeyboardLocker App 或运行 `klock register-agent`,让 App 注册后台 Agent。
+KeyboardLocker 的 Shortcuts、Focus Filter、Services、URL Scheme、AppleScript、CLI、Widget 与 Control 都是同一个 Agent capability 的薄 wrapper;Notifications 由 Agent 进程自己发布(见下文)。首次使用任一入口前,先启动一次 KeyboardLocker App 或运行 `klock register-agent`,让 App 注册后台 Agent。
 
 所有入口共享以下语义：
 
@@ -82,11 +82,11 @@ Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` W
 
 ## Notifications
 
-主 App 运行期间,任一入口使键盘进入 locked 时,App 会发布一条 `Keyboard Locked` 通知:内容来自该时刻向 Agent 重新查询的 `LockStatusSnapshot`,展示当前解锁热键,并在 timed auto-unlock policy 下附带截止时间。通知使用固定 identifier,重复锁定只替换内容,不会堆叠;任一入口解开同一个全局锁后,通知被移除。
+任一入口使键盘进入 locked 时,**Agent 进程自己**发布一条 `Keyboard Locked` 通知：内容直接来自 Agent 持有的 active settings 与 auto-unlock deadline,展示当前解锁热键,并在 timed auto-unlock policy 下附带截止时间。通知使用固定 identifier,重复锁定只替换内容,不会堆叠;任一入口解开同一个全局锁——显式 unlock、解锁热键、auto-unlock timeout 或 event-tap fail-open——通知都随同一次状态转换移除。因为投递/移除与锁状态转换发生在同一进程,通知不会比锁活得更久,与哪个 wrapper 在运行无关;若 Agent 在 locked 时退出(event tap 随进程释放),残留通知由下一次 Agent 启动时清除。
 
-通知携带 `Unlock Now` 操作按钮。键盘被锁时鼠标与触控板仍然可用,点击按钮经 XPC 执行幂等 `unlock`;它不依据通知内容做 client-side 状态判断,调用失败时锁与通知都保持原样。点击按钮时 App 未在运行,系统会先拉起 App 再交付该操作。
+通知携带 `Unlock Now` 操作按钮。键盘被锁时鼠标与触控板仍然可用,点击按钮由 Agent 本地执行幂等 `unlock`,不需要拉起任何 App。
 
-通知是 presentation-only 的便利面:首次发布前向系统请求通知权限,被拒绝或未授予时不发送、不报错;通知内容永远不是状态源。主 App 未运行时,锁状态变化不会产生通知。
+通知是 presentation-only 的便利面:首次锁定时向系统请求通知权限,被拒绝或未授予时不发送、不报错;通知内容永远不是状态源。通知以 Agent 的 bundle 身份发布,在系统设置中显示为 KeyboardLocker(display name 与主 App 对齐)。
 
 ## AppleScript
 

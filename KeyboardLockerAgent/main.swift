@@ -24,6 +24,9 @@ private func startAgent() {
   // One process-wide service owns the authoritative settings, replacement transaction, and
   // LockEngine. Every accepted connection receives only a proxy to this same instance.
   let sharedService = AgentService()
+  // Install the notification category and clear any stale locked notification before the
+  // listener can accept a lock request.
+  LockStatusNotifier.shared.start()
   let listener = NSXPCListener(machServiceName: SharedConstants.machServiceName)
   do {
     try listener.setConnectionCodeSigningRequirement(

@@ -292,7 +292,13 @@ struct LockEngineDependencies {
       hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
       installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
       scheduleTimer: liveMainActorTimerScheduler,
-      broadcastStateChange: { LockStateBroadcaster.broadcast() },
+      broadcastStateChange: {
+        LockStateBroadcaster.broadcast()
+        // Both call sites run on the main actor after the state mutation completed.
+        MainActor.assumeIsolated {
+          LockStatusNotifier.shared.lockStateDidChange()
+        }
+      },
       now: { Date() }
     )
   }

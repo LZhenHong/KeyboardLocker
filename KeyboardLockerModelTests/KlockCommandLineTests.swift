@@ -330,6 +330,107 @@ final class KlockCommandLineTests: XCTestCase {
     )
   }
 
+  // MARK: - Termination Guard
+
+  func testInteractiveLockInstallsAndCancelsTerminationGuardWhileWaiting() async {
+    let client = FakeKlockClient()
+    let terminationGuard = FakeKlockTerminationGuard()
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testInteractiveLockAlreadyLockedSkipsTerminationGuard() async {
+    let client = FakeKlockClient()
+    client.lockInteractivelyResult = .success(.alreadyLocked)
+    let terminationGuard = FakeKlockTerminationGuard()
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 0)
+  }
+
+  func testInteractiveLockFailureSkipsTerminationGuard() async {
+    let client = FakeKlockClient()
+    client.lockInteractivelyResult = .failure(Self.makeError("lock failed"))
+    let terminationGuard = FakeKlockTerminationGuard()
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(terminationGuard.installCalls, 0)
+  }
+
+  func testInteractiveLockWaitFailureCancelsTerminationGuard() async {
+    let client = FakeKlockClient()
+    client.waitUntilUnlockedResult = .failure(Self.makeError("wait failed"))
+    let terminationGuard = FakeKlockTerminationGuard()
+
+    let result = await runKlock(
+      arguments: ["lock"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 1)
+    XCTAssertEqual(terminationGuard.installCalls, 1)
+    XCTAssertEqual(terminationGuard.cancelCalls, 1)
+  }
+
+  func testNonInteractiveLockSkipsTerminationGuard() async {
+    let client = FakeKlockClient()
+    let terminationGuard = FakeKlockTerminationGuard()
+
+    let result = await runKlock(
+      arguments: ["lock", "--no-wait"],
+      client: client,
+      terminationGuard: terminationGuard
+    )
+
+    XCTAssertEqual(result.exitCode, 0)
+    XCTAssertEqual(terminationGuard.installCalls, 0)
+  }
+
+  func testUnlockBeforeTerminationReleasesCreatedLock() async {
+    let client = FakeKlockClient()
+    var stderr: [String] = []
+
+    await KlockCLI.unlockBeforeTermination(client: client, printError: { stderr.append($0) })
+
+    XCTAssertEqual(client.unlockCalls, 1)
+    XCTAssertEqual(stderr, ["Terminated; released the keyboard lock created by this command."])
+  }
+
+  func testUnlockBeforeTerminationReportsFailureWithRecoveryHint() async {
+    let client = FakeKlockClient()
+    client.unlockResult = .failure(Self.makeError("agent gone"))
+    var stderr: [String] = []
+
+    await KlockCLI.unlockBeforeTermination(client: client, printError: { stderr.append($0) })
+
+    XCTAssertEqual(client.unlockCalls, 1)
+    XCTAssertEqual(stderr.count, 1)
+    XCTAssertTrue(stderr[0].contains("could not release"), "stderr: \(stderr)")
+    XCTAssertTrue(stderr[0].contains("agent gone"), "stderr: \(stderr)")
+    XCTAssertTrue(stderr[0].contains("Unlock Now"), "stderr: \(stderr)")
+  }
+
   // MARK: - Helpers
 
   private static func makeError(_ message: String) -> NSError {
@@ -344,7 +445,8 @@ final class KlockCommandLineTests: XCTestCase {
     arguments: [String],
     client: FakeKlockClient,
     openKeyboardLockerApp: @escaping () throws -> Void = {},
-    agentPoll: (attempts: Int, interval: Duration) = (attempts: 1, interval: .zero)
+    agentPoll: (attempts: Int, interval: Duration) = (attempts: 1, interval: .zero),
+    terminationGuard: any KlockTerminationGuarding = NullKlockTerminationGuard()
   ) async -> (exitCode: Int32, stdout: [String], stderr: [String]) {
     var stdout: [String] = []
     var stderr: [String] = []
@@ -353,6 +455,7 @@ final class KlockCommandLineTests: XCTestCase {
       client: client,
       openKeyboardLockerApp: openKeyboardLockerApp,
       agentPoll: agentPoll,
+      terminationGuard: terminationGuard,
       printOut: { stdout.append($0) },
       printError: { stderr.append($0) }
     )
@@ -416,5 +519,25 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   func waitUntilUnlocked() async throws {
     waitUntilUnlockedCalls += 1
     try waitUntilUnlockedResult.get()
+  }
+}
+
+private final class FakeKlockTerminationGuard: KlockTerminationGuarding, @unchecked Sendable {
+  private(set) var installCalls = 0
+  private(set) var cancelCalls = 0
+
+  func install(onTermination _: @escaping (Int32) -> Void) -> () -> Void {
+    installCalls += 1
+    return { [self] in
+      cancelCalls += 1
+    }
+  }
+}
+
+/// Default guard for tests that do not exercise the termination path: never touches process
+/// signal state, so the XCTest process keeps its default signal dispositions.
+private struct NullKlockTerminationGuard: KlockTerminationGuarding {
+  func install(onTermination _: @escaping (Int32) -> Void) -> () -> Void {
+    {}
   }
 }

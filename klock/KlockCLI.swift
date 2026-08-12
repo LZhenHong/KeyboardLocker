@@ -35,8 +35,9 @@ enum KlockCLI {
     client: any KlockClientServing,
     openKeyboardLockerApp: @escaping () throws -> Void = KlockAppOpener.openContainingApp,
     agentPoll: (attempts: Int, interval: Duration) = (attempts: 5, interval: .seconds(1)),
+    terminationGuard: any KlockTerminationGuarding = LiveKlockTerminationGuard(),
     printOut: (String) -> Void,
-    printError: (String) -> Void
+    printError: @escaping (String) -> Void
   ) async -> Int32 {
     let command: KlockCommand
     do {
@@ -71,7 +72,12 @@ enum KlockCLI {
 
     case let .lock(wait):
       if wait {
-        return await executeInteractiveLock(client: client, printOut: printOut, printError: printError)
+        return await executeInteractiveLock(
+          client: client,
+          terminationGuard: terminationGuard,
+          printOut: printOut,
+          printError: printError
+        )
       }
       return await executeNonInteractiveLock(client: client, printOut: printOut, printError: printError)
 
@@ -96,8 +102,9 @@ enum KlockCLI {
 
   private static func executeInteractiveLock(
     client: any KlockClientServing,
+    terminationGuard: any KlockTerminationGuarding,
     printOut: (String) -> Void,
-    printError: (String) -> Void
+    printError: @escaping (String) -> Void
   ) async -> Int32 {
     let unlockHotkey: Result<String, Error>
     do {
@@ -121,6 +128,23 @@ enum KlockCLI {
       return ExitCode.success
     }
 
+    // The wait below keeps this process responsible for the lock it just created: a covered
+    // termination signal (terminal closed, kill) must release it rather than leave the keyboard
+    // locked with no visible owner. Ctrl+C never reaches the process — the Agent consumes it
+    // as an unlock gesture — so SIGINT is only a fallback for a tap that failed to engage.
+    let cancelTerminationGuard = terminationGuard.install { signal in
+      let finished = DispatchSemaphore(value: 0)
+      Task {
+        await Self.unlockBeforeTermination(client: client, printError: printError)
+        finished.signal()
+      }
+      _ = finished.wait(timeout: .now() + .seconds(2))
+      exit(128 + signal)
+    }
+    defer {
+      cancelTerminationGuard()
+    }
+
     switch unlockHotkey {
     case let .success(hotkey):
       printOut("Locked. Press \(hotkey) or Ctrl+C to unlock.")
@@ -140,6 +164,24 @@ enum KlockCLI {
     } catch {
       reportFailure(error, printError: printError)
       return ExitCode.error
+    }
+  }
+
+  /// Best-effort release of the lock this command created, bounded by the caller so the
+  /// process still exits when the Agent is unreachable. Internal (not private) so tests can
+  /// drive it directly — production reaches it only via the signal handler.
+  static func unlockBeforeTermination(
+    client: any KlockClientServing,
+    printError: (String) -> Void
+  ) async {
+    do {
+      try await client.unlock()
+      printError("Terminated; released the keyboard lock created by this command.")
+    } catch {
+      printError(
+        "Terminated; could not release the keyboard lock (\(error.localizedDescription)). " +
+          "Unlock with the configured hotkey or the notification's Unlock Now button."
+      )
     }
   }
 

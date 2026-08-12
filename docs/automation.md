@@ -119,7 +119,9 @@ end tell
 klock lock
 ```
 
-自动化应使用 one-shot 模式。它在 Agent 确认 locked 后立即退出,不会启用 `Ctrl+C`,也不会等待：
+等待期间进程被终止(关闭终端窗口的 `SIGHUP`、`kill` 的 `SIGTERM`)时,`klock` 会在退出前尽力释放它创建的这轮锁(有界等待,随后无论如何退出)。`kill -9` 无法被捕获,此时遗留的锁仍由解锁热键、通知的 Unlock Now 或 auto-unlock 解开。该清理只适用于真正完成 `unlocked → locked` 转换的调用;`Already locked` 退出的命令不触碰既有锁。
+
+自动化应使用 one-shot 模式。它在 Agent 确认 locked 后立即退出,不会启用 `Ctrl+C`,也不参与终止清理：
 
 ```bash
 klock lock --no-wait

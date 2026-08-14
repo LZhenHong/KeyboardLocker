@@ -11,6 +11,6 @@ public enum XPCServerConnection {
   ) {
     connection.exportedInterface = NSXPCInterface(with: KeyboardLockerServiceProtocol.self)
     connection.exportedObject = exportedService
-    connection.resume()
+    connection.activate()
   }
 }

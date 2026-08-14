@@ -3,26 +3,48 @@ import Foundation
 // MARK: - Shared Constants
 
 public enum SharedConstants {
-  /// Mach service name for XPC communication between App/Agent/CLI
+  /// Mach service name for XPC communication between the Agent and authorized wrappers.
   public static let machServiceName = "io.lzhlovesjyq.keyboardlocker.agent"
+
+  /// Bundle identifier of the menu-bar App, used by `klock` as a Launch Services fallback.
+  public static let appBundleIdentifier = "io.lzhlovesjyq.keyboardlocker"
+
+  /// Bundle identifier of the launchd-managed Agent bundled with the App.
+  public static let agentBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.agent"
+
+  private static let commandLineToolBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.klock"
+
+  /// App Intents extension that applies Focus changes while the main App is not running.
+  private static let focusIntentsExtensionBundleIdentifier =
+    "io.lzhlovesjyq.keyboardlocker.focus-intents"
+
+  /// One WidgetKit extension process hosts both the status Widget and macOS Control.
+  private static let widgetKitExtensionBundleIdentifier = "io.lzhlovesjyq.keyboardlocker.widgets"
 
   /// Default unlock key code for 'L' key (⌃⌘L)
   public static let defaultUnlockKeyCode: UInt16 = 37
 
-  /// Bundle identifiers allowed to talk to the agent's Mach service
+  /// Fixed fail-safe window used by the first-run safety check.
+  public static let safetyCheckDuration: TimeInterval = 10
+
+  /// Exact code-signing identifiers allowed to talk to the Agent's Mach service.
   public static let authorizedClientBundleIdentifiers: Set<String> = [
-    "io.lzhlovesjyq.keyboardlocker",
-    "io.lzhlovesjyq.keyboardlocker.klock",
-    "klock", // CLI tool codesign identifier (no Info.plist = short name only)
+    appBundleIdentifier,
+    commandLineToolBundleIdentifier,
+    focusIntentsExtensionBundleIdentifier,
+    widgetKitExtensionBundleIdentifier,
   ]
+}
 
-  // MARK: - CLI Constants
+// MARK: - Lock Requests
 
-  /// CLI executable name
-  public static let cliName = "klock"
-
-  /// CLI installation path
-  public static let cliInstallPath = "/usr/local/bin/klock"
+/// Whether one atomic lock request created the global lock or found it already active.
+///
+/// This describes a state transition, not client ownership. The Agent still owns one global lock,
+/// and any authorized wrapper may explicitly unlock it.
+public enum LockRequestOutcome: Equatable, Sendable {
+  case acquired
+  case alreadyLocked
 }
 
 // MARK: - Notification Names
@@ -30,7 +52,8 @@ public enum SharedConstants {
 /// Shared notification identifiers for cross-process communication.
 public enum NotificationNames {
   /// Notification name for lock state changes.
-  /// Used by Darwin (lightweight, no payload) and Distributed (with payload) notifications.
+  /// Posted on both the Darwin and Distributed centers without any payload; the signal is only
+  /// a hint, and subscribers always re-query the Agent for the authoritative state.
   public static let stateChanged = "io.lzhlovesjyq.keyboardlocker.state.changed"
 }
 
@@ -40,14 +63,90 @@ public enum NotificationNames {
 /// Implemented by Agent, consumed by App/CLI clients.
 @objc(KeyboardLockerServiceProtocol)
 public protocol KeyboardLockerServiceProtocol {
+  // MARK: Bootstrap Methods
+
+  /// Returns a versioned process descriptor before clients invoke capability-gated methods.
+  func serviceDescriptor(reply: @escaping (Data?, Error?) -> Void)
+
   // MARK: Keyboard Locking Methods
 
   func lockKeyboard(reply: @escaping (Error?) -> Void)
+
+  /// Requests a lock that treats Control-C as an additional unlock gesture only when this call
+  /// atomically creates the global lock. `didAcquireLock` is false when the global lock already
+  /// exists; the request may still take persistence over from a Focus-owned generation.
+  func lockKeyboardInteractively(
+    reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
+
+  /// Atomically starts a fixed-duration lock for first-run recovery verification. The Agent owns
+  /// the timer, so the lock still releases if the requesting App exits after receiving the reply.
+  func beginSafetyCheck(
+    reply: @escaping (_ didStart: Bool, _ error: Error?) -> Void
+  )
+
+  /// Applies the Focus Filter's desired state. Disabling releases only a lock generation that
+  /// the Focus Filter itself created; it never unlocks a pre-existing or subsequently claimed
+  /// global lock.
+  func setFocusFilterLockEnabled(
+    _ enabled: Bool,
+    reply: @escaping (Error?) -> Void
+  )
+
   func unlockKeyboard(reply: @escaping (Error?) -> Void)
   func status(reply: @escaping (Bool, Error?) -> Void)
 
-  // MARK: Accessibility Permission Methods
+  /// Atomically flips the global lock inside the Agent's serial execution boundary and replies
+  /// with the resulting state. The lock direction uses plain (non-interactive) lock semantics;
+  /// the unlock direction is an explicit unlock that releases any generation.
+  func toggleKeyboard(reply: @escaping (_ isLocked: Bool, _ error: Error?) -> Void)
 
-  func requestAccessibilityPermission(showPrompt: Bool, reply: @escaping (Bool) -> Void)
-  func accessibilityStatus(reply: @escaping (Bool) -> Void)
+  /// Returns one authoritative point-in-time lock snapshot as JSON-encoded
+  /// `LockStatusSnapshot`. This is additive; legacy clients continue using `status`.
+  func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void)
+
+  /// Atomically enters a short-lived fail-safe drain and optionally unlocks before returning its
+  /// exclusive ownership ticket.
+  func prepareForReplacement(
+    unlockIfNeeded: Bool,
+    expectedAgentInstanceID: UUID,
+    reply: @escaping (Data?, Error?) -> Void
+  )
+
+  /// Commits a prepared drain immediately before Service Management unregister is submitted.
+  /// A committed drain cannot expire or be cancelled; only old-Agent process exit clears it.
+  func commitReplacement(
+    ticket: Data,
+    reply: @escaping (Error?) -> Void
+  )
+
+  /// Returns the phase of the exact replacement ticket without mutating the transaction.
+  func replacementStatus(
+    ticket: Data,
+    reply: @escaping (Data?, Error?) -> Void
+  )
+
+  /// Cancels a still-prepared drain before Service Management unregister is submitted.
+  func cancelReplacementPreparation(
+    ticket: Data,
+    reply: @escaping (Error?) -> Void
+  )
+
+  // MARK: Accessibility Methods
+
+  /// Returns whether the Agent process currently has Accessibility permission.
+  func hasAccessibilityPermission(reply: @escaping (Bool) -> Void)
+
+  /// Asks the Agent process to trigger the system Accessibility permission prompt.
+  /// A successful reply means the prompt request was sent, not that access was granted.
+  func requestAccessibilityPermission(reply: @escaping (Error?) -> Void)
+
+  // MARK: Settings Methods
+
+  /// Returns the Agent's current settings as JSON-encoded `KeyboardLockerSettings`.
+  /// Retained for compatibility with protocol 1.1 clients.
+  func currentSettings(reply: @escaping (Data?) -> Void)
+
+  /// Returns the Agent's current settings and reports serialization failures explicitly.
+  func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void)
 }

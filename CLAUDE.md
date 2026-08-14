@@ -4,20 +4,22 @@ Guidance for Claude Code when working in this repository.
 
 ## Project Overview
 
-KeyboardLocker locks keyboard/mouse input via CGEventTap on macOS. Three-tier architecture over XPC (Mach service `io.lzhlovesjyq.keyboardlocker.agent`):
+KeyboardLocker suppresses keyboard-originated events exposed through CGEventTap on macOS, including standard keys and system-defined controls such as volume, brightness, media playback, eject, and power. Mouse and trackpad input remain available. Hardware or system-reserved input that macOS does not expose to CGEventTap is outside this guarantee. Three-tier architecture over XPC (Mach service `io.lzhlovesjyq.keyboardlocker.agent`):
 
-- **KeyboardLocker** (App, SwiftUI) — imports `Client`
+- **KeyboardLocker** (menu-bar App, Agent lifecycle coordinator, and one-shot system actions) — imports `Client` and `SystemSurfaces`
 - **KeyboardLockerAgent** (XPC service, runs the lock engine, holds Accessibility permission) — imports `Service`
 - **klock** (CLI) — imports `Client`
-- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, App/CLI), `Service` (lock engine, Agent). `Client`/`Service` both `@_exported import Common`.
+- **KeyboardLockerWidgets** (WidgetKit extension hosting Widget and macOS Control) — imports `Client` and `SystemSurfaces`
+- **KeyboardLockerFocusIntents** (Focus Filter App Intents extension) — imports `Client` and `SystemSurfaces`
+- **Core** (Swift Package): `Common` (shared protocol/settings), `Client` (XPC client, wrappers), `Service` (lock engine, Agent), `SystemSurfaces` (presentation-only Widget/Control identifiers and invalidation). `Client`/`Service` both `@_exported import Common`; `SystemSurfaces` is linked only by the containing App and its extensions, never by the Agent or CLI. (Verified on macOS 26: `chronod` ignores reload requests from processes that are not a registered extension container — `Ignoring restricted or unknown extension` — so linking `SystemSurfaces` from `klock` cannot actually refresh widgets.)
 
-Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`.
+Bundle IDs: app `io.lzhlovesjyq.keyboardlocker`, agent `…​.agent`, CLI `…​.klock`, WidgetKit extension `…​.widgets`, Focus App Intents extension `…​.focus-intents`.
 
 ## Architecture Contract — read first
 
 **Before adding or changing any feature (App, CLI, Shortcuts, AppleScript, Widgets, …), read [docs/architecture.md](docs/architecture.md).** It defines the non-negotiable contract: the Agent is the single executor, all other surfaces are thin wrappers, the lock is one global state. When a change conflicts with it, the contract wins.
 
-For task workflows and component details, see [docs/development.md](docs/development.md).
+For the process/module boundary and complete XPC call flow, see [docs/xpc.md](docs/xpc.md). For task workflows and component details, see [docs/development.md](docs/development.md). For Shortcuts, AppleScript, CLI, Widget, and Control usage, see [docs/automation.md](docs/automation.md).
 
 ## Project-Specific Rules
 
@@ -31,6 +33,10 @@ These override the model's defaults — the rest of Swift style is left to stand
 ## Build & Format
 
 ```bash
-xcodebuild -scheme KeyboardLocker -configuration Debug build   # or KeyboardLockerAgent / klock / Core
-swiftformat .   # 2-space indent, alpha-sorted imports; run before committing
+xcodebuild -scheme KeyboardLocker -configuration Debug build   # or KeyboardLockerAgent / klock (Core has no shared Xcode scheme; use the SwiftPM commands below)
+xcrun swift test --package-path Core   # xcrun pins the Xcode toolchain; a bare `swift` may resolve to swiftly's older default, which cannot consume the current SDK
+xcodebuild -scheme KeyboardLocker -configuration Debug -destination 'platform=macOS' test -only-testing:KeyboardLockerModelTests   # app-level coordination tests (fake Client/lifecycle; no live SMAppService/XPC)
 ```
+
+`Core/Package.swift` keeps Swift 5.10 source semantics. Code style is 2-space indent with
+alpha-sorted imports.

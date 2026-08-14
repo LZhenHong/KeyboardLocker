@@ -1,7 +1,7 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 
-/// Manages Accessibility permission for CGEventTap-based keyboard/mouse monitoring
+/// Manages Accessibility permission for CGEventTap-based keyboard filtering
 public final class AccessibilityManager {
   private init() {}
 
@@ -11,22 +11,12 @@ public final class AccessibilityManager {
     AXIsProcessTrusted()
   }
 
-  /// Requests Accessibility permission from the user
-  /// - Parameter showPrompt: Whether to trigger macOS system prompt
-  /// - Returns: Current permission status after request
-  @discardableResult
-  public static func requestPermission(showPrompt: Bool = true) -> Bool {
-    // Early return if already granted to avoid unnecessary system calls
-    if hasPermission() {
-      return true
-    }
-
-    guard showPrompt else {
-      return false
-    }
-
-    // Trigger macOS system prompt that opens Privacy & Security settings
-    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-    return AXIsProcessTrustedWithOptions(options)
+  /// Asks macOS to present the Accessibility permission prompt for the Agent process.
+  /// The prompt is asynchronous, so callers must query `hasPermission()` again later.
+  public static func requestPermission() {
+    let options = [
+      kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true,
+    ] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
   }
 }

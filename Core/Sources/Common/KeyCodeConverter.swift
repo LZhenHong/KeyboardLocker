@@ -12,7 +12,11 @@ public enum KeyCodeConverter {
   /// - Returns: Complete shortcut string (e.g., "⌥⌘L" or "⌥ ⌘ L") or nil if conversion fails
   public static func stringFromKeyCode(_ keyCode: CGKeyCode, modifiers: CGEventFlags, separator: String = "") -> String? {
     let modifierString = modifierSymbols(from: modifiers, separator: separator)
-    let keyChar = keyCharacter(for: keyCode)
+    // An unmappable key code must fail the whole conversion instead of surfacing a raw
+    // "?" glyph, so callers can fall back to verbal copy.
+    guard let keyChar = keyCharacter(for: keyCode) else {
+      return nil
+    }
 
     let result: String = if !modifierString.isEmpty, !separator.isEmpty {
       modifierString + separator + keyChar
@@ -51,16 +55,30 @@ public enum KeyCodeConverter {
 
   /// Get character representation for a key code
   /// - Parameter keyCode: CGKeyCode value
-  /// - Returns: Uppercase character or symbol
-  private static func keyCharacter(for keyCode: CGKeyCode) -> String {
-    characterFromKeyboardLayout(keyCode)?.uppercased() ?? "?"
+  /// - Returns: Uppercase character or symbol, nil when the keyboard layout cannot map it
+  private static func keyCharacter(for keyCode: CGKeyCode) -> String? {
+    let character: String? = if Thread.isMainThread {
+      characterFromKeyboardLayout(keyCode)
+    } else {
+      DispatchQueue.main.sync {
+        characterFromKeyboardLayout(keyCode)
+      }
+    }
+    return character?.uppercased()
   }
 
-  /// Get character from system keyboard layout using UCKeyTranslate
+  /// Get character from the system keyboard layout using UCKeyTranslate.
+  ///
+  /// Reads the ASCII-capable layout rather than the current input source: an active input
+  /// method (e.g. Pinyin) may carry no Unicode layout data, which would render the hotkey as
+  /// "?" precisely while the user is typing in a non-Latin context.
   /// - Parameter keyCode: CGKeyCode value
   /// - Returns: Character string or nil
+  /// TIS/TSM APIs abort the process when a UI process calls them concurrently. Keep the complete
+  /// input-source lookup and translation on the main thread so every wrapper shares one safe
+  /// process-local serialization boundary.
   private static func characterFromKeyboardLayout(_ keyCode: CGKeyCode) -> String? {
-    let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+    let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource().takeRetainedValue()
     guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
       return nil
     }

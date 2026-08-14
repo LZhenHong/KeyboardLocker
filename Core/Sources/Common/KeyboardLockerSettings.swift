@@ -13,7 +13,9 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
     case timed(seconds: TimeInterval)
 
     /// Identifiable conformance using self as ID
-    public var id: Self { self }
+    public var id: Self {
+      self
+    }
 
     /// Converts policy to timeout in seconds, nil when disabled
     public var timeout: TimeInterval? {
@@ -24,20 +26,6 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
         seconds
       }
     }
-
-    private enum PresetTimeouts {
-      static let short: TimeInterval = 30
-      static let medium: TimeInterval = 60
-      static let long: TimeInterval = 120
-    }
-
-    /// Common presets for UI binding
-    public static let presets: [AutoUnlockPolicy] = [
-      .disabled,
-      .timed(seconds: PresetTimeouts.short),
-      .timed(seconds: PresetTimeouts.medium),
-      .timed(seconds: PresetTimeouts.long),
-    ]
   }
 
   /// Represents unlock hotkey combination
@@ -58,11 +46,6 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
       .maskShift,
     ]
 
-    /// Validates hotkey has at least one modifier key
-    public var isValid: Bool {
-      modifierFlags.intersection(Self.relevantModifierMask).isEmpty == false
-    }
-
     /// Checks if event's keyCode and modifiers match this hotkey
     public func matches(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {
       guard keyCode == self.keyCode else {
@@ -80,22 +63,18 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
 
   public var autoUnlockPolicy: AutoUnlockPolicy
   public var unlockHotkey: Hotkey
-  public var showsUnlockNotification: Bool
 
   public init(
     autoUnlockPolicy: AutoUnlockPolicy,
-    showsUnlockNotification: Bool,
     unlockHotkey: Hotkey
   ) {
     self.autoUnlockPolicy = autoUnlockPolicy
-    self.showsUnlockNotification = showsUnlockNotification
     self.unlockHotkey = unlockHotkey
   }
 
   /// Default settings for initial launch or reset
   public static let `default` = KeyboardLockerSettings(
     autoUnlockPolicy: .timed(seconds: 60),
-    showsUnlockNotification: true,
     unlockHotkey: Hotkey(
       keyCode: SharedConstants.defaultUnlockKeyCode,
       modifierFlags: [.maskControl, .maskCommand]
@@ -126,9 +105,59 @@ extension KeyboardLockerSettings.Hotkey: Codable {
 
 // MARK: - Hotkey Display
 
-extension KeyboardLockerSettings.Hotkey {
-  /// Human-readable representation of the hotkey (e.g., "⌃⌘L")
-  public var displayString: String {
-    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "?"
+public extension KeyboardLockerSettings.Hotkey {
+  /// Human-readable representation of the hotkey (e.g., "⌃⌘L"). Falls back to a verbal
+  /// phrase — grammatical inside "Press … to unlock" sentences — when the key code has no
+  /// known glyph, so a raw "?" never reaches notification, widget, or CLI copy.
+  var displayString: String {
+    KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) ?? "the configured unlock hotkey"
+  }
+}
+
+// MARK: - XPC Serialization
+
+public enum KeyboardLockerSettingsCodingError: Error, Equatable, LocalizedError {
+  case invalidPayload
+  case missingPayload
+  case payloadTooLarge
+
+  public var errorDescription: String? {
+    switch self {
+    case .invalidPayload:
+      "The KeyboardLocker agent returned invalid settings."
+    case .missingPayload:
+      "The KeyboardLocker agent returned no settings."
+    case .payloadTooLarge:
+      "The KeyboardLocker agent returned oversized settings."
+    }
+  }
+}
+
+public extension KeyboardLockerSettings {
+  static let maximumEncodedSize = 16 * 1024
+
+  /// Encodes settings for transport across the `@objc` XPC boundary as JSON.
+  func encodedForXPC() throws -> Data {
+    let data = try JSONEncoder().encode(self)
+    guard data.count <= Self.maximumEncodedSize else {
+      throw KeyboardLockerSettingsCodingError.payloadTooLarge
+    }
+    return data
+  }
+
+  /// Decodes the Agent's authoritative settings snapshot without inventing a wrapper-side
+  /// fallback when the transport payload is absent or corrupt.
+  static func decodedFromXPC(_ data: Data?) throws -> KeyboardLockerSettings {
+    guard let data else {
+      throw KeyboardLockerSettingsCodingError.missingPayload
+    }
+    guard data.count <= maximumEncodedSize else {
+      throw KeyboardLockerSettingsCodingError.payloadTooLarge
+    }
+    do {
+      return try JSONDecoder().decode(KeyboardLockerSettings.self, from: data)
+    } catch {
+      throw KeyboardLockerSettingsCodingError.invalidPayload
+    }
   }
 }

@@ -77,7 +77,12 @@ struct KeyboardLockerServicesProviderTests {
     #expect(error?.contains("did not finish") == true)
     #expect(presenter.failures.isEmpty)
 
-    try? await Task.sleep(nanoseconds: 100_000_000)
+    // The late presentation crosses executor hops after the action completes; poll with a
+    // generous deadline instead of assuming a fixed wall-clock margin on a loaded runner.
+    let deadline = ContinuousClock.now + .seconds(5)
+    while presenter.failures.isEmpty, ContinuousClock.now < deadline {
+      try? await Task.sleep(nanoseconds: 10_000_000)
+    }
 
     #expect(presenter.failures == [.init(message: "Late agent failure")])
   }

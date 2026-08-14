@@ -63,11 +63,15 @@ struct KeyboardLockerServicesProviderTests {
   @Test
   func timedOutHandlerPresentsLateFailureAfterPublishingTimeout() async {
     let presenter = RecordingServicesFailurePresenter()
+    let gate = ServicesResultChannelGate()
     let provider = KeyboardLockerServicesProvider(
       waitTimeout: 0.01,
       presentFailure: { presenter.present($0) }
     ) { _ in
-      try? await Task.sleep(nanoseconds: 50_000_000)
+      // Complete only after the handler has published its timeout. A fixed sleep cannot
+      // guarantee this ordering: the main-thread run-loop pump may service a source past the
+      // wait deadline on a loaded runner, letting a "late" action still win the wait.
+      await gate.waitUntilPublished()
       return ExternalAutomationFailure(message: "Late agent failure")
     }
 
@@ -77,6 +81,8 @@ struct KeyboardLockerServicesProviderTests {
     #expect(error?.contains("did not finish") == true)
     #expect(presenter.failures.isEmpty)
 
+    await gate.publish()
+
     // The late presentation crosses executor hops after the action completes; poll with a
     // generous deadline instead of assuming a fixed wall-clock margin on a loaded runner.
     let deadline = ContinuousClock.now + .seconds(5)
@@ -85,6 +91,31 @@ struct KeyboardLockerServicesProviderTests {
     }
 
     #expect(presenter.failures == [.init(message: "Late agent failure")])
+  }
+}
+
+/// Holds a service action open until the handler has published its outcome, so the
+/// late-completion path is exercised deterministically without a production seam.
+private actor ServicesResultChannelGate {
+  private var published = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  func publish() {
+    published = true
+    let pending = waiters
+    waiters = []
+    for waiter in pending {
+      waiter.resume()
+    }
+  }
+
+  func waitUntilPublished() async {
+    if published {
+      return
+    }
+    await withCheckedContinuation { continuation in
+      waiters.append(continuation)
+    }
   }
 }
 

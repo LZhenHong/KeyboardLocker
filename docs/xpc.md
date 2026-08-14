@@ -577,16 +577,16 @@ Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使�
 |---|---|
 | Agent reply 成功 | async 方法正常返回 |
 | Agent reply 领域错误 | 抛出 Agent 返回的错误，例如缺少 Accessibility 权限 |
-| proxy 创建或传输失败 | 归一化为 `serviceUnavailable`(Foundation transport 细节不跨出 Client 边界) |
+| proxy 创建或传输失败 | query 归一化为 `serviceUnavailable`(Foundation transport 细节不跨出 Client 边界);但对端进程在连接存活期间死亡(`NSXPCConnectionInterrupted`)时,mutation 把它视为 reply 丢失(见下),因为已派发的请求可能执行过 |
 | 5 秒内没有任何结果 | connection 失效并抛出 `timedOut`，或由 mutation API 转换为 outcome unknown |
 
-对 mutation 而言，timeout 不等于“Agent 没执行”。请求可能已经到达 Agent，只是 reply 没有及时返回。因此：
+对 mutation 而言，reply 丢失(5 秒 timeout 或对端中断)不等于“Agent 没执行”。请求可能已经到达 Agent，只是 reply 没有返回。因此：
 
-- `lock()` timeout 后通过一条新 connection 重发一次幂等 desired-lock,并要求收到 reply；仅查询 `status()` 不能证明 Focus persistence takeover 已经发生。
+- `lock()` reply 丢失后通过一条新 connection 重发一次幂等 desired-lock,并要求收到 reply；仅查询 `status()` 不能证明 Focus persistence takeover 已经发生。
 - `unlock()` 对称地确认是否已经 unlocked。
-- `setFocusFilterLockEnabled(_:)` timeout 后同样在 fresh connection 上重新协商 capability 并重发同一 desired state；布尔状态无法证明当前 generation 是否由 Focus 创建。
-- 无法确认最终状态时抛出 `operationOutcomeUnknown`，而不是谎称操作一定失败。
-- Accessibility prompt 请求 timeout 同样只表示最终结果未知；不能据此断言 prompt 没有发出。
+- `setFocusFilterLockEnabled(_:)` reply 丢失后同样在 fresh connection 上重新协商 capability 并重发同一 desired state；布尔状态无法证明当前 generation 是否由 Focus 创建。
+- 无法确认最终状态时抛出 `operationOutcomeUnknown`，而不是谎称操作一定失败。非幂等的 `toggle` / interactive lock / safety check 只能走这条路,不能重发。
+- Accessibility prompt 请求 reply 丢失同样只表示最终结果未知；不能据此断言 prompt 没有发出。
 
 App 在动作结束后仍会做完整 reconciliation，因为跨进程系统中应以 Agent 的当前查询结果为准，而不是长期相信某次历史 reply。
 

@@ -55,6 +55,18 @@ public enum XPCClientError: Error, LocalizedError {
   }
 }
 
+/// The reply to a dispatched request was lost because the peer process died mid-flight
+/// (`NSXPCConnectionInterrupted`): the mutation may already have executed. Callers translate
+/// this into their ambiguous-outcome path instead of reporting a definite failure.
+struct LostReplyError: Error, Equatable {}
+
+/// How a proxy-level transport failure is reported. Queries see plain unavailability;
+/// mutations see a lost reply whose outcome stays explicitly ambiguous.
+enum ProxyErrorDisposition {
+  case unavailable
+  case lostReply
+}
+
 /// Async client for the KeyboardLocker Agent.
 ///
 /// Every operation is a **stateless one-off call** to the single global lock owned by the Agent —
@@ -112,7 +124,7 @@ public final class XPCClient: @unchecked Sendable {
   }
 
   private func lockOnce() async throws {
-    try await withProxy { service, resume in
+    try await withProxy(proxyErrorDisposition: .lostReply) { service, resume in
       service.lockKeyboard { resume($0) }
     }
   }
@@ -129,12 +141,13 @@ public final class XPCClient: @unchecked Sendable {
 
     do {
       let didAcquireLock: Bool = try await withProxyReturning(
-        using: connection
+        using: connection,
+        proxyErrorDisposition: .lostReply
       ) { service, resume in
         service.lockKeyboardInteractively { resume($0, $1) }
       }
       return didAcquireLock ? .acquired : .alreadyLocked
-    } catch XPCClientError.timedOut {
+    } catch XPCClientError.timedOut, is LostReplyError {
       // Status alone cannot recover whether this request created a lock or observed an existing
       // one, so a lost mutation reply must remain explicitly unknown.
       throw XPCClientError.operationOutcomeUnknown
@@ -152,12 +165,13 @@ public final class XPCClient: @unchecked Sendable {
 
     do {
       let didStart: Bool = try await withProxyReturning(
-        using: connection
+        using: connection,
+        proxyErrorDisposition: .lostReply
       ) { service, resume in
         service.beginSafetyCheck { resume($0, $1) }
       }
       return didStart ? .acquired : .alreadyLocked
-    } catch XPCClientError.timedOut {
+    } catch XPCClientError.timedOut, is LostReplyError {
       throw XPCClientError.operationOutcomeUnknown
     }
   }
@@ -180,18 +194,18 @@ public final class XPCClient: @unchecked Sendable {
     let connection = try await negotiatedConnection(
       requiring: [.focusFilterLock]
     )
-    try await withProxy(using: connection) { service, resume in
+    try await withProxy(using: connection, proxyErrorDisposition: .lostReply) { service, resume in
       service.setFocusFilterLockEnabled(enabled, reply: resume)
     }
   }
 
   public func unlock() async throws {
     do {
-      try await withProxy { service, resume in
+      try await withProxy(proxyErrorDisposition: .lostReply) { service, resume in
         service.unlockKeyboard { resume($0) }
       }
-    } catch XPCClientError.timedOut {
-      try await confirmTimedOutMutation(expectedIsLocked: false)
+    } catch XPCClientError.timedOut, is LostReplyError {
+      try await confirmAmbiguousMutation(expectedIsLocked: false)
     }
   }
 
@@ -212,10 +226,13 @@ public final class XPCClient: @unchecked Sendable {
       requiring: [.lockToggle]
     )
     do {
-      return try await withProxyReturning(using: connection) { service, resume in
+      return try await withProxyReturning(
+        using: connection,
+        proxyErrorDisposition: .lostReply
+      ) { service, resume in
         service.toggleKeyboard { resume($0, $1) }
       }
-    } catch XPCClientError.timedOut {
+    } catch XPCClientError.timedOut, is LostReplyError {
       throw XPCClientError.operationOutcomeUnknown
     }
   }
@@ -341,10 +358,13 @@ public final class XPCClient: @unchecked Sendable {
       requiring: [.accessibilityPrompt]
     )
     do {
-      try await withProxy(using: connection) { service, resume in
+      try await withProxy(
+        using: connection,
+        proxyErrorDisposition: .lostReply
+      ) { service, resume in
         service.requestAccessibilityPermission(reply: resume)
       }
-    } catch XPCClientError.timedOut {
+    } catch XPCClientError.timedOut, is LostReplyError {
       throw XPCClientError.operationOutcomeUnknown
     }
   }
@@ -372,9 +392,10 @@ public final class XPCClient: @unchecked Sendable {
     candidate?.invalidate()
   }
 
-  /// Lock mutations are idempotent, so a timed-out reply can be recovered by checking whether
-  /// the Agent reached the requested global state through a fresh connection.
-  private func confirmTimedOutMutation(expectedIsLocked: Bool) async throws {
+  /// Lock mutations are idempotent, so a lost reply — timed out or dropped with a dying peer —
+  /// can be recovered by checking whether the Agent reached the requested global state through
+  /// a fresh connection.
+  private func confirmAmbiguousMutation(expectedIsLocked: Bool) async throws {
     if let isLocked = try? await status(), isLocked == expectedIsLocked {
       return
     }
@@ -464,9 +485,13 @@ public final class XPCClient: @unchecked Sendable {
   /// or a missing proxy — so a dead Agent throws rather than hanging forever.
   private func withProxy(
     using connection: NSXPCConnection? = nil,
+    proxyErrorDisposition: ProxyErrorDisposition = .unavailable,
     _ body: @escaping (KeyboardLockerServiceProtocol, _ resume: @escaping (Error?) -> Void) -> Void
   ) async throws {
-    let _: Void = try await withProxyReturning(using: connection) { service, resume in
+    let _: Void = try await withProxyReturning(
+      using: connection,
+      proxyErrorDisposition: proxyErrorDisposition
+    ) { service, resume in
       body(service) { error in
         resume((), error)
       }
@@ -477,6 +502,7 @@ public final class XPCClient: @unchecked Sendable {
   /// across reply, proxy-error, missing-proxy, and timeout races.
   private func withProxyReturning<T: Sendable>(
     using providedConnection: NSXPCConnection? = nil,
+    proxyErrorDisposition: ProxyErrorDisposition = .unavailable,
     _ body: @escaping (KeyboardLockerServiceProtocol, _ resume: @escaping (T, Error?) -> Void) -> Void
   ) async throws -> T {
     let connection = if let providedConnection {
@@ -502,7 +528,9 @@ public final class XPCClient: @unchecked Sendable {
       let proxy = connectionReference.value.remoteObjectProxyWithErrorHandler { error in
         once.run {
           timeoutTask.cancel()
-          continuation.resume(throwing: Self.normalizedProxyError(error))
+          continuation.resume(
+            throwing: Self.normalizedProxyError(error, disposition: proxyErrorDisposition)
+          )
         }
       }
 
@@ -530,8 +558,22 @@ public final class XPCClient: @unchecked Sendable {
   /// A proxy error means the request did not reach a callable XPC peer. Keep Foundation's
   /// transport details behind the Client boundary so every wrapper can present one actionable
   /// service-availability failure.
-  static func normalizedProxyError(_: Error) -> Error {
-    XPCClientError.serviceUnavailable
+  ///
+  /// Interruption is the exception: the peer died while the connection was live, so a mutation
+  /// dispatched just before may already have executed. Mutations ask for `.lostReply` to keep
+  /// that ambiguity explicit; `NSXPCConnectionInvalid` still reports unavailability because it
+  /// is also how a never-established connection (Agent not registered) fails.
+  static func normalizedProxyError(
+    _ error: Error,
+    disposition: ProxyErrorDisposition = .unavailable
+  ) -> Error {
+    let cocoaError = error as NSError
+    if disposition == .lostReply,
+       cocoaError.domain == NSCocoaErrorDomain,
+       cocoaError.code == CocoaError.xpcConnectionInterrupted.rawValue {
+      return LostReplyError()
+    }
+    return XPCClientError.serviceUnavailable
   }
 }
 

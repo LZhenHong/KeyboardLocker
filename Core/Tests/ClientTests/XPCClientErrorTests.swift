@@ -19,6 +19,40 @@ struct XPCClientErrorTests {
   }
 
   @Test
+  func interruptedProxyErrorIsLostReplyOnlyForMutations() {
+    let interruption = NSError(
+      domain: NSCocoaErrorDomain,
+      code: CocoaError.xpcConnectionInterrupted.rawValue
+    )
+
+    #expect(
+      XPCClient.normalizedProxyError(interruption, disposition: .lostReply) is LostReplyError
+    )
+
+    guard case XPCClientError.serviceUnavailable = XPCClient.normalizedProxyError(interruption)
+    else {
+      Issue.record("Expected queries to keep serviceUnavailable for an interruption.")
+      return
+    }
+  }
+
+  @Test
+  func neverConnectedProxyErrorStaysUnavailableForMutations() {
+    let invalid = NSError(
+      domain: NSCocoaErrorDomain,
+      code: CocoaError.xpcConnectionInvalid.rawValue
+    )
+
+    guard case XPCClientError.serviceUnavailable = XPCClient.normalizedProxyError(
+      invalid,
+      disposition: .lostReply
+    ) else {
+      Issue.record("Expected a never-established connection to report serviceUnavailable.")
+      return
+    }
+  }
+
+  @Test
   func serviceUnavailableExplainsFirstUseRecovery() throws {
     let suggestion = try #require(XPCClientError.serviceUnavailable.recoverySuggestion)
 

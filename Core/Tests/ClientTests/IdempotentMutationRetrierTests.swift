@@ -25,6 +25,31 @@ struct IdempotentMutationRetrierTests {
   }
 
   @Test
+  func lostReplyResetsConnectionBeforeSingleRetry() async throws {
+    let recorder = CallRecorder()
+    let operation = ScriptedOperation(outcomes: [.lostReply, .success], recorder: recorder)
+
+    try await perform(operation: operation, recorder: recorder)
+
+    #expect(recorder.calls == [.attempt, .reset, .attempt])
+  }
+
+  @Test
+  func mixedAmbiguousFailuresBecomeUnknownAfterOneRetry() async {
+    let recorder = CallRecorder()
+    let operation = ScriptedOperation(outcomes: [.timedOut, .lostReply], recorder: recorder)
+
+    do {
+      try await perform(operation: operation, recorder: recorder)
+      Issue.record("Expected the second lost reply to become an unknown outcome.")
+    } catch XPCClientError.operationOutcomeUnknown {
+      #expect(recorder.calls == [.attempt, .reset, .attempt])
+    } catch {
+      Issue.record("Unexpected error: \(error)")
+    }
+  }
+
+  @Test
   func secondTimeoutBecomesUnknownWithoutAnotherRetry() async {
     let recorder = CallRecorder()
     let operation = ScriptedOperation(outcomes: [.timedOut, .timedOut], recorder: recorder)
@@ -103,6 +128,8 @@ private actor ScriptedOperation {
     switch outcomes.removeFirst() {
     case .failure:
       throw MutationTestError.expected
+    case .lostReply:
+      throw LostReplyError()
     case .success:
       return
     case .timedOut:
@@ -113,6 +140,7 @@ private actor ScriptedOperation {
 
 private enum MutationOutcome: Sendable {
   case failure
+  case lostReply
   case success
   case timedOut
 }

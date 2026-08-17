@@ -168,6 +168,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   ) -> (title: String, symbolName: String, accessibilityDescription: String) {
     if let activity = snapshot.activity {
       let title = switch activity {
+      case .applyingSettings:
+        "KeyboardLocker — Saving Settings…"
       case .locking:
         "KeyboardLocker — Locking…"
       case .requestingAccessibility:

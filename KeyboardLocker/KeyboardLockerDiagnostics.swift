@@ -184,6 +184,8 @@ private extension AppCoordinator.State {
 private extension AppCoordinator.Activity {
   var diagnosticDescription: String {
     switch self {
+    case .applyingSettings:
+      "applying-settings"
     case .locking:
       "locking"
     case .requestingAccessibility:

@@ -48,6 +48,21 @@ protocol AgentReplacementServing: Sendable {
   func resetConnection()
 }
 
+/// Settings reads and writes, plus the authoritative lock snapshot the UI presents.
+///
+/// `currentSettings()` and `lockStatusSnapshot().settings` deliberately answer different
+/// questions: the former is the persisted configuration the next lock will use — what the settings
+/// UI edits — while the latter is what a running lock is actually enforcing. They differ while the
+/// keyboard is locked, because a write does not disturb an active lock.
+@MainActor
+protocol AgentSettingsServing: Sendable {
+  func currentSettings() async throws -> KeyboardLockerSettings
+  func applySettings(
+    _ settings: KeyboardLockerSettings
+  ) async throws -> KeyboardLockerSettings
+  func lockStatusSnapshot() async throws -> LockStatusSnapshot
+}
+
 @MainActor
 protocol AgentLockStateObserving: Sendable {
   func subscribe(
@@ -65,7 +80,8 @@ protocol AgentClientServing:
   AgentControlServing,
   AgentLockActionServing,
   AgentReadinessServing,
-  AgentReplacementServing {}
+  AgentReplacementServing,
+  AgentSettingsServing {}
 
 @MainActor
 struct LiveAgentClient: AgentClientServing {
@@ -192,6 +208,24 @@ struct LiveAgentClient: AgentClientServing {
 
   func hasAccessibilityPermission() async throws -> Bool {
     try await XPCClient.shared.hasAccessibilityPermission()
+  }
+
+  func currentSettings() async throws -> KeyboardLockerSettings {
+    try await XPCClient.shared.currentSettings()
+  }
+
+  func applySettings(
+    _ settings: KeyboardLockerSettings
+  ) async throws -> KeyboardLockerSettings {
+    let stored = try await XPCClient.shared.applySettings(settings)
+    // The widget and control render the unlock hotkey, so a stored configuration change has to
+    // reach the system-managed surfaces the same way a lock state change does.
+    surfaceInvalidator.invalidate()
+    return stored
+  }
+
+  func lockStatusSnapshot() async throws -> LockStatusSnapshot {
+    try await XPCClient.shared.lockStatusSnapshot()
   }
 
   func requestAccessibilityPermission() async throws {

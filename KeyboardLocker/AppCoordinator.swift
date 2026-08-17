@@ -29,6 +29,7 @@ final class AppCoordinator {
   }
 
   enum Activity: Equatable {
+    case applyingSettings
     case locking
     case requestingAccessibility
     case restartingAgent
@@ -44,11 +45,60 @@ final class AppCoordinator {
     case running
   }
 
+  /// The Agent's persisted configuration — what the next lock will use, and what the settings UI
+  /// edits. A read failure stays `unavailable`: presenting `.default` would invent a second
+  /// source of truth and could show an unlock hotkey the Agent is not actually using.
+  enum SettingsState: Equatable {
+    case loading
+    case loaded(KeyboardLockerSettings)
+    case unavailable(String)
+
+    var settings: KeyboardLockerSettings? {
+      guard case let .loaded(settings) = self else {
+        return nil
+      }
+      return settings
+    }
+  }
+
   struct Snapshot: Equatable {
     let state: State
     let activity: Activity?
     let lastError: String?
     let safetyCheckState: SafetyCheckState
+    /// Authoritative point-in-time lock detail: start time, deadline, and the settings a running
+    /// lock is enforcing. `nil` when the Agent could not be reached for it.
+    let lockSnapshot: LockStatusSnapshot?
+    let settingsState: SettingsState
+
+    /// Agent-supplied detail defaults to absent so callers that only care about readiness — tests
+    /// and previews — do not have to describe a lock snapshot they are not exercising.
+    init(
+      state: State,
+      activity: Activity?,
+      lastError: String?,
+      safetyCheckState: SafetyCheckState,
+      lockSnapshot: LockStatusSnapshot? = nil,
+      settingsState: SettingsState = .loading
+    ) {
+      self.state = state
+      self.activity = activity
+      self.lastError = lastError
+      self.safetyCheckState = safetyCheckState
+      self.lockSnapshot = lockSnapshot
+      self.settingsState = settingsState
+    }
+
+    /// Whether stored settings differ from what the running lock enforces, i.e. a write landed
+    /// while locked and takes effect on the next lock.
+    var hasSettingsPendingNextLock: Bool {
+      guard let lockSnapshot, lockSnapshot.isLocked,
+            let stored = settingsState.settings
+      else {
+        return false
+      }
+      return stored != lockSnapshot.settings
+    }
   }
 
   private(set) var state: State = .checking(lastKnownLock: nil) {
@@ -75,12 +125,26 @@ final class AppCoordinator {
     }
   }
 
+  private(set) var lockSnapshot: LockStatusSnapshot? {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
+  private(set) var settingsState: SettingsState = .loading {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
   var snapshot: Snapshot {
     Snapshot(
       state: state,
       activity: activity,
       lastError: lastError,
-      safetyCheckState: safetyCheckState
+      safetyCheckState: safetyCheckState,
+      lockSnapshot: lockSnapshot,
+      settingsState: settingsState
     )
   }
 
@@ -90,6 +154,7 @@ final class AppCoordinator {
     }
   }
 
+  private var agentDetailTask: Task<Void, Never>?
   private var reconciliationTask: Task<Void, Never>?
   private var needsFollowUpReconciliation = false
   private var pendingUpdatePlan: AgentUpdatePlan?
@@ -245,6 +310,41 @@ final class AppCoordinator {
     }
   }
 
+  /// Stores a new configuration in the Agent and adopts the values it reports back.
+  ///
+  /// Callers must pass values that already satisfy `KeyboardLockerSettings.validated()`; the Agent
+  /// enforces the same rules and rejects anything else. A running lock is unaffected — the stored
+  /// values take effect on the next lock.
+  func applySettings(_ settings: KeyboardLockerSettings) {
+    guard activity == nil else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .applyingSettings
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      var actionError: String?
+      do {
+        // The reply is authoritative: validation normalizes values, so the request is not
+        // necessarily what ended up stored.
+        settingsState = .loaded(try await client.applySettings(settings))
+      } catch {
+        actionError = error.localizedDescription
+      }
+
+      activity = nil
+      // Re-reads the authoritative lock snapshot so a locked keyboard's unchanged active settings
+      // become visible next to the newly stored ones.
+      startReconciliation(preserving: actionError)
+    }
+  }
+
   func requestAccessibilityPermission() {
     guard case .accessibilityRequired = state, activity == nil else {
       return
@@ -386,6 +486,7 @@ final class AppCoordinator {
 
     case let .invalidBundle(failure):
       pendingUpdatePlan = nil
+      clearAgentDetail(reason: failure.message)
       state = .unavailable(message: failure.message, canRestartAgent: false)
       lastError = nil
 
@@ -396,6 +497,7 @@ final class AppCoordinator {
         : .accessibilityRequired(isLocked: isLocked)
       lastError = actionError
       startStateObservation()
+      startAgentDetailRefresh()
 
       if needsFollowUpReconciliation {
         startReconciliation(
@@ -515,6 +617,7 @@ final class AppCoordinator {
 
     pendingUpdatePlan = nil
     stopStateObservation()
+    clearAgentDetail(reason: message)
     state = .agentReplacementInProgress(message: message)
     lastError = nil
     reconciliationTask?.cancel()
@@ -533,6 +636,9 @@ final class AppCoordinator {
 
   private func showAgentUpdateRequired(plan: AgentUpdatePlan) {
     pendingUpdatePlan = plan
+    // An agent needing an update may not implement the settings-write selector at all, so the
+    // settings UI must not present an editable configuration until the handshake succeeds again.
+    clearAgentDetail(reason: plan.message)
     state = .agentUpdateRequired(
       isLocked: plan.isLocked,
       message: plan.message
@@ -554,6 +660,7 @@ final class AppCoordinator {
     if let clientError = error as? XPCClientError,
        case .peerAuthenticationUnavailable = clientError {
       pendingUpdatePlan = nil
+      clearAgentDetail(reason: clientError.localizedDescription)
       state = .unavailable(
         message: """
         This copy of KeyboardLocker cannot establish its signed XPC identity. \
@@ -574,6 +681,7 @@ final class AppCoordinator {
 
     if applyRegistrationState(currentRegistrationState) {
       pendingUpdatePlan = nil
+      clearAgentDetail(reason: error.localizedDescription)
       let contextMessage = context.map { " \($0)" } ?? ""
       state = .unavailable(
         message: """
@@ -595,6 +703,9 @@ final class AppCoordinator {
     case .approvalRequired:
       stopStateObservation()
       pendingUpdatePlan = nil
+      clearAgentDetail(
+        reason: "The KeyboardLocker agent needs approval in Login Items before it can be reached."
+      )
       state = .agentApprovalRequired
       lastError = nil
       return false
@@ -602,6 +713,7 @@ final class AppCoordinator {
     case let .unavailable(failure):
       stopStateObservation()
       pendingUpdatePlan = nil
+      clearAgentDetail(reason: failure.message)
       let canRestartAgent = if case .restartFailed = failure {
         true
       } else {
@@ -649,6 +761,57 @@ final class AppCoordinator {
     case .agentApprovalRequired, .agentReplacementInProgress, .unavailable:
       reconcile()
     }
+  }
+
+  /// Fetches the authoritative lock snapshot and the persisted settings once the handshake has
+  /// established that the Agent is reachable and compatible.
+  ///
+  /// Kept out of `AgentReadinessCoordinator`: readiness decides whether the Agent can be trusted at
+  /// all, while this is presentation detail whose failure must not downgrade a ready state.
+  private func startAgentDetailRefresh() {
+    agentDetailTask?.cancel()
+    agentDetailTask = Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        let snapshot = try await client.lockStatusSnapshot()
+        guard !Task.isCancelled else {
+          return
+        }
+        lockSnapshot = snapshot
+      } catch {
+        guard !Task.isCancelled else {
+          return
+        }
+        lockSnapshot = nil
+      }
+
+      do {
+        let settings = try await client.currentSettings()
+        guard !Task.isCancelled else {
+          return
+        }
+        settingsState = .loaded(settings)
+      } catch {
+        guard !Task.isCancelled else {
+          return
+        }
+        settingsState = .unavailable(error.localizedDescription)
+      }
+    }
+  }
+
+  /// Drops presentation detail whenever the Agent stops being a trustworthy source for it.
+  ///
+  /// Settings become explicitly unavailable rather than falling back to `.default`, which would
+  /// show the user a configuration the Agent is not actually using.
+  private func clearAgentDetail(reason: String) {
+    agentDetailTask?.cancel()
+    agentDetailTask = nil
+    lockSnapshot = nil
+    settingsState = .unavailable(reason)
   }
 
   private func startStateObservation() {

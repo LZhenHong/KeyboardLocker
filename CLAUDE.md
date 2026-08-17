@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 KeyboardLocker suppresses keyboard-originated events exposed through CGEventTap on macOS, including standard keys and system-defined controls such as volume, brightness, media playback, eject, and power. Mouse and trackpad input remain available. Hardware or system-reserved input that macOS does not expose to CGEventTap is outside this guarantee. Three-tier architecture over XPC (Mach service `io.lzhlovesjyq.keyboardlocker.agent`):
 
-- **KeyboardLocker** (menu-bar App with status/settings windows, Agent lifecycle coordinator, and one-shot system actions) — imports `Client` and `SystemSurfaces`
+- **KeyboardLocker** (menu-bar App with a status/settings popover, Agent lifecycle coordinator, and one-shot system actions) — imports `Client` and `SystemSurfaces`
 - **KeyboardLockerAgent** (XPC service, runs the lock engine, holds Accessibility permission) — imports `Service`
 - **klock** (CLI) — imports `Client`
 - **KeyboardLockerWidgets** (WidgetKit extension hosting Widget and macOS Control) — imports `Client` and `SystemSurfaces`

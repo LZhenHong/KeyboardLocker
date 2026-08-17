@@ -11,6 +11,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   private let menu = NSMenu()
   private let safetyCheckStore: SafetyCheckExperienceStore
   private let statusItem: NSStatusItem
+  private let uiStore: AppUIStore
+  private let windowPresenter: AppWindowPresenter
   private var currentSnapshot: AppCoordinator.Snapshot
   private var detailMessage: String?
   private var hasOfferedSafetyCheckThisLaunch = false
@@ -37,10 +39,30 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     self.safetyCheckStore = safetyCheckStore
     currentSnapshot = coordinator.snapshot
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+
+    let store = AppUIStore(coordinator: coordinator)
+    uiStore = store
+    var presentedDiagnostics: (() -> Void)?
+    var presentedCommandLineTool: (() -> Void)?
+    windowPresenter = AppWindowPresenter(
+      store: store,
+      copyDiagnostics: { presentedDiagnostics?() },
+      manageCommandLineTool: { presentedCommandLineTool?() }
+    )
     super.init()
+
+    // The window reuses the menu's existing diagnostics and CLI flows rather than duplicating them.
+    presentedDiagnostics = { [weak self] in
+      self?.copyDiagnostics()
+    }
+    presentedCommandLineTool = { [weak self] in
+      self?.manageCommandLineTool()
+    }
 
     menu.delegate = self
     statusItem.menu = menu
+    // This controller owns the coordinator's single observer slot and fans each snapshot out to
+    // both presentations.
     coordinator.onSnapshotChange = { [weak self] snapshot in
       self?.render(snapshot)
     }
@@ -54,6 +76,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
   private func render(_ snapshot: AppCoordinator.Snapshot) {
     currentSnapshot = snapshot
+    uiStore.receive(snapshot)
     detailMessage = makeDetailMessage(for: snapshot)
 
     let appearance = makeAppearance(for: snapshot)
@@ -77,6 +100,18 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     let status = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
     status.isEnabled = false
     menu.addItem(status)
+    menu.addItem(.separator())
+
+    addAction(
+      title: "Open KeyboardLocker",
+      action: #selector(openMainWindow),
+      keyEquivalent: "0"
+    )
+    addAction(
+      title: "Settings…",
+      action: #selector(openSettingsWindow),
+      keyEquivalent: ","
+    )
     menu.addItem(.separator())
 
     if currentSnapshot.activity == nil {
@@ -155,9 +190,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
   private func addAction(
     title: String,
     action: Selector,
-    isEnabled: Bool = true
+    isEnabled: Bool = true,
+    keyEquivalent: String = ""
   ) {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
     item.target = self
     item.isEnabled = isEnabled
     menu.addItem(item)
@@ -317,6 +353,16 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
       NSApp.activateForUserPresentation()
       alert.runModal()
     }
+  }
+
+  @objc
+  private func openMainWindow() {
+    windowPresenter.showMainWindow()
+  }
+
+  @objc
+  private func openSettingsWindow() {
+    windowPresenter.showSettingsWindow()
   }
 
   @objc

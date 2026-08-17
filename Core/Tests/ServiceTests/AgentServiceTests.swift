@@ -490,7 +490,7 @@ final class AgentServiceTests {
   }
 
   @Test
-  func applySettingsRejectsAnInvalidPayloadWithoutPersisting() {
+  func applySettingsRejectsAnInvalidPayloadWithoutPersisting() throws {
     let service = makeService()
     let invalid = KeyboardLockerSettings(
       autoUnlockPolicy: .timed(seconds: 60),
@@ -499,7 +499,7 @@ final class AgentServiceTests {
 
     var error: Error?
     var data: Data?
-    service.applySettings(try! invalid.encodedForXPC()) { replyData, replyError in
+    try service.applySettings(invalid.encodedForXPC()) { replyData, replyError in
       data = replyData
       error = replyError
     }
@@ -532,8 +532,8 @@ final class AgentServiceTests {
     settingsStore.saveError = StubError.descriptorUnavailable
 
     var error: Error?
-    service.applySettings(
-      try makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
+    try service.applySettings(
+      makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
     ) { _, replyError in
       error = replyError
     }
@@ -555,8 +555,8 @@ final class AgentServiceTests {
     prepareTicket(on: service, instanceID: instanceID)
 
     var error: Error?
-    service.applySettings(
-      try makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
+    try service.applySettings(
+      makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
     ) { _, replyError in
       error = replyError
     }
@@ -585,7 +585,7 @@ final class AgentServiceTests {
   ) throws -> KeyboardLockerSettings {
     var data: Data?
     var error: Error?
-    service.applySettings(try settings.encodedForXPC()) { replyData, replyError in
+    try service.applySettings(settings.encodedForXPC()) { replyData, replyError in
       data = replyData
       error = replyError
     }

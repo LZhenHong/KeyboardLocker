@@ -1,13 +1,11 @@
+@testable import Common
 import CoreGraphics
 import Foundation
 import Testing
 
-@testable import Common
-
-@Suite
 struct KeyboardLockerSettingsValidationTests {
-  // 'L' is used by the shipped default, so it is known to be mappable on any ASCII-capable layout.
-  private static let mappableKeyCode: CGKeyCode = CGKeyCode(SharedConstants.defaultUnlockKeyCode)
+  /// 'L' is used by the shipped default, so it is known to be mappable on any ASCII-capable layout.
+  private static let mappableKeyCode = CGKeyCode(SharedConstants.defaultUnlockKeyCode)
 
   private static func settings(
     keyCode: CGKeyCode = mappableKeyCode,

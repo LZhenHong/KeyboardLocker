@@ -164,7 +164,7 @@ public extension KeyboardLockerSettings {
   /// Bounds for a timed auto-unlock. The lower bound keeps a deliberate lock from expiring before
   /// the user has finished what they locked the keyboard for; the upper bound keeps the fail-safe
   /// within a window a user would actually wait out rather than force-restarting the machine.
-  static let allowedAutoUnlockRange: ClosedRange<TimeInterval> = 5 ... 3600
+  static let allowedAutoUnlockRange: ClosedRange<TimeInterval> = 5...3600
 
   /// Returns the normalized settings the Agent may store, or throws when a value would leave a
   /// locked keyboard unrecoverable by its configured gesture.
@@ -172,15 +172,7 @@ public extension KeyboardLockerSettings {
   /// Lives in `Common` because the Agent owns enforcement while wrappers need the same rules for
   /// immediate feedback — duplicating them in a wrapper would let the two drift apart.
   func validated() throws -> Self {
-    guard unlockHotkey.hasModifier else {
-      throw KeyboardLockerSettingsValidationError.hotkeyMissingModifier
-    }
-    guard KeyCodeConverter.stringFromKeyCode(
-      unlockHotkey.keyCode,
-      modifiers: unlockHotkey.modifierFlags
-    ) != nil else {
-      throw KeyboardLockerSettingsValidationError.hotkeyUnmappable
-    }
+    _ = try unlockHotkey.validated()
 
     var normalized = self
     if case let .timed(seconds) = autoUnlockPolicy {
@@ -208,6 +200,19 @@ public extension KeyboardLockerSettings.Hotkey {
   /// validation can never accept a modifier the matcher would then discard.
   var hasModifier: Bool {
     !modifierFlags.intersection(Self.relevantModifierMask).isEmpty
+  }
+
+  /// Returns the hotkey when it can actually unlock a locked keyboard, or throws explaining why
+  /// it cannot. Split out from `KeyboardLockerSettings.validated()` so a hotkey picker can give
+  /// per-keystroke feedback against the same rule the Agent enforces.
+  func validated() throws -> Self {
+    guard hasModifier else {
+      throw KeyboardLockerSettingsValidationError.hotkeyMissingModifier
+    }
+    guard KeyCodeConverter.stringFromKeyCode(keyCode, modifiers: modifierFlags) != nil else {
+      throw KeyboardLockerSettingsValidationError.hotkeyUnmappable
+    }
+    return self
   }
 }
 

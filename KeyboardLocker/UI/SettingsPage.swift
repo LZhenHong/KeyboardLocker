@@ -1,13 +1,15 @@
 import Client
 import SwiftUI
 
-/// Edits the Agent's persisted configuration.
+/// The popover's settings page: edits the Agent's persisted configuration, with a header that
+/// returns to the status page.
 ///
 /// The view never stores settings of its own beyond the in-progress edit: `draft` is seeded from
 /// the Agent's published values and reset whenever they change, so a failed or superseded write
 /// cannot leave the form showing a configuration that is not stored.
-struct SettingsView: View {
+struct SettingsPage: View {
   @ObservedObject var store: AppUIStore
+  let goBack: () -> Void
 
   @State private var draft: KeyboardLockerSettings?
   @State private var hotkeyRejection: KeyboardLockerSettingsValidationError?
@@ -16,32 +18,14 @@ struct SettingsView: View {
   private static let timeoutChoices: [TimeInterval] = [15, 30, 60, 120, 300, 600, 1800, 3600]
 
   var body: some View {
-    Form {
-      if let message = store.settingsUnavailableMessage {
-        Section {
-          UnavailableRow(message: message) {
-            store.reconcile()
-          }
-        }
-      } else if let draft {
-        hotkeySection(draft: draft)
-        autoUnlockSection(draft: draft)
-        footerSection(draft: draft)
-      } else {
-        Section {
-          HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text("Reading settings from the background agent…")
-              .foregroundStyle(.secondary)
-          }
-        }
-      }
+    VStack(alignment: .leading, spacing: 0) {
+      header
+      Divider()
+      body(for: store.settingsUnavailableMessage)
+        .padding(16)
     }
-    .formStyle(.grouped)
-    .frame(width: 460)
-    .fixedSize(horizontal: false, vertical: true)
     .onAppear {
-      // Re-read on appear: a long-lived window may have missed changes made from another surface.
+      // Re-read on appear in case a change was made from another surface while this was closed.
       store.reconcile()
       syncDraft()
     }
@@ -67,91 +51,148 @@ struct SettingsView: View {
     }
   }
 
+  // MARK: - Header
+
+  private var header: some View {
+    HStack(spacing: 6) {
+      Button(action: goBack) {
+        Label("Back", systemImage: "chevron.backward")
+          .labelStyle(.titleAndIcon)
+      }
+      .buttonStyle(.borderless)
+
+      Spacer(minLength: 0)
+
+      Text("Settings")
+        .font(.headline)
+
+      Spacer(minLength: 0)
+
+      // Balances the leading back button so the title stays centered.
+      Label("Back", systemImage: "chevron.backward")
+        .labelStyle(.titleAndIcon)
+        .hidden()
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+  }
+
+  // MARK: - Body
+
+  @ViewBuilder
+  private func body(for unavailableMessage: String?) -> some View {
+    if let unavailableMessage {
+      UnavailableRow(message: unavailableMessage) {
+        store.reconcile()
+      }
+    } else if let draft {
+      VStack(alignment: .leading, spacing: 18) {
+        hotkeySection(draft: draft)
+        autoUnlockSection(draft: draft)
+        statusFootnotes
+      }
+    } else {
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text("Reading settings from the background agent…")
+          .foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
   // MARK: - Sections
 
   private func hotkeySection(draft: KeyboardLockerSettings) -> some View {
-    Section {
-      LabeledContent("Unlock Hotkey") {
-        HotkeyRecorderField(
-          hotkey: draft.unlockHotkey,
-          isEnabled: store.canEditSettings
-        ) { outcome in
-          switch outcome {
-          case let .accepted(hotkey):
-            hotkeyRejection = nil
-            commit(hotkey: hotkey)
-          case let .rejected(error):
-            hotkeyRejection = error
-          }
+    VStack(alignment: .leading, spacing: 6) {
+      SectionHeader("Unlock Hotkey")
+
+      HotkeyRecorderField(
+        hotkey: draft.unlockHotkey,
+        isEnabled: store.canEditSettings
+      ) { outcome in
+        switch outcome {
+        case let .accepted(hotkey):
+          hotkeyRejection = nil
+          commit(hotkey: hotkey)
+        case let .rejected(error):
+          hotkeyRejection = error
         }
       }
-    } header: {
-      Text("Unlocking")
-    } footer: {
-      VStack(alignment: .leading, spacing: 4) {
-        if let hotkeyRejection {
-          Label {
-            VStack(alignment: .leading, spacing: 2) {
-              Text(hotkeyRejection.localizedDescription)
-              if let suggestion = hotkeyRejection.recoverySuggestion {
-                Text(suggestion).foregroundStyle(.secondary)
-              }
+      .frame(maxWidth: .infinity)
+
+      if let hotkeyRejection {
+        Label {
+          VStack(alignment: .leading, spacing: 2) {
+            Text(hotkeyRejection.localizedDescription)
+            if let suggestion = hotkeyRejection.recoverySuggestion {
+              Text(suggestion).foregroundStyle(.secondary)
             }
-          } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundStyle(.orange)
           }
-          .font(.callout)
-        } else {
-          Text("Click the field, then press the shortcut you want to use to unlock the keyboard.")
-            .foregroundStyle(.secondary)
+        } icon: {
+          Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
+        .font(.caption)
+      } else {
+        Text("Click the field, then press the shortcut you want to use to unlock the keyboard.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     }
   }
 
   private func autoUnlockSection(draft: KeyboardLockerSettings) -> some View {
-    Section {
-      Picker("Unlock Automatically", selection: autoUnlockSelection(draft: draft)) {
+    VStack(alignment: .leading, spacing: 6) {
+      SectionHeader("Auto-Unlock")
+
+      Picker("Unlock automatically", selection: autoUnlockSelection(draft: draft)) {
         ForEach(Self.timeoutChoices, id: \.self) { seconds in
           Text(Self.timeoutLabel(seconds)).tag(TimeInterval?.some(seconds))
         }
         Divider()
         Text("Never (not recommended)").tag(TimeInterval?.none)
       }
+      .labelsHidden()
       .disabled(!store.canEditSettings)
-    } footer: {
+
       Text(Self.autoUnlockFooter(for: draft.autoUnlockPolicy))
+        .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
-  private func footerSection(draft _: KeyboardLockerSettings) -> some View {
-    Section {
-      if store.snapshot.hasSettingsPendingNextLock {
-        Label {
-          Text("Saved. The keyboard is locked right now, so these values take effect on the next lock.")
-        } icon: {
-          Image(systemName: "clock.badge.checkmark")
-        }
-        .font(.callout)
-        .foregroundStyle(.secondary)
-      } else if store.isLocked {
-        Text("The keyboard is locked. Changes take effect on the next lock.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
-
-      if let error = store.snapshot.lastError {
-        Label {
-          Text(error)
-        } icon: {
-          Image(systemName: "exclamationmark.triangle.fill")
-            .foregroundStyle(.orange)
-        }
-        .font(.callout)
-      }
+  @ViewBuilder
+  private var statusFootnotes: some View {
+    if store.snapshot.hasSettingsPendingNextLock {
+      footnote(
+        "Saved. The keyboard is locked right now, so these values take effect on the next lock.",
+        systemImage: "clock.badge.checkmark"
+      )
+    } else if store.isLocked {
+      footnote(
+        "The keyboard is locked. Changes take effect on the next lock.",
+        systemImage: "clock"
+      )
     }
+
+    if let error = store.snapshot.lastError {
+      footnote(error, systemImage: "exclamationmark.triangle.fill", tint: .orange)
+    }
+  }
+
+  private func footnote(
+    _ text: String,
+    systemImage: String,
+    tint: Color = .secondary
+  ) -> some View {
+    Label {
+      Text(text).fixedSize(horizontal: false, vertical: true)
+    } icon: {
+      Image(systemName: systemImage).foregroundStyle(tint)
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
   }
 
   // MARK: - Editing
@@ -232,6 +273,22 @@ struct SettingsView: View {
   }
 }
 
+// MARK: - Shared small views
+
+private struct SectionHeader: View {
+  let title: String
+
+  init(_ title: String) {
+    self.title = title
+  }
+
+  var body: some View {
+    Text(title.uppercased())
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+  }
+}
+
 /// Shared presentation for an agent value the app could not read.
 private struct UnavailableRow: View {
   let message: String
@@ -252,5 +309,6 @@ private struct UnavailableRow: View {
       }
       Button("Try Again", action: retry)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }

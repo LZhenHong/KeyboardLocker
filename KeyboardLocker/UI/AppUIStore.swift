@@ -89,6 +89,48 @@ final class AppUIStore: ObservableObject {
     }
   }
 
+  /// The one recovery action the current degraded state calls for, or `nil` when the state is a
+  /// normal ready/checking/in-progress one that needs no extra button.
+  ///
+  /// This is pure presentation routing over `AppCoordinator.State`; the actual work (each of which
+  /// needs an AppKit confirmation or a System Settings jump) is carried by `PopoverActions`.
+  enum RecoveryAction: Equatable {
+    case openLoginItems
+    case grantAccessibility
+    case openAccessibilitySettings
+    case updateAgent
+    case restartAgent
+  }
+
+  var recoveryActions: [RecoveryAction] {
+    guard !isBusy else {
+      return []
+    }
+    switch snapshot.state {
+    case .agentApprovalRequired:
+      return [.openLoginItems]
+    case .accessibilityRequired:
+      return [.grantAccessibility, .openAccessibilitySettings]
+    case .agentUpdateRequired:
+      return [.updateAgent]
+    case let .unavailable(_, canRestartAgent):
+      return canRestartAgent ? [.restartAgent] : []
+    case .agentReplacementInProgress, .checking, .ready:
+      return []
+    }
+  }
+
+  /// Whether the first-run safety check button belongs in the current state.
+  var canRunSafetyCheck: Bool {
+    guard !isBusy, snapshot.safetyCheckState != .running else {
+      return false
+    }
+    if case .ready(isLocked: false) = snapshot.state {
+      return true
+    }
+    return false
+  }
+
   // MARK: - Actions
 
   func reconcile() {
@@ -109,5 +151,13 @@ final class AppUIStore: ObservableObject {
 
   func startSafetyCheck() {
     coordinator.startSafetyCheck()
+  }
+
+  func updateAgent() {
+    coordinator.updateAgent()
+  }
+
+  func restartAgent() {
+    coordinator.restartAgent()
   }
 }

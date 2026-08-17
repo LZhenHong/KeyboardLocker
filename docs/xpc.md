@@ -144,6 +144,7 @@ public protocol KeyboardLockerServiceProtocol {
   func requestAccessibilityPermission(reply: @escaping (Error?) -> Void)
   func currentSettings(reply: @escaping (Data?) -> Void)
   func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void)
+  func applySettings(_ data: Data, reply: @escaping (Data?, Error?) -> Void)
 }
 ```
 
@@ -550,8 +551,9 @@ sequenceDiagram
 | `requestAccessibilityPermission` | `requestAccessibilityPermission()` | `AccessibilityManager` | 请求系统异步显示 Agent 的授权 prompt；reply 不代表用户已授权 |
 | `currentSettings` | protocol 1.1 legacy Client only | `AgentService` | 为既有 selector ABI 保留；编码失败只能返回 `nil` |
 | `currentSettingsWithError` | `currentSettings()` | `KeyboardLockerSettingsStore` / `AgentService` | 读取 Agent 启动时取得并持有的设置快照；本地 persisted payload 损坏时仅 Agent store 记录错误并回退 `.default`，而跨进程 payload 的缺失、损坏、过大或编码失败保持严格显式失败，wrapper 不自行回退默认值 |
+| `applySettings` | `applySettings(_:)` | `KeyboardLockerSettingsStore` / `AgentService` | capability-gated 写入；Agent 先 `validated()` 再持久化并返回落盘后的权威 settings。**locked 时只落盘不触碰当前锁**——`LockEngine.updateSettings` 会重算 auto-unlock window（`.disabled` 直接取消 timer），mid-lock 应用会破坏活动锁的 fail-safe,因此新值只 seed 下一次 lock。校验失败或 replacement drain 期间不落盘并显式报错;reply 丢失后重查权威 settings 比对,不重发 |
 
-MVP 的 settings contract 有意保持只读,不包含 write selector 或设置编辑 UI；用户可编辑设置属于 post-MVP extension。未来新增写入能力时仍必须由 Agent XPC protocol 承载并由 Agent 持久化。
+用户可编辑设置经 protocol 1.8 的 `applySettings` 写入并由 Agent 持久化,wrapper 绝不拥有自己的 store。写入护栏(热键至少一个可匹配修饰键、keyCode 可被 ASCII-capable layout 映射、timed 策略有界且有限)由 `KeyboardLockerSettings.validated()` 在 `Common` 定义、由 Agent 强制,任何写入面共用同一规则。`.disabled` 仍可达,由 UI 承担 not-recommended 警告与二次确认。
 
 Accessibility 调用必须发生在 Agent，因为 TCC 授权绑定到实际使用 Accessibility API 的进程身份。App 获得 Accessibility 权限并不能让 Agent 创建 event tap。
 

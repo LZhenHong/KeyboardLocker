@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="fgBodyGradL" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset="0.55" stop-color="#E6F5EC"/>
+<stop offset="1" stop-color="#CDE9D8"/>
+</linearGradient>
+<linearGradient id="fgShackleGradL" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#FFFFFF"/>
+<stop offset="1" stop-color="#DDF2E6"/>
+</linearGradient>
+<radialGradient id="fgSheenL" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+</radialGradient>
+<clipPath id="fgBodyClipL"><path d="M440 350h144a68 68 0 0 1 68 68v154a68 68 0 0 1-68 68H440a68 68 0 0 1-68-68V418a68 68 0 0 1 68-68Z"/></clipPath>
+</defs>
+<path d="M417 410V330a95 95 0 0 1 190 0v80" fill="none" stroke="url(#fgShackleGradL)" stroke-width="44"/>
+<path fill="url(#fgBodyGradL)" stroke="#7FB894" stroke-opacity="0.55" stroke-width="4" d="M440 350h144a68 68 0 0 1 68 68v154a68 68 0 0 1-68 68H440a68 68 0 0 1-68-68V418a68 68 0 0 1 68-68Z"/>
+<ellipse cx="512" cy="390" rx="190" ry="95" fill="url(#fgSheenL)" clip-path="url(#fgBodyClipL)"/>
+<path fill="#0C3B21" d="M542.6 495.7A40 40 0 1 0 481.4 495.7L488 562a24 24 0 0 0 48 0Z"/>
+</svg>

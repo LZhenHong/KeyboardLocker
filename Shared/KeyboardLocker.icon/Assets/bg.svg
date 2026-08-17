@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="bgGrad" x1="0" y1="0" x2="0.55" y2="1">
+<stop offset="0" stop-color="#63D795"/>
+<stop offset="0.5" stop-color="#35A862"/>
+<stop offset="1" stop-color="#0F5C33"/>
+</linearGradient>
+<linearGradient id="bgSweep" gradientUnits="userSpaceOnUse" x1="180" y1="60" x2="840" y2="980">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+<stop offset="0.38" stop-color="#FFFFFF" stop-opacity="0"/>
+<stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.14"/>
+<stop offset="0.62" stop-color="#FFFFFF" stop-opacity="0"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+</linearGradient>
+<radialGradient id="bgGlow" cx="0.45" cy="0.2" r="0.75">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.24"/>
+<stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.05"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="bgRim" cx="0.15" cy="0.95" r="0.7">
+<stop offset="0" stop-color="#7FD9A4" stop-opacity="0.20"/>
+<stop offset="1" stop-color="#7FD9A4" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="bgShade" x1="0" y1="0.6" x2="0" y2="1">
+<stop offset="0" stop-color="#0A2E1B" stop-opacity="0"/>
+<stop offset="1" stop-color="#0A2E1B" stop-opacity="0.30"/>
+</linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#bgGrad)"/>
+<rect width="1024" height="1024" fill="url(#bgGlow)"/>
+<rect width="1024" height="1024" fill="url(#bgSweep)"/>
+<rect width="1024" height="1024" fill="url(#bgRim)"/>
+<rect width="1024" height="1024" fill="url(#bgShade)"/>
+</svg>

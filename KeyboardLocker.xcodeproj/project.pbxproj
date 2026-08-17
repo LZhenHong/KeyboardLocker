@@ -206,6 +206,11 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		E10000000000000000000001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		A10000000000000000000002 /* KeyboardLockerModelTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = KeyboardLockerModelTests;
@@ -315,6 +320,7 @@
 			children = (
 				F21304362ECDADC900735580 /* Core */,
 				F213042A2ECDAD3500735580 /* KeyboardLocker */,
+				E10000000000000000000001 /* Shared */,
 				D40000000000000000000002 /* KeyboardLockerFocusIntents */,
 				B20000000000000000000002 /* KeyboardLockerWidgets */,
 				F213049C2ECDC1AA00735580 /* KeyboardLockerAgent */,
@@ -439,6 +445,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F213042A2ECDAD3500735580 /* KeyboardLocker */,
+				E10000000000000000000001 /* Shared */,
 			);
 			name = KeyboardLocker;
 			packageProductDependencies = (
@@ -463,6 +470,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F213049C2ECDC1AA00735580 /* KeyboardLockerAgent */,
+				E10000000000000000000001 /* Shared */,
 			);
 			name = KeyboardLockerAgent;
 			packageProductDependencies = (
@@ -937,7 +945,7 @@
 		F21304342ECDAD3600735580 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = KeyboardLocker;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -969,7 +977,7 @@
 		F21304352ECDAD3600735580 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = KeyboardLocker;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -1002,7 +1010,7 @@
 		F21304A62ECDC1AB00735580 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = KeyboardLocker;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1040,7 +1048,7 @@
 		F21304A72ECDC1AB00735580 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = KeyboardLocker;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;

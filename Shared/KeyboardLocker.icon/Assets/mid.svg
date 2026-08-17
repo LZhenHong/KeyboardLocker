@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="midSlabL" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#1E7A45"/>
+<stop offset="1" stop-color="#0C4023"/>
+</linearGradient>
+<linearGradient id="midKeyTop" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#EAF8F0"/>
+<stop offset="1" stop-color="#BFE4CD"/>
+</linearGradient>
+<linearGradient id="midSlabSheen" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.10"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+</linearGradient>
+</defs>
+<rect x="152" y="430" width="720" height="406" rx="64" fill="url(#midSlabL)" stroke="#A8E0C0" stroke-opacity="0.35" stroke-width="3"/>
+<rect x="168" y="442" width="688" height="130" rx="48" fill="url(#midSlabSheen)"/>
+<g>
+<rect x="208" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="208" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="312" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="312" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="416" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="416" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="520" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="520" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="624" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="624" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="728" y="470" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="728" y="470" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="208" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="208" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="312" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="312" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="416" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="416" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="520" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="520" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="624" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="624" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="728" y="550" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="728" y="550" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="208" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="208" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="312" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="312" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="416" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="416" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="520" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="520" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="624" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="624" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="728" y="630" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="728" y="630" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="208" y="710" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="208" y="710" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="312" y="710" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="312" y="710" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="624" y="710" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="624" y="710" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="728" y="710" width="88" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="728" y="710" width="88" height="57" rx="13" fill="url(#midKeyTop)"/>
+<rect x="416" y="710" width="192" height="64" rx="16" fill="#8FC7A5"/>
+<rect x="416" y="710" width="192" height="57" rx="13" fill="url(#midKeyTop)"/>
+</g>
+</svg>

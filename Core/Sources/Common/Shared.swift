@@ -149,4 +149,12 @@ public protocol KeyboardLockerServiceProtocol {
 
   /// Returns the Agent's current settings and reports serialization failures explicitly.
   func currentSettingsWithError(reply: @escaping (Data?, Error?) -> Void)
+
+  /// Validates and persists JSON-encoded `KeyboardLockerSettings`, replying with the values the
+  /// Agent actually stored so callers never assume their own payload became authoritative.
+  ///
+  /// A running lock deliberately keeps its active settings, unlock gesture, start time, and
+  /// auto-unlock deadline: re-applying settings mid-lock would restart the fail-safe window, and
+  /// disabling auto-unlock would cancel it outright. New values seed the next lock instead.
+  func applySettings(_ data: Data, reply: @escaping (Data?, Error?) -> Void)
 }

@@ -18,6 +18,14 @@ protocol LockEngineServing {
 
 extension LockEngine: LockEngineServing {}
 
+/// The settings persistence surface `AgentService` writes through. Seamed so `ServiceTests` can
+/// assert what actually reached storage instead of driving `UserDefaults.standard`.
+protocol SettingsPersisting {
+  func save(_ settings: KeyboardLockerSettings) throws
+}
+
+extension KeyboardLockerSettingsStore: SettingsPersisting {}
+
 /// XPC service implementation. Owns the settings source of truth and drives the single
 /// global `LockEngine`. All wrappers reach the lock exclusively through this object.
 ///
@@ -27,7 +35,8 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
   private static let replacementPreparationDuration: TimeInterval = 30
 
   @MainActor private let descriptorResult: Result<ServiceDescriptor, Error>
-  @MainActor private let settings: KeyboardLockerSettings
+  @MainActor private var settings: KeyboardLockerSettings
+  @MainActor private let settingsStore: any SettingsPersisting
   @MainActor private let engine: any LockEngineServing
   @MainActor private var lockStatusNotifier: LockStatusNotifier?
   @MainActor private let expirationScheduler: MainActorTimerScheduler
@@ -38,11 +47,13 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
   init(
     descriptorResult: Result<ServiceDescriptor, Error>,
     settings: KeyboardLockerSettings,
+    settingsStore: any SettingsPersisting,
     engine: any LockEngineServing,
     expirationScheduler: @escaping MainActorTimerScheduler
   ) {
     self.descriptorResult = descriptorResult
     self.settings = settings
+    self.settingsStore = settingsStore
     self.engine = engine
     self.expirationScheduler = expirationScheduler
     super.init()
@@ -62,9 +73,11 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
       notifier?.lockStateDidChange()
     }
 
+    let settingsStore = KeyboardLockerSettingsStore()
     self.init(
       descriptorResult: Result { try Self.makeServiceDescriptor() },
-      settings: KeyboardLockerSettingsStore().load(),
+      settings: settingsStore.load(),
+      settingsStore: settingsStore,
       engine: engine,
       expirationScheduler: liveMainActorTimerScheduler
     )
@@ -362,6 +375,46 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
       do {
         let data = try self.settings.encodedForXPC()
         reply(data, nil)
+      } catch {
+        reply(nil, error)
+      }
+    }
+  }
+
+  /// Validates, persists, and adopts new settings, replying with the stored values.
+  ///
+  /// A running lock keeps its active configuration on purpose. `LockEngine.updateSettings` re-arms
+  /// the auto-unlock timer from the moment it is called — and cancels it outright for a `.disabled`
+  /// policy — so applying settings mid-lock could extend or entirely remove the fail-safe that
+  /// recovers a locked keyboard. New values seed the next lock instead.
+  public func applySettings(
+    _ data: Data,
+    reply: @escaping (Data?, Error?) -> Void
+  ) {
+    let transferredReply = TransferredXPCReply(reply)
+    let candidate: KeyboardLockerSettings
+    do {
+      candidate = try KeyboardLockerSettings.decodedFromXPC(data)
+    } catch {
+      transferredReply.body(nil, error)
+      return
+    }
+
+    executeOnMainActor(reply: transferredReply) { reply in
+      do {
+        // Validate before touching storage so a rejected payload leaves no partial state.
+        let validated = try candidate.validated()
+        // A pending replacement refuses configuration changes for the same reason it refuses new
+        // locks: the agent is about to be torn down and must not adopt state it cannot honor.
+        try self.ensureAcceptingLockRequests()
+        let encoded = try validated.encodedForXPC()
+
+        try self.settingsStore.save(validated)
+        self.settings = validated
+        if !self.engine.isLocked {
+          self.engine.updateSettings(validated)
+        }
+        reply(encoded, nil)
       } catch {
         reply(nil, error)
       }

@@ -380,6 +380,50 @@ public final class XPCClient: @unchecked Sendable {
     return try KeyboardLockerSettings.decodedFromXPC(data)
   }
 
+  /// Validates and persists settings in the Agent, returning the values it actually stored.
+  ///
+  /// The reply — not the request — is authoritative: the Agent normalizes values, so adopting the
+  /// locally sent payload would show the user a configuration that is not what is stored.
+  ///
+  /// A running lock keeps its active configuration; the new values seed the next lock.
+  public func applySettings(
+    _ settings: KeyboardLockerSettings
+  ) async throws -> KeyboardLockerSettings {
+    let connection = try await negotiatedConnection(
+      requiring: [.applySettings]
+    )
+    let payload = try settings.encodedForXPC()
+
+    do {
+      let data: Data? = try await withProxyReturning(
+        using: connection,
+        proxyErrorDisposition: .lostReply
+      ) { service, resume in
+        service.applySettings(payload) { resume($0, $1) }
+      }
+      return try KeyboardLockerSettings.decodedFromXPC(data)
+    } catch XPCClientError.timedOut, is LostReplyError {
+      // The write is idempotent, but re-sending it would hide whether the first attempt landed.
+      // Read the authoritative value instead: matching the request proves the write took effect.
+      return try await confirmAmbiguousSettingsWrite(expecting: settings)
+    }
+  }
+
+  /// Recovers a lost `applySettings` reply by comparing the Agent's stored settings with the
+  /// request. Validation normalizes values, so the comparison uses the same normalization rather
+  /// than requiring byte equality with the raw request.
+  private func confirmAmbiguousSettingsWrite(
+    expecting settings: KeyboardLockerSettings
+  ) async throws -> KeyboardLockerSettings {
+    guard let expected = try? settings.validated(),
+          let stored = try? await currentSettings(),
+          stored == expected
+    else {
+      throw XPCClientError.operationOutcomeUnknown
+    }
+    return stored
+  }
+
   // MARK: - Connection Management
 
   /// Invalidates the cached connection so a subsequent call resolves the currently registered
@@ -583,9 +627,12 @@ public final class XPCClient: @unchecked Sendable {
 /// floor prevents an inconsistent descriptor from granting a selector before its wire shape was
 /// introduced, even if it advertises the capability string.
 enum XPCFeatureNegotiation {
-  private static let minimumMinorByCapability: [ServiceCapability: Int] = [
+  /// Visible to `ClientTests` so the introduction-minor guard can assert against this table
+  /// directly instead of maintaining a second copy that would silently drift out of date.
+  static let minimumMinorByCapability: [ServiceCapability: Int] = [
     .accessibilityPrompt: 0,
     .accessibilityStatus: 0,
+    .applySettings: 8,
     .committedReplacementDrain: 1,
     .currentSettings: 1,
     .currentSettingsWithError: 2,

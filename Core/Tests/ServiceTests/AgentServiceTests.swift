@@ -1,4 +1,5 @@
 import Common
+import CoreGraphics
 import Foundation
 @testable import Service
 import Testing
@@ -10,11 +11,13 @@ final class AgentServiceTests {
   private let scheduler: ManualExpirationScheduler
   private let instanceID: UUID
   private let customSettings: KeyboardLockerSettings
+  private let settingsStore: FakeSettingsStore
 
   init() {
     engine = FakeLockEngine()
     scheduler = ManualExpirationScheduler()
     instanceID = UUID()
+    settingsStore = FakeSettingsStore()
     customSettings = KeyboardLockerSettings(
       autoUnlockPolicy: .disabled,
       unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 4, modifierFlags: .maskShift)
@@ -422,7 +425,173 @@ final class AgentServiceTests {
     #expect(engine.unlockCallCount == 0)
   }
 
+  // MARK: - Settings writes
+
+  @Test
+  func applySettingsPersistsAndSeedsTheEngineWhileUnlocked() throws {
+    let service = makeService()
+    let desired = makeValidSettings(autoUnlockPolicy: .timed(seconds: 90))
+
+    let applied = try applySettings(desired, on: service)
+
+    #expect(applied == desired)
+    #expect(settingsStore.saved == [desired])
+    // Unlocked, so the new values may seed the engine immediately for the next lock.
+    #expect(engine.seededSettings.last == desired)
+  }
+
+  /// Regression gate for the lock-out path: `LockEngine.updateSettings` re-arms the auto-unlock
+  /// timer from the moment it is called, and cancels it entirely for `.disabled`. Applying settings
+  /// during an active lock must therefore never reach the engine.
+  @Test
+  func applySettingsWhileLockedPersistsWithoutTouchingTheRunningLock() throws {
+    let engine = FakeLockEngine(isLocked: true)
+    let service = makeService(engineOverride: engine)
+    let seededBeforeWrite = engine.seededSettings
+    let desired = makeValidSettings(autoUnlockPolicy: .disabled)
+
+    let applied = try applySettings(desired, on: service)
+
+    #expect(applied == desired)
+    #expect(settingsStore.saved == [desired])
+    // The running lock keeps its active settings, gesture, start time, and deadline.
+    #expect(engine.seededSettings == seededBeforeWrite)
+    #expect(engine.unlockCallCount == 0)
+    #expect(engine.lockCalls.isEmpty)
+    #expect(engine.isLocked)
+  }
+
+  @Test
+  func appliedSettingsBecomeTheValuesReportedAndUsedForTheNextLock() throws {
+    let service = makeService()
+    let desired = makeValidSettings(autoUnlockPolicy: .timed(seconds: 30))
+
+    _ = try applySettings(desired, on: service)
+
+    var reported: KeyboardLockerSettings?
+    service.currentSettingsWithError { data, _ in
+      reported = try? KeyboardLockerSettings.decodedFromXPC(data)
+    }
+    #expect(reported == desired)
+
+    service.lockKeyboard { _ in }
+    #expect(engine.lockCalls.last?.settings == desired)
+  }
+
+  @Test
+  func applySettingsNormalizesBeforeReplyingSoCallersAdoptTheStoredValues() throws {
+    let service = makeService()
+    let desired = makeValidSettings(autoUnlockPolicy: .timed(seconds: 59.6))
+
+    let applied = try applySettings(desired, on: service)
+
+    #expect(applied.autoUnlockPolicy == .timed(seconds: 60))
+    #expect(settingsStore.saved == [applied])
+  }
+
+  @Test
+  func applySettingsRejectsAnInvalidPayloadWithoutPersisting() {
+    let service = makeService()
+    let invalid = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 60),
+      unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 37, modifierFlags: [])
+    )
+
+    var error: Error?
+    var data: Data?
+    service.applySettings(try! invalid.encodedForXPC()) { replyData, replyError in
+      data = replyData
+      error = replyError
+    }
+
+    #expect(data == nil)
+    #expect(
+      error as? KeyboardLockerSettingsValidationError == .hotkeyMissingModifier
+    )
+    #expect(settingsStore.saved.isEmpty)
+  }
+
+  @Test
+  func applySettingsRejectsUndecodablePayloadWithoutPersisting() {
+    let service = makeService()
+
+    var error: Error?
+    service.applySettings(Data("not settings".utf8)) { _, replyError in
+      error = replyError
+    }
+
+    #expect(
+      error as? KeyboardLockerSettingsCodingError == .invalidPayload
+    )
+    #expect(settingsStore.saved.isEmpty)
+  }
+
+  @Test
+  func applySettingsKeepsPreviousValuesWhenPersistenceFails() throws {
+    let service = makeService()
+    settingsStore.saveError = StubError.descriptorUnavailable
+
+    var error: Error?
+    service.applySettings(
+      try makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
+    ) { _, replyError in
+      error = replyError
+    }
+
+    #expect(error as? StubError == .descriptorUnavailable)
+    #expect(settingsStore.saved.isEmpty)
+
+    // A failed write must not become the in-memory source of truth.
+    var reported: KeyboardLockerSettings?
+    service.currentSettingsWithError { data, _ in
+      reported = try? KeyboardLockerSettings.decodedFromXPC(data)
+    }
+    #expect(reported == customSettings)
+  }
+
+  @Test
+  func preparedDrainRejectsSettingsWrites() throws {
+    let service = makeService()
+    prepareTicket(on: service, instanceID: instanceID)
+
+    var error: Error?
+    service.applySettings(
+      try makeValidSettings(autoUnlockPolicy: .timed(seconds: 30)).encodedForXPC()
+    ) { _, replyError in
+      error = replyError
+    }
+
+    assertReplacementError(error, code: 1)
+    #expect(settingsStore.saved.isEmpty)
+  }
+
   // MARK: - Fixtures
+
+  private func makeValidSettings(
+    autoUnlockPolicy: KeyboardLockerSettings.AutoUnlockPolicy
+  ) -> KeyboardLockerSettings {
+    KeyboardLockerSettings(
+      autoUnlockPolicy: autoUnlockPolicy,
+      unlockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: CGKeyCode(SharedConstants.defaultUnlockKeyCode),
+        modifierFlags: [.maskControl, .maskAlternate]
+      )
+    )
+  }
+
+  private func applySettings(
+    _ settings: KeyboardLockerSettings,
+    on service: AgentService
+  ) throws -> KeyboardLockerSettings {
+    var data: Data?
+    var error: Error?
+    service.applySettings(try settings.encodedForXPC()) { replyData, replyError in
+      data = replyData
+      error = replyError
+    }
+    #expect(error == nil)
+    return try KeyboardLockerSettings.decodedFromXPC(data)
+  }
 
   private func makeService(
     descriptorResult: Result<ServiceDescriptor, Error>? = nil,
@@ -431,6 +600,7 @@ final class AgentServiceTests {
     AgentService(
       descriptorResult: descriptorResult ?? .success(makeDescriptor(instanceID: instanceID)),
       settings: customSettings,
+      settingsStore: settingsStore,
       engine: engineOverride ?? engine,
       expirationScheduler: scheduler.scheduler
     )
@@ -567,6 +737,23 @@ private final class FakeLockEngine: LockEngineServing {
 
   func updateSettings(_ settings: KeyboardLockerSettings) {
     seededSettings.append(settings)
+  }
+}
+
+@MainActor
+private final class FakeSettingsStore: SettingsPersisting {
+  var saveError: Error?
+  private(set) var saved: [KeyboardLockerSettings] = []
+
+  nonisolated init() {}
+
+  nonisolated func save(_ settings: KeyboardLockerSettings) throws {
+    try MainActor.assumeIsolated {
+      if let saveError {
+        throw saveError
+      }
+      saved.append(settings)
+    }
   }
 }
 

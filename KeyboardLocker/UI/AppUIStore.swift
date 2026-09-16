@@ -126,6 +126,15 @@ final class AppUIStore: ObservableObject {
     }
   }
 
+  /// Whether the timed quick-lock actions belong in the current state: only a healthy unlocked
+  /// agent can honor the override, and while locked it could not touch the running lock anyway.
+  var canPerformTimedLock: Bool {
+    guard !isBusy, case .ready(isLocked: false) = snapshot.state else {
+      return false
+    }
+    return true
+  }
+
   /// Whether the first-run safety check button belongs in the current state.
   var canRunSafetyCheck: Bool {
     guard !isBusy, snapshot.safetyCheckState != .running else {
@@ -153,6 +162,10 @@ final class AppUIStore: ObservableObject {
 
   func requestAccessibilityPermission() {
     coordinator.requestAccessibilityPermission()
+  }
+
+  func performTimedLock(seconds: TimeInterval) {
+    coordinator.performTimedLock(seconds: seconds)
   }
 
   func startSafetyCheck() {

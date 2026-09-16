@@ -129,6 +129,15 @@ klock lock
 klock lock --no-wait
 ```
 
+单次定时锁用 `--for` 覆写本轮锁的 auto-unlock——秒或分钟(`90`、`45s`、`10m`),5–3600 秒由 Agent 的共享设置护栏强制并取整;override 只作用于本次创建的锁,从不回写保存的设置：
+
+```bash
+klock lock --for 10m
+klock lock --for 90 --no-wait
+```
+
+已锁时命令报告 `Already locked` 并明确 override 未作用于既有锁；与默认等待模式组合时,`Ctrl+C` 仍只在本命令真正创建锁的那一轮启用。
+
 其他命令：
 
 ```bash

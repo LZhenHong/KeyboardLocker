@@ -92,6 +92,47 @@ struct AppCoordinatorTests {
 
   @Test
   @MainActor
+  func timedLockLocksThroughClientWithTheOneOffOverrideThenReconciles() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+    var activities: [AppCoordinator.Activity?] = []
+    coordinator.onSnapshotChange = { activities.append($0.activity) }
+
+    coordinator.performTimedLock(seconds: 600)
+    try await waitUntil {
+      coordinator.state == .ready(isLocked: true) && coordinator.activity == nil
+    }
+
+    #expect(client.beginTimedLockCalls == [600])
+    #expect(client.lockCallCount == 0)
+    #expect(activities.contains(.locking))
+  }
+
+  @Test
+  @MainActor
+  func timedLockIsNotOfferedWhileLocked() async throws {
+    let client = FakeAgentClient(isLocked: true, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: true)
+    )
+
+    // A running lock never adopts an override, so the guard swallows the action synchronously.
+    coordinator.performTimedLock(seconds: 600)
+
+    #expect(client.beginTimedLockCalls.isEmpty)
+    #expect(coordinator.activity == nil)
+  }
+
+  @Test
+  @MainActor
   func observedAuthoritativeStateUpdatesReadySnapshotWithoutDuplicatePublication() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let lifecycle = FakeAgentLifecycle()
@@ -358,6 +399,7 @@ private enum AppCoordinatorTestError: Error {
 @MainActor
 private final class FakeAgentClient: AgentClientServing {
   private(set) var beginSafetyCheckCallCount = 0
+  private(set) var beginTimedLockCalls: [TimeInterval] = []
   private(set) var lockCallCount = 0
   private(set) var unlockCallCount = 0
   private(set) var waitUntilUnlockedCallCount = 0
@@ -365,6 +407,7 @@ private final class FakeAgentClient: AgentClientServing {
   var accessibilityPermissionGranted: Bool
   var isLocked: Bool
   var safetyCheckOutcome: LockRequestOutcome = .acquired
+  var timedLockOutcome: LockRequestOutcome = .acquired
   var storedSettings: KeyboardLockerSettings = .default
   var currentSettingsError: Error?
   var applySettingsError: Error?
@@ -402,6 +445,14 @@ private final class FakeAgentClient: AgentClientServing {
       isLocked = true
     }
     return safetyCheckOutcome
+  }
+
+  func beginTimedLock(seconds: TimeInterval) async throws -> LockRequestOutcome {
+    beginTimedLockCalls.append(seconds)
+    if timedLockOutcome == .acquired {
+      isLocked = true
+    }
+    return timedLockOutcome
   }
 
   func unlock() async throws {

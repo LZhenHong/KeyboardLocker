@@ -161,6 +161,31 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
     }
   }
 
+  public func beginTimedLock(
+    seconds: Double,
+    interactively: Bool,
+    reply: @escaping (Bool, Error?) -> Void
+  ) {
+    executeOnMainActor(reply: reply) { reply in
+      do {
+        try self.ensureAcceptingLockRequests()
+        var timedSettings = self.settings
+        timedSettings.autoUnlockPolicy = .timed(seconds: seconds)
+        // A wrapper-provided duration goes through the shared guardrail — finite, rounded, and
+        // within the auto-unlock range — so no entry point can give the lock a fail-safe window
+        // the system cannot reason about. The override is never written to the store.
+        let validatedSettings = try timedSettings.validated()
+        let outcome = try self.engine.lock(
+          settings: validatedSettings,
+          allowsControlCUnlock: interactively
+        )
+        reply(outcome == .acquired, nil)
+      } catch {
+        reply(false, error)
+      }
+    }
+  }
+
   public func setFocusFilterLockEnabled(
     _ enabled: Bool,
     reply: @escaping (Error?) -> Void

@@ -176,6 +176,33 @@ public final class XPCClient: @unchecked Sendable {
     }
   }
 
+  /// Atomically creates a lock whose auto-unlock is overridden for that one lock generation.
+  ///
+  /// The persisted settings are never modified. The reply describes whether this request created
+  /// the lock — an existing lock never adopts the override. A lost reply stays explicitly unknown
+  /// for the same reason as `lockInteractively`: status alone cannot distinguish this request
+  /// from a concurrent wrapper's acquisition.
+  public func beginTimedLock(
+    seconds: TimeInterval,
+    interactively: Bool
+  ) async throws -> LockRequestOutcome {
+    let connection = try await negotiatedConnection(
+      requiring: [.timedLock]
+    )
+
+    do {
+      let didAcquireLock: Bool = try await withProxyReturning(
+        using: connection,
+        proxyErrorDisposition: .lostReply
+      ) { service, resume in
+        service.beginTimedLock(seconds: seconds, interactively: interactively) { resume($0, $1) }
+      }
+      return didAcquireLock ? .acquired : .alreadyLocked
+    } catch XPCClientError.timedOut, is LostReplyError {
+      throw XPCClientError.operationOutcomeUnknown
+    }
+  }
+
   /// Applies the system Focus Filter state through an ownership-aware Agent operation.
   public func setFocusFilterLockEnabled(_ enabled: Bool) async throws {
     // Both enable and disable are idempotent, but status alone cannot reveal whether Focus owns
@@ -643,6 +670,7 @@ enum XPCFeatureNegotiation {
     .lockToggle: 6,
     .prepareForReplacement: 0,
     .safetyCheckLock: 7,
+    .timedLock: 9,
   ]
 
   static func validate(

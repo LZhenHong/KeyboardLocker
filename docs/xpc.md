@@ -538,6 +538,7 @@ sequenceDiagram
 | `serviceDescriptor` | `serviceDescriptor()` | `AgentService` | bootstrap query；返回 protocol、capability、bundled metadata 和 process instance ID |
 | `lockKeyboard` | `lock()` | `LockEngine` | 对物理状态幂等地进入全局 locked；已锁时不修改设置、锁定起点或 auto-unlock deadline,但会接管当前 Focus-owned generation 的持久性 |
 | `lockKeyboardInteractively` | `lockInteractively()` | `LockEngine` | 原子返回本次请求是否创建全局锁；仅 acquired 的新锁临时接受 `Ctrl+C` 作为额外解锁手势 |
+| `beginTimedLock` | `beginTimedLock(seconds:interactively:)` | `AgentService` / `LockEngine` | capability-gated(1.9)；单次锁覆写 auto-unlock 时长:沿用持久化设置的其余项,经 `validated()` 护栏强制(有限、取整、5–3600 秒),不回写 store;已锁时原子返回 alreadyLocked 且 override 不作用于既有锁;`interactively` 仅在 acquired 时启用 `Ctrl+C` |
 | `setFocusFilterLockEnabled` | `setFocusFilterLockEnabled(_:)` | `LockEngine` | capability-gated desired state；启用只认领自己新建的 lock generation,停用只条件性释放仍属 Focus 的同一代 |
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |

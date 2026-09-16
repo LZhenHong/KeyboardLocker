@@ -21,8 +21,14 @@ struct KlockCommandLineTests {
       (["--version"], .version),
       (["-v"], .version),
       (["version"], .version),
-      (["lock"], .lock(wait: true)),
-      (["lock", "--no-wait"], .lock(wait: false)),
+      (["lock"], .lock(wait: true, autoUnlockSeconds: nil)),
+      (["lock", "--no-wait"], .lock(wait: false, autoUnlockSeconds: nil)),
+      (["lock", "--for", "600"], .lock(wait: true, autoUnlockSeconds: 600)),
+      (["lock", "--for", "10m"], .lock(wait: true, autoUnlockSeconds: 600)),
+      (["lock", "--for", "45s"], .lock(wait: true, autoUnlockSeconds: 45)),
+      (["lock", "--for", "1.5m"], .lock(wait: true, autoUnlockSeconds: 90)),
+      (["lock", "--no-wait", "--for", "90"], .lock(wait: false, autoUnlockSeconds: 90)),
+      (["lock", "--for", "90", "--no-wait"], .lock(wait: false, autoUnlockSeconds: 90)),
       (["unlock"], .unlock),
       (["toggle"], .toggle),
       (["register-agent"], .registerAgent),
@@ -56,7 +62,15 @@ struct KlockCommandLineTests {
   func parseRejectsUnexpectedArguments() {
     let cases: [(arguments: [String], expected: KlockCommandLineError)] = [
       (["lock", "extra"], .unexpectedArguments(["extra"])),
-      (["lock", "--no-wait", "extra"], .unexpectedArguments(["--no-wait", "extra"])),
+      (["lock", "--no-wait", "extra"], .unexpectedArguments(["extra"])),
+      (["lock", "--no-wait", "--no-wait"], .unexpectedArguments(["--no-wait"])),
+      (["lock", "--for", "10", "--for", "20"], .unexpectedArguments(["--for"])),
+      (["lock", "--for"], .missingDurationValue),
+      (["lock", "--for", "later"], .invalidDuration("later")),
+      (["lock", "--for", "10h"], .invalidDuration("10h")),
+      (["lock", "--for", "0"], .invalidDuration("0")),
+      (["lock", "--for", "-5"], .invalidDuration("-5")),
+      (["lock", "--for", "nan"], .invalidDuration("nan")),
       (["status", "--xml"], .unexpectedArguments(["--xml"])),
       (["status", "--json", "--snapshot"], .unexpectedArguments(["--json", "--snapshot"])),
       (["unlock", "now"], .unexpectedArguments(["now"])),
@@ -124,6 +138,94 @@ struct KlockCommandLineTests {
       "Unlocked.",
     ])
     #expect(result.stderr == ["Warning: Could not read the configured unlock shortcut: settings unavailable"])
+  }
+
+  // MARK: - Timed lock
+
+  @Test
+  func interactiveTimedLockAppliesOverrideAndKeepsCtrlC() async {
+    let client = FakeKlockClient()
+    let hotkey = KeyboardLockerSettings.testFixture.unlockHotkey.displayString
+
+    let result = await runKlock(arguments: ["lock", "--for", "10m"], client: client)
+
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Locked for 10 minutes. Press \(hotkey) or Ctrl+C to unlock.",
+      "Unlocked.",
+    ])
+    #expect(result.stderr == [])
+    #expect(client.beginTimedLockCalls.count == 1)
+    #expect(client.beginTimedLockCalls.first?.seconds == 600)
+    #expect(client.beginTimedLockCalls.first?.interactively == true)
+    #expect(client.lockInteractivelyCalls == 0)
+    #expect(client.waitUntilUnlockedCalls == 1)
+  }
+
+  @Test
+  func nonInteractiveTimedLockConfirmsWithoutWaitingOrCtrlC() async {
+    let client = FakeKlockClient()
+
+    let result = await runKlock(arguments: ["lock", "--for", "90", "--no-wait"], client: client)
+
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == ["Locked for 90 seconds."])
+    #expect(result.stderr == [])
+    #expect(client.beginTimedLockCalls.count == 1)
+    #expect(client.beginTimedLockCalls.first?.seconds == 90)
+    #expect(client.beginTimedLockCalls.first?.interactively == false)
+    #expect(client.lockCalls == 0)
+    #expect(client.waitUntilUnlockedCalls == 0)
+  }
+
+  @Test
+  func timedLockReportsAlreadyLockedWithoutApplyingTheOverride() async {
+    let client = FakeKlockClient()
+    client.beginTimedLockResult = .success(.alreadyLocked)
+
+    let result = await runKlock(arguments: ["lock", "--for", "10m"], client: client)
+
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == [
+      "Already locked. This command did not create a new lock, and the --for override was not applied.",
+    ])
+    #expect(result.stderr == [])
+    #expect(client.waitUntilUnlockedCalls == 0)
+  }
+
+  @Test
+  func timedLockFailureReportsErrorOnStandardError() async {
+    let client = FakeKlockClient()
+    client.beginTimedLockResult = .failure(
+      Self.makeError("The auto-unlock timeout must be between 5 and 3600 seconds.")
+    )
+
+    let result = await runKlock(arguments: ["lock", "--for", "7200"], client: client)
+
+    #expect(result.exitCode == 1)
+    #expect(result.stdout == [])
+    #expect(
+      result.stderr == ["Error: The auto-unlock timeout must be between 5 and 3600 seconds."]
+    )
+    #expect(client.waitUntilUnlockedCalls == 0)
+  }
+
+  @Test
+  func invalidDurationFailsBeforeTouchingTheAgent() async {
+    let client = FakeKlockClient()
+
+    let result = await runKlock(arguments: ["lock", "--for", "later"], client: client)
+
+    #expect(result.exitCode == 1)
+    #expect(
+      result.stderr == [
+        "Error: Invalid --for duration: later. Use a positive number of seconds or minutes, e.g. 90 or 10m.",
+      ]
+    )
+    #expect(result.stdout.first?.hasPrefix("OVERVIEW:") == true)
+    #expect(client.beginTimedLockCalls.isEmpty)
+    #expect(client.lockInteractivelyCalls == 0)
+    #expect(client.lockCalls == 0)
   }
 
   @Test
@@ -727,6 +829,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
     )
   )
   var waitUntilUnlockedResult: Result<Void, Error> = .success(())
+  var beginTimedLockResult: Result<LockRequestOutcome, Error> = .success(.acquired)
   var hasAccessibilityPermissionResult: Result<Bool, Error> = .success(false)
   /// Same scripting seam as `statusResults`: drives the request-access pre-check and polls.
   var hasAccessibilityPermissionResults: [Result<Bool, Error>]?
@@ -742,6 +845,7 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
   private(set) var statusCalls = 0
   private(set) var lockStatusSnapshotCalls = 0
   private(set) var waitUntilUnlockedCalls = 0
+  private(set) var beginTimedLockCalls: [(seconds: TimeInterval, interactively: Bool)] = []
   private(set) var hasAccessibilityPermissionCalls = 0
   private(set) var requestAccessibilityPermissionCalls = 0
 
@@ -791,6 +895,14 @@ private final class FakeKlockClient: KlockClientServing, @unchecked Sendable {
     waitUntilUnlockedCalls += 1
     onWaitUntilUnlocked?()
     try waitUntilUnlockedResult.get()
+  }
+
+  func beginTimedLock(
+    seconds: TimeInterval,
+    interactively: Bool
+  ) async throws -> LockRequestOutcome {
+    beginTimedLockCalls.append((seconds, interactively))
+    return try beginTimedLockResult.get()
   }
 
   func hasAccessibilityPermission() async throws -> Bool {

@@ -38,6 +38,37 @@ struct AppUIStoreTests {
     #expect(store.canEditSettings)
   }
 
+  // MARK: - Timed quick locks
+
+  @Test
+  func timedQuickLocksAreOfferedOnlyWhenReadyUnlockedAndIdle() {
+    let unlocked = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: false),
+        settingsState: .loaded(.default)
+      )
+    )
+    #expect(unlocked.canPerformTimedLock)
+
+    let locked = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: true),
+        lockSnapshot: makeLockSnapshot(isLocked: true, settings: .default),
+        settingsState: .loaded(.default)
+      )
+    )
+    #expect(!locked.canPerformTimedLock)
+
+    let busy = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: false),
+        activity: .locking,
+        settingsState: .loaded(.default)
+      )
+    )
+    #expect(!busy.canPerformTimedLock)
+  }
+
   @Test
   func settingsAreNotEditableWhileAnActionIsInFlight() {
     let store = makeStore(
@@ -297,6 +328,10 @@ private struct UnusedAgentClient: AgentClientServing {
   }
 
   func beginSafetyCheck() async throws -> LockRequestOutcome {
+    unexpected()
+  }
+
+  func beginTimedLock(seconds _: TimeInterval) async throws -> LockRequestOutcome {
     unexpected()
   }
 

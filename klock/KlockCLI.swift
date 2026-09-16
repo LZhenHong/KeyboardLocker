@@ -6,6 +6,11 @@ import Foundation
 protocol KlockClientServing: Sendable {
   func currentSettings() async throws -> KeyboardLockerSettings
   func lockInteractively() async throws -> LockRequestOutcome
+  /// One-off auto-unlock override for a single lock generation; never writes settings.
+  func beginTimedLock(
+    seconds: TimeInterval,
+    interactively: Bool
+  ) async throws -> LockRequestOutcome
   func lock() async throws
   func unlock() async throws
   func toggle() async throws -> Bool
@@ -62,6 +67,17 @@ enum KlockCLI {
       )
       printUsage(to: printOut)
       return ExitCode.error
+    } catch let KlockCommandLineError.invalidDuration(raw) {
+      reportError(
+        "Invalid --for duration: \(raw). Use a positive number of seconds or minutes, e.g. 90 or 10m.",
+        printError: printError
+      )
+      printUsage(to: printOut)
+      return ExitCode.error
+    } catch KlockCommandLineError.missingDurationValue {
+      reportError("Missing duration after --for.", printError: printError)
+      printUsage(to: printOut)
+      return ExitCode.error
     } catch {
       // KlockCommandLineParser only throws KlockCommandLineError.
       return ExitCode.error
@@ -75,16 +91,22 @@ enum KlockCLI {
     case .version:
       return printVersion(printOut: printOut, printError: printError)
 
-    case let .lock(wait):
+    case let .lock(wait, autoUnlockSeconds):
       if wait {
         return await executeInteractiveLock(
           client: client,
+          autoUnlockSeconds: autoUnlockSeconds,
           terminationGuard: terminationGuard,
           printOut: printOut,
           printError: printError
         )
       }
-      return await executeNonInteractiveLock(client: client, printOut: printOut, printError: printError)
+      return await executeNonInteractiveLock(
+        client: client,
+        autoUnlockSeconds: autoUnlockSeconds,
+        printOut: printOut,
+        printError: printError
+      )
 
     case .unlock:
       return await executeUnlock(client: client, printOut: printOut, printError: printError)
@@ -118,6 +140,7 @@ enum KlockCLI {
 
   private static func executeInteractiveLock(
     client: any KlockClientServing,
+    autoUnlockSeconds: TimeInterval?,
     terminationGuard: any KlockTerminationGuarding,
     printOut: (String) -> Void,
     printError: @escaping (String) -> Void
@@ -148,7 +171,11 @@ enum KlockCLI {
 
     let outcome: LockRequestOutcome
     do {
-      outcome = try await client.lockInteractively()
+      if let autoUnlockSeconds {
+        outcome = try await client.beginTimedLock(seconds: autoUnlockSeconds, interactively: true)
+      } else {
+        outcome = try await client.lockInteractively()
+      }
     } catch {
       if let terminationExitCode = terminationCoordinator.resolveWithoutAcquisition() {
         return terminationExitCode
@@ -161,19 +188,29 @@ enum KlockCLI {
       if let terminationExitCode = terminationCoordinator.resolveWithoutAcquisition() {
         return terminationExitCode
       }
-      printOut("Already locked. This command did not create a new lock.")
+      if autoUnlockSeconds != nil {
+        // The global lock already exists and never adopts an override mid-lock.
+        printOut(
+          "Already locked. This command did not create a new lock, and the --for override was not applied."
+        )
+      } else {
+        printOut("Already locked. This command did not create a new lock.")
+      }
       return ExitCode.success
     }
     if let terminationExitCode = await terminationCoordinator.resolveAcquired() {
       return terminationExitCode
     }
 
+    let durationClause = autoUnlockSeconds.map { " for \(formatLockDuration($0))" } ?? ""
     switch unlockHotkey {
     case let .success(hotkey):
-      printOut("Locked. Press \(hotkey) or Ctrl+C to unlock.")
+      printOut("Locked\(durationClause). Press \(hotkey) or Ctrl+C to unlock.")
 
     case let .failure(error):
-      printOut("Locked. Press Ctrl+C to unlock, or run `klock unlock` from another Terminal.")
+      printOut(
+        "Locked\(durationClause). Press Ctrl+C to unlock, or run `klock unlock` from another Terminal."
+      )
       reportWarning(
         "Could not read the configured unlock shortcut: \(error.localizedDescription)",
         printError: printError
@@ -220,9 +257,29 @@ enum KlockCLI {
 
   private static func executeNonInteractiveLock(
     client: any KlockClientServing,
+    autoUnlockSeconds: TimeInterval?,
     printOut: (String) -> Void,
     printError: (String) -> Void
   ) async -> Int32 {
+    if let autoUnlockSeconds {
+      do {
+        // The one-shot desired-state contract still holds: an existing lock is reported, never
+        // mutated into adopting the override.
+        switch try await client.beginTimedLock(seconds: autoUnlockSeconds, interactively: false) {
+        case .acquired:
+          printOut("Locked for \(formatLockDuration(autoUnlockSeconds)).")
+        case .alreadyLocked:
+          printOut(
+            "Already locked. This command did not create a new lock, and the --for override was not applied."
+          )
+        }
+        return ExitCode.success
+      } catch {
+        reportFailure(error, printError: printError)
+        return ExitCode.error
+      }
+    }
+
     do {
       try await client.lock()
       printOut("Locked.")
@@ -409,7 +466,8 @@ enum KlockCLI {
       USAGE: klock <command> [options]
 
       COMMANDS:
-        lock [--no-wait]    Lock the keyboard; by default, wait until it is unlocked.
+        lock [--for DURATION] [--no-wait]
+                        Lock the keyboard; by default, wait until it is unlocked.
         unlock              Unlock the keyboard.
         toggle              Toggle the lock state and print the new state.
         status [--json]     Print the current lock state.
@@ -419,6 +477,8 @@ enum KlockCLI {
         version             Show the klock version.
 
       OPTIONS:
+        --for DURATION    Override auto-unlock for this one lock (e.g. 90, 45s, 10m);
+                          the saved settings are never changed.
         --no-wait          Return after lock is confirmed; do not enable Ctrl+C unlock.
         --json             Emit a stable JSON object for status automation.
         --snapshot         Emit the full lock snapshot as JSON.
@@ -426,6 +486,17 @@ enum KlockCLI {
         -v, --version      Show the klock version.
       """
     )
+  }
+
+  /// Renders a whole-second duration in the largest exact unit. The Agent rounds fractional
+  /// values through `validated()`, so the CLI presents them the same way.
+  private static func formatLockDuration(_ seconds: TimeInterval) -> String {
+    let wholeSeconds = Int(seconds.rounded())
+    if wholeSeconds % 60 == 0 {
+      let minutes = wholeSeconds / 60
+      return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    }
+    return wholeSeconds == 1 ? "1 second" : "\(wholeSeconds) seconds"
   }
 
   private enum ExitCode {

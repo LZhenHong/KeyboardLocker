@@ -131,6 +131,12 @@ struct ServiceCompatibilityTests {
   }
 
   @Test
+  func currentContractRequiresTimedLockSelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.timedLock))
+    #expect(ServiceContract.protocolVersion.minor >= 9)
+  }
+
+  @Test
   func agentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(

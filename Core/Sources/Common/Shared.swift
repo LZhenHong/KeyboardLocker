@@ -85,6 +85,17 @@ public protocol KeyboardLockerServiceProtocol {
     reply: @escaping (_ didStart: Bool, _ error: Error?) -> Void
   )
 
+  /// Atomically creates a lock whose auto-unlock is overridden to `seconds` for that one lock
+  /// generation. The override is validated against the shared settings guardrails and is never
+  /// written back to the persisted settings; an existing lock is left untouched and never adopts
+  /// the override, with `didAcquireLock` reporting false. `interactively` adds the Control-C
+  /// unlock gesture only when this call creates the lock, matching `lockKeyboardInteractively`.
+  func beginTimedLock(
+    seconds: Double,
+    interactively: Bool,
+    reply: @escaping (_ didAcquireLock: Bool, _ error: Error?) -> Void
+  )
+
   /// Applies the Focus Filter's desired state. Disabling releases only a lock generation that
   /// the Focus Filter itself created; it never unlocks a pre-existing or subsequently claimed
   /// global lock.

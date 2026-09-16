@@ -170,6 +170,16 @@ struct StatusPage: View {
       Spacer(minLength: 0)
 
       Menu {
+        // One-off quick locks: the saved auto-unlock policy is never changed by these, and a
+        // running lock cannot adopt an override, so they only exist while unlocked and ready.
+        if store.canPerformTimedLock {
+          ForEach(Self.timedLockPresets, id: \.self) { minutes in
+            Button("Lock for \(minutes) Minutes") {
+              store.performTimedLock(seconds: TimeInterval(minutes * 60))
+            }
+          }
+          Divider()
+        }
         Button("Settings…", action: openSettings)
           .disabled(store.isBusy)
         Button("Copy Diagnostics", action: actions.copyDiagnostics)
@@ -189,6 +199,9 @@ struct StatusPage: View {
   }
 
   // MARK: - Derived presentation
+
+  /// Quick-lock presets offered by the toolbar menu, in minutes.
+  private static let timedLockPresets = [5, 10, 30]
 
   private var displayedHotkey: KeyboardLockerSettings.Hotkey? {
     store.activeSettings?.unlockHotkey ?? store.editableSettings?.unlockHotkey

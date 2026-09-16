@@ -22,6 +22,14 @@ protocol AgentLockActionServing: Sendable {
   func toggle() async throws -> Bool
 }
 
+/// The one-off timed lock used by the popover's quick-lock actions. Kept narrow so the
+/// automation fakes above never have to stub a capability they cannot trigger.
+@MainActor
+protocol AgentTimedLockServing: Sendable {
+  /// Creates a lock with a one-off auto-unlock override; the persisted settings never change.
+  func beginTimedLock(seconds: TimeInterval) async throws -> LockRequestOutcome
+}
+
 @MainActor
 protocol AgentReadinessServing: Sendable {
   func serviceDescriptor() async throws -> ServiceDescriptor
@@ -81,19 +89,22 @@ protocol AgentClientServing:
   AgentLockActionServing,
   AgentReadinessServing,
   AgentReplacementServing,
-  AgentSettingsServing {}
+  AgentSettingsServing,
+  AgentTimedLockServing {}
 
 @MainActor
 struct LiveAgentClient: AgentClientServing {
   typealias Mutation = @Sendable () async throws -> Void
   typealias SafetyCheckMutation = @Sendable () async throws -> LockRequestOutcome
   typealias StatusQuery = @Sendable () async throws -> Bool
+  typealias TimedLockMutation = @Sendable (TimeInterval) async throws -> LockRequestOutcome
   typealias ToggleMutation = @Sendable () async throws -> Bool
 
   private let beginSafetyCheckMutation: SafetyCheckMutation
   private let lockMutation: Mutation
   private let statusQuery: StatusQuery
   private let surfaceInvalidator: LockStateSurfaceInvalidator
+  private let timedLockMutation: TimedLockMutation
   private let toggleMutation: ToggleMutation
   private let unlockMutation: Mutation
   private let waitUntilUnlockedOperation: Mutation
@@ -130,6 +141,9 @@ struct LiveAgentClient: AgentClientServing {
     beginSafetyCheck: @escaping SafetyCheckMutation = {
       try await XPCClient.shared.beginSafetyCheck()
     },
+    beginTimedLock: @escaping TimedLockMutation = { seconds in
+      try await XPCClient.shared.beginTimedLock(seconds: seconds, interactively: false)
+    },
     waitUntilUnlocked: @escaping Mutation = {
       try await XPCClient.shared.waitUntilUnlocked()
     },
@@ -139,6 +153,7 @@ struct LiveAgentClient: AgentClientServing {
     lockMutation = lock
     unlockMutation = unlock
     statusQuery = status
+    timedLockMutation = beginTimedLock
     toggleMutation = toggle
     waitUntilUnlockedOperation = waitUntilUnlocked
     self.surfaceInvalidator = surfaceInvalidator
@@ -155,6 +170,14 @@ struct LiveAgentClient: AgentClientServing {
 
   func beginSafetyCheck() async throws -> LockRequestOutcome {
     let outcome = try await beginSafetyCheckMutation()
+    if outcome == .acquired {
+      surfaceInvalidator.invalidate()
+    }
+    return outcome
+  }
+
+  func beginTimedLock(seconds: TimeInterval) async throws -> LockRequestOutcome {
+    let outcome = try await timedLockMutation(seconds)
     if outcome == .acquired {
       surfaceInvalidator.invalidate()
     }

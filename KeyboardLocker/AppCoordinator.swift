@@ -268,6 +268,40 @@ final class AppCoordinator {
     }
   }
 
+  /// Locks with a one-off auto-unlock override that never touches the persisted settings.
+  /// Only a healthy unlocked state offers this; a running lock never adopts an override mid-lock.
+  func performTimedLock(seconds: TimeInterval) {
+    guard case .ready(isLocked: false) = state,
+          activity == nil
+    else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .locking
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      var actionError: String?
+      do {
+        // Popover quick actions are non-interactive: the Ctrl+C gesture stays CLI-only.
+        _ = try await client.beginTimedLock(seconds: seconds)
+      } catch {
+        actionError = error.localizedDescription
+      }
+
+      activity = nil
+      startReconciliation(
+        preserving: actionError,
+        allowsAutomaticAgentUpdate: true
+      )
+    }
+  }
+
   /// Starts the Agent-owned ten-second recovery check, then waits for authoritative unlock.
   /// The App never owns the timer; quitting after acquisition still leaves the Agent fail-safe.
   func startSafetyCheck() {

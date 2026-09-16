@@ -48,6 +48,15 @@ final class AgentServiceTests {
     service.beginSafetyCheck { _, error in safetyCheckError = error }
     assertReplacementError(safetyCheckError, code: 1)
 
+    var timedLockOutcome: Bool?
+    var timedLockError: Error?
+    service.beginTimedLock(seconds: 60, interactively: false) { outcome, error in
+      timedLockOutcome = outcome
+      timedLockError = error
+    }
+    #expect(timedLockOutcome == false)
+    assertReplacementError(timedLockError, code: 1)
+
     var focusError: Error?
     service.setFocusFilterLockEnabled(true) { focusError = $0 }
     assertReplacementError(focusError, code: 1)
@@ -355,6 +364,89 @@ final class AgentServiceTests {
     #expect(safetyError == nil)
     #expect(didStart == false)
     #expect(engine.unlockCallCount == 0)
+  }
+
+  // MARK: - Timed lock
+
+  @Test
+  func timedLockAppliesTheOverrideForOneLockWithoutPersistingIt() {
+    let service = makeService()
+
+    var didAcquire: Bool?
+    var lockError: Error?
+    service.beginTimedLock(seconds: 600, interactively: true) { acquired, error in
+      didAcquire = acquired
+      lockError = error
+    }
+
+    #expect(lockError == nil)
+    #expect(didAcquire == true)
+    #expect(engine.lockCalls.first?.settings.autoUnlockPolicy == .timed(seconds: 600))
+    #expect(engine.lockCalls.first?.settings.unlockHotkey == customSettings.unlockHotkey)
+    #expect(engine.lockCalls.first?.allowsControlCUnlock == true)
+    // The override is never written back to the store.
+    #expect(settingsStore.saved.isEmpty)
+
+    // The next ordinary lock uses the persisted settings again.
+    engine.unlock()
+    var plainError: Error?
+    service.lockKeyboard { plainError = $0 }
+    #expect(plainError == nil)
+    #expect(engine.lockCalls.last?.settings == customSettings)
+  }
+
+  @Test
+  func timedLockReportsAnExistingLockWithoutApplyingTheOverride() {
+    engine.lockOutcome = .alreadyLocked
+    let service = makeService()
+
+    var didAcquire: Bool?
+    var lockError: Error?
+    service.beginTimedLock(seconds: 600, interactively: false) { acquired, error in
+      didAcquire = acquired
+      lockError = error
+    }
+
+    #expect(lockError == nil)
+    #expect(didAcquire == false)
+    #expect(engine.unlockCallCount == 0)
+    #expect(settingsStore.saved.isEmpty)
+  }
+
+  @Test
+  func timedLockRejectsAnOutOfRangeDurationWithoutLocking() {
+    let service = makeService()
+
+    var didAcquire: Bool?
+    var lockError: Error?
+    service.beginTimedLock(seconds: 7200, interactively: false) { acquired, error in
+      didAcquire = acquired
+      lockError = error
+    }
+
+    #expect(didAcquire == false)
+    #expect(
+      lockError as? KeyboardLockerSettingsValidationError ==
+        .autoUnlockOutOfRange(KeyboardLockerSettings.allowedAutoUnlockRange)
+    )
+    #expect(engine.lockCalls.isEmpty)
+    #expect(settingsStore.saved.isEmpty)
+  }
+
+  @Test
+  func timedLockRejectsANonFiniteDurationWithoutLocking() {
+    let service = makeService()
+
+    var didAcquire: Bool?
+    var lockError: Error?
+    service.beginTimedLock(seconds: .nan, interactively: false) { acquired, error in
+      didAcquire = acquired
+      lockError = error
+    }
+
+    #expect(didAcquire == false)
+    #expect(lockError as? KeyboardLockerSettingsValidationError == .autoUnlockNotFinite)
+    #expect(engine.lockCalls.isEmpty)
   }
 
   // MARK: - Toggle

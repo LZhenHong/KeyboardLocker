@@ -102,24 +102,40 @@ struct XPCClientErrorTests {
     }
   }
 
+  /// Every capability the bundled Agent advertises must have an introduction minor, otherwise
+  /// `validate` would silently grant a new selector at minor 0 on an Agent too old to implement it.
+  @Test
+  func everyAdvertisedCapabilityDeclaresAnIntroductionMinor() {
+    let withoutIntroductionMinor = ServiceContract.requiredCapabilities
+      .filter { XPCFeatureNegotiation.minimumMinorByCapability[$0] == nil }
+      .map(\.rawValue)
+      .sorted()
+
+    #expect(
+      withoutIntroductionMinor.isEmpty,
+      "Add an introduction minor for: \(withoutIntroductionMinor.joined(separator: ", "))."
+    )
+  }
+
+  /// No capability may claim a minor above the contract the bundled Agent actually advertises,
+  /// which would make its selector permanently unreachable.
+  @Test
+  func noIntroductionMinorExceedsTheAdvertisedContract() {
+    let currentMinor = ServiceContract.protocolVersion.minor
+    let unreachable = XPCFeatureNegotiation.minimumMinorByCapability
+      .filter { $0.value > currentMinor }
+      .map { "\($0.key.rawValue) (minor \($0.value))" }
+      .sorted()
+
+    #expect(
+      unreachable.isEmpty,
+      "Contract advertises minor \(currentMinor); unreachable: \(unreachable.joined(separator: ", "))."
+    )
+  }
+
   @Test
   func featureNegotiationEnforcesSelectorIntroductionMinor() {
-    let introductionMinorByCapability: [ServiceCapability: Int] = [
-      .accessibilityPrompt: 0,
-      .accessibilityStatus: 0,
-      .committedReplacementDrain: 1,
-      .currentSettings: 1,
-      .currentSettingsWithError: 2,
-      .focusFilterLock: 5,
-      .interactiveLock: 3,
-      .lockControl: 0,
-      .lockStatusSnapshot: 4,
-      .lockToggle: 6,
-      .prepareForReplacement: 0,
-      .safetyCheckLock: 7,
-    ]
-
-    for (capability, introductionMinor) in introductionMinorByCapability {
+    for (capability, introductionMinor) in XPCFeatureNegotiation.minimumMinorByCapability {
       guard introductionMinor > 0 else {
         continue
       }
@@ -160,6 +176,47 @@ struct XPCClientErrorTests {
       descriptor: descriptor,
       requiring: [.interactiveLock]
     )
+  }
+
+  /// A 1.7 Agent predates the settings-write selector, so the App must be refused before it can
+  /// believe a configuration change was stored.
+  @Test
+  func settingsWriteIsRefusedByAnAgentPredatingTheSelector() {
+    let descriptor = makeDescriptor(
+      protocolVersion: ServiceProtocolVersion(major: 1, minor: 7),
+      capabilities: ServiceContract.requiredCapabilities.subtracting([.applySettings])
+    )
+
+    #expect(
+      throws: ServiceCompatibilityIssue.protocolMinorTooOld(required: 8, actual: 7)
+    ) {
+      try XPCFeatureNegotiation.validate(
+        descriptor: descriptor,
+        requiring: [.applySettings]
+      )
+    }
+  }
+
+  /// A same-minor Agent that does not advertise the capability must also be refused: the minor
+  /// floor alone is not evidence the selector is implemented.
+  @Test
+  func settingsWriteIsRefusedWithoutTheAdvertisedCapability() {
+    let descriptor = makeDescriptor(
+      protocolVersion: ServiceContract.protocolVersion,
+      capabilities: ServiceContract.requiredCapabilities.subtracting([.applySettings])
+    )
+
+    do {
+      try XPCFeatureNegotiation.validate(
+        descriptor: descriptor,
+        requiring: [.applySettings]
+      )
+      Issue.record("Expected missing apply-settings capability.")
+    } catch XPCClientError.missingCapability(.applySettings) {
+      // Expected.
+    } catch {
+      Issue.record("Expected missing apply-settings capability, got \(error).")
+    }
   }
 
   @Test

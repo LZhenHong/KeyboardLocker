@@ -37,6 +37,7 @@ public struct ServiceCapability: Codable, Equatable, Hashable, RawRepresentable,
 
   public static let accessibilityPrompt = Self(rawValue: "accessibility-prompt")
   public static let accessibilityStatus = Self(rawValue: "accessibility-status")
+  public static let applySettings = Self(rawValue: "apply-settings")
   public static let currentSettings = Self(rawValue: "current-settings")
   public static let currentSettingsWithError = Self(
     rawValue: "current-settings-with-error"
@@ -79,11 +80,12 @@ public struct ServiceReplacementPhase: Codable, Equatable, RawRepresentable, Sen
 
 /// Current bootstrap contract advertised by the bundled Agent.
 public enum ServiceContract {
-  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 7)
+  public static let protocolVersion = ServiceProtocolVersion(major: 1, minor: 8)
 
   public static let requiredCapabilities: Set<ServiceCapability> = [
     .accessibilityPrompt,
     .accessibilityStatus,
+    .applySettings,
     .committedReplacementDrain,
     .currentSettings,
     .currentSettingsWithError,

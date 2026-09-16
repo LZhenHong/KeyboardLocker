@@ -41,6 +41,16 @@ final class KeyboardLockerSettingsStore {
     }
   }
 
+  /// Persists settings as the Agent's new source of truth.
+  ///
+  /// Unlike `load()`, a failure here must propagate: the read path falls back to defaults so the
+  /// Agent can still start, but silently discarding a write would leave the caller believing its
+  /// configuration is active while the Agent keeps using the previous one.
+  func save(_ settings: KeyboardLockerSettings) throws {
+    let data = try encoder.encode(settings)
+    userDefaults.set(data, forKey: storageKey)
+  }
+
   private func registerDefaultsIfNeeded() {
     guard userDefaults.object(forKey: storageKey) == nil else {
       return

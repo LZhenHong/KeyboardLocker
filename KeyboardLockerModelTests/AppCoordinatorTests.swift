@@ -1,4 +1,5 @@
 import Client
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -38,15 +39,26 @@ struct AppCoordinatorTests {
     coordinator.onSnapshotChange = { snapshots.append($0) }
 
     coordinator.reconcile()
+    // Readiness and the Agent detail it unlocks arrive in separate turns; wait for both so the
+    // published snapshot is the settled one.
     try await waitUntil {
       coordinator.state == .ready(isLocked: false)
+        && coordinator.settingsState == .loaded(.default)
     }
 
     #expect(coordinator.snapshot == AppCoordinator.Snapshot(
       state: .ready(isLocked: false),
       activity: nil,
       lastError: nil,
-      safetyCheckState: .idle
+      safetyCheckState: .idle,
+      lockSnapshot: LockStatusSnapshot(
+        capturedAt: Date(timeIntervalSinceReferenceDate: 0),
+        isLocked: false,
+        startedAt: nil,
+        autoUnlockTargetDate: nil,
+        settings: .default
+      ),
+      settingsState: .loaded(.default)
     ))
     #expect(observer.initialStates == [false])
     #expect(snapshots.last == coordinator.snapshot)
@@ -156,6 +168,155 @@ struct AppCoordinatorTests {
     #expect(client.waitUntilUnlockedCallCount == 0)
   }
 
+  // MARK: - Settings
+
+  @Test
+  @MainActor
+  func applySettingsAdoptsTheValuesTheAgentReportsStored() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver()
+    )
+    coordinator.reconcile()
+    try await waitUntil { coordinator.state == .ready(isLocked: false) }
+
+    // A fractional timeout the Agent normalizes to whole seconds: adopting the request instead of
+    // the reply would leave the UI showing a value that was never stored.
+    coordinator.applySettings(makeSettings(autoUnlockSeconds: 59.6))
+    try await waitUntil {
+      coordinator.settingsState == .loaded(makeSettings(autoUnlockSeconds: 60))
+    }
+
+    #expect(client.appliedSettings.count == 1)
+    #expect(coordinator.snapshot.lastError == nil)
+    #expect(coordinator.snapshot.activity == nil)
+  }
+
+  @Test
+  @MainActor
+  func applySettingsWhileLockedReportsThemAsPendingTheNextLock() async throws {
+    let client = FakeAgentClient(isLocked: true, hasAccessibilityPermission: true)
+    // The running lock keeps enforcing the settings it started with.
+    client.activeSettings = .default
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver()
+    )
+    coordinator.reconcile()
+    try await waitUntil { coordinator.state == .ready(isLocked: true) }
+
+    let desired = makeSettings(autoUnlockSeconds: 30)
+    coordinator.applySettings(desired)
+    try await waitUntil {
+      coordinator.settingsState == .loaded(desired)
+        && coordinator.lockSnapshot != nil
+    }
+
+    #expect(coordinator.snapshot.hasSettingsPendingNextLock)
+    #expect(coordinator.lockSnapshot?.settings == .default)
+    #expect(coordinator.snapshot.lastError == nil)
+  }
+
+  @Test
+  @MainActor
+  func settingsPendingIsNotReportedWhenTheLockAlreadyEnforcesThem() async throws {
+    let client = FakeAgentClient(isLocked: true, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver()
+    )
+    coordinator.reconcile()
+    try await waitUntil {
+      coordinator.state == .ready(isLocked: true)
+        && coordinator.settingsState == .loaded(.default)
+    }
+
+    #expect(!coordinator.snapshot.hasSettingsPendingNextLock)
+  }
+
+  @Test
+  @MainActor
+  func failedSettingsWriteSurfacesTheErrorAndKeepsStoredValues() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver()
+    )
+    coordinator.reconcile()
+    try await waitUntil { coordinator.settingsState == .loaded(.default) }
+    client.applySettingsError = AppCoordinatorTestError.expected
+
+    coordinator.applySettings(makeSettings(autoUnlockSeconds: 30))
+    try await waitUntil { coordinator.snapshot.lastError != nil }
+
+    #expect(coordinator.settingsState == .loaded(.default))
+    #expect(coordinator.snapshot.activity == nil)
+  }
+
+  /// Presenting `.default` on a read failure would invent a second source of truth and could show
+  /// an unlock hotkey the Agent is not using.
+  @Test
+  @MainActor
+  func unreadableSettingsBecomeExplicitlyUnavailable() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    client.currentSettingsError = AppCoordinatorTestError.expected
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver()
+    )
+
+    coordinator.reconcile()
+    try await waitUntil {
+      if case .unavailable = coordinator.settingsState {
+        return true
+      }
+      return false
+    }
+
+    #expect(coordinator.settingsState.settings == nil)
+    // A detail failure must not downgrade an otherwise ready agent.
+    #expect(coordinator.state == .ready(isLocked: false))
+  }
+
+  @Test
+  @MainActor
+  func anUnreachableAgentClearsSettingsInsteadOfKeepingStaleOnes() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let lifecycle = FakeAgentLifecycle()
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: lifecycle,
+      observer: FakeLockStateObserver()
+    )
+    coordinator.reconcile()
+    try await waitUntil { coordinator.settingsState == .loaded(.default) }
+
+    lifecycle.registrationState = .approvalRequired
+    coordinator.reconcile()
+    try await waitUntil { coordinator.state == .agentApprovalRequired }
+
+    #expect(coordinator.settingsState.settings == nil)
+    #expect(coordinator.lockSnapshot == nil)
+  }
+
+  private func makeSettings(
+    autoUnlockSeconds: TimeInterval
+  ) -> KeyboardLockerSettings {
+    KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: autoUnlockSeconds),
+      unlockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: CGKeyCode(SharedConstants.defaultUnlockKeyCode),
+        modifierFlags: [.maskControl, .maskAlternate]
+      )
+    )
+  }
+
   @MainActor
   private func makeCoordinator(
     client: FakeAgentClient,
@@ -190,6 +351,7 @@ struct AppCoordinatorTests {
 }
 
 private enum AppCoordinatorTestError: Error {
+  case expected
   case timedOut
 }
 
@@ -199,9 +361,17 @@ private final class FakeAgentClient: AgentClientServing {
   private(set) var lockCallCount = 0
   private(set) var unlockCallCount = 0
   private(set) var waitUntilUnlockedCallCount = 0
+  private(set) var appliedSettings: [KeyboardLockerSettings] = []
   var accessibilityPermissionGranted: Bool
   var isLocked: Bool
   var safetyCheckOutcome: LockRequestOutcome = .acquired
+  var storedSettings: KeyboardLockerSettings = .default
+  var currentSettingsError: Error?
+  var applySettingsError: Error?
+  var lockStatusSnapshotError: Error?
+  /// What a running lock is enforcing. Distinct from `storedSettings` so tests can model a write
+  /// that landed while locked and only takes effect on the next lock.
+  var activeSettings: KeyboardLockerSettings?
 
   private let descriptor = ServiceDescriptor(
     protocolVersion: ServiceContract.protocolVersion,
@@ -248,6 +418,39 @@ private final class FakeAgentClient: AgentClientServing {
     return isLocked
   }
 
+  func currentSettings() async throws -> KeyboardLockerSettings {
+    if let currentSettingsError {
+      throw currentSettingsError
+    }
+    return storedSettings
+  }
+
+  func applySettings(
+    _ settings: KeyboardLockerSettings
+  ) async throws -> KeyboardLockerSettings {
+    if let applySettingsError {
+      throw applySettingsError
+    }
+    appliedSettings.append(settings)
+    // Mirrors the Agent: values are normalized before being stored, and a running lock keeps
+    // enforcing whatever it started with.
+    storedSettings = try settings.validated()
+    return storedSettings
+  }
+
+  func lockStatusSnapshot() async throws -> LockStatusSnapshot {
+    if let lockStatusSnapshotError {
+      throw lockStatusSnapshotError
+    }
+    return LockStatusSnapshot(
+      capturedAt: Date(timeIntervalSinceReferenceDate: 0),
+      isLocked: isLocked,
+      startedAt: isLocked ? Date(timeIntervalSinceReferenceDate: 0) : nil,
+      autoUnlockTargetDate: nil,
+      settings: activeSettings ?? storedSettings
+    )
+  }
+
   func prepareForReplacement(
     unlockIfNeeded: Bool,
     expectedAgentInstanceID: UUID
@@ -281,8 +484,10 @@ private final class FakeAgentClient: AgentClientServing {
 
 @MainActor
 private final class FakeAgentLifecycle: AgentLifecycleServing {
+  var registrationState: AgentRegistrar.State = .enabled
+
   func ensureEnabled() -> AgentRegistrar.State {
-    .enabled
+    registrationState
   }
 
   func compatibility(

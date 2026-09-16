@@ -20,7 +20,11 @@ struct KeyboardLockerDiagnosticsTests {
       isLocked: false,
       startedAt: nil,
       autoUnlockTargetDate: nil,
-      settings: .default
+      settings: .default,
+      lastUnlock: UnlockRecord(
+        reason: .autoUnlock,
+        date: Date(timeIntervalSince1970: 1_699_999_950)
+      )
     )
     let collector = KeyboardLockerDiagnosticsCollector(
       appIdentity: .init(
@@ -50,6 +54,7 @@ struct KeyboardLockerDiagnosticsTests {
     #expect(report.contains("Capabilities: lock-control, safety-check-lock"))
     #expect(report.contains("Accessibility: granted"))
     #expect(report.contains("Status: unlocked"))
+    #expect(report.contains("Last Unlock: autoUnlock at "))
     #expect(report.contains("Safety Check: completed"))
     #expect(!report.localizedCaseInsensitiveContains("user name"))
     #expect(!report.localizedCaseInsensitiveContains("host name"))

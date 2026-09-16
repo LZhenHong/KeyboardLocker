@@ -274,7 +274,7 @@ struct KlockCommandLineTests {
     #expect(result.exitCode == 0)
     #expect(result.stdout == [
       """
-      {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+      {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","lastUnlockAt":null,"lastUnlockReason":null,"locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
       """,
     ])
     #expect(result.stderr == [])

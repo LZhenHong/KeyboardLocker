@@ -34,7 +34,29 @@ struct KlockStatusOutputTests {
     #expect(
       output ==
         """
-        {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+        {"autoUnlockTargetDate":"2023-11-14T22:14:20Z","lastUnlockAt":null,"lastUnlockReason":null,"locked":true,"startedAt":"2023-11-14T22:13:20Z","unlockHotkey":"⌃⌘L"}
+        """
+    )
+  }
+
+  @Test
+  func snapshotOutputRendersLastUnlockRecord() {
+    let output = KlockStatusOutput.render(
+      snapshot: makeSnapshot(
+        isLocked: false,
+        startedAt: nil,
+        autoUnlockTargetDate: nil,
+        lastUnlock: UnlockRecord(
+          reason: .gesture,
+          date: Date(timeIntervalSince1970: 1_700_000_020)
+        )
+      )
+    )
+
+    #expect(
+      output ==
+        """
+        {"autoUnlockTargetDate":null,"lastUnlockAt":"2023-11-14T22:13:40Z","lastUnlockReason":"gesture","locked":false,"startedAt":null,"unlockHotkey":"⌃⌘L"}
         """
     )
   }
@@ -47,14 +69,15 @@ struct KlockStatusOutputTests {
 
     #expect(
       output ==
-        #"{"autoUnlockTargetDate":null,"locked":false,"startedAt":null,"unlockHotkey":"⌃⌘L"}"#
+        #"{"autoUnlockTargetDate":null,"lastUnlockAt":null,"lastUnlockReason":null,"locked":false,"startedAt":null,"unlockHotkey":"⌃⌘L"}"#
     )
   }
 
   private func makeSnapshot(
     isLocked: Bool,
     startedAt: Date?,
-    autoUnlockTargetDate: Date?
+    autoUnlockTargetDate: Date?,
+    lastUnlock: UnlockRecord? = nil
   ) -> LockStatusSnapshot {
     LockStatusSnapshot(
       capturedAt: Date(timeIntervalSince1970: 1_700_000_030),
@@ -67,7 +90,8 @@ struct KlockStatusOutputTests {
           keyCode: 37,
           modifierFlags: [.maskCommand, .maskControl]
         )
-      )
+      ),
+      lastUnlock: lastUnlock
     )
   }
 

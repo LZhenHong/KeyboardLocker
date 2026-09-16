@@ -13,7 +13,7 @@ final class LockEngineTests {
   private var broadcastCount: Int
   private var stateChangeCount: Int
   private var hasAccessibilityPermission: Bool
-  private let now: Date
+  private var now: Date
 
   init() {
     tap = FakeInstalledEventTap()
@@ -298,6 +298,83 @@ final class LockEngineTests {
 
     #expect(engine.isLocked)
     #expect(tap.teardownCallCount == 0)
+  }
+
+  // MARK: - Last unlock record
+
+  @Test
+  func explicitUnlockIsRecordedWithTheAgentClock() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    now = now.addingTimeInterval(10)
+    engine.unlock()
+
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .explicit, date: now))
+  }
+
+  @Test
+  func unlockGestureIsRecorded() async throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    let event = makeKeyEvent(keyCode: 4, flags: .maskShift)
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .gesture, date: now))
+  }
+
+  @Test
+  func autoUnlockTimerFireIsRecorded() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    scheduler.timers[0].fire()
+
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .autoUnlock, date: now))
+  }
+
+  @Test
+  func focusConditionalReleaseIsRecorded() throws {
+    let engine = makeEngine()
+    try engine.setFocusFilterLockEnabled(true, settings: makeSettings())
+
+    try engine.setFocusFilterLockEnabled(false, settings: makeSettings())
+
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .focusFilter, date: now))
+  }
+
+  @Test
+  func eventTapFailureFailOpenIsRecorded() async throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    tap.isEnabled = false
+    tap.allowsReEnable = false
+    let event = makeKeyEvent(keyCode: 0)
+    #expect(engine.handleDisabledEvent(event) != nil)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .eventTapFailure, date: now))
+  }
+
+  @Test
+  func runningLockKeepsThePreviousUnlockRecordUntilTheNextUnlock() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    engine.unlock()
+    let firstRecord = try #require(engine.statusSnapshot.lastUnlock)
+
+    _ = try engine.lock(settings: makeSettings())
+    // A new lock does not erase how the previous one ended.
+    #expect(engine.statusSnapshot.lastUnlock == firstRecord)
+
+    now = now.addingTimeInterval(5)
+    engine.unlock()
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .explicit, date: now))
   }
 
   // MARK: - Helpers

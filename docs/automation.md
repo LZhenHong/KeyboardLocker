@@ -145,7 +145,7 @@ klock request-access
 
 `request-access` 先报告已授权状态;未授权时经 Agent 触发系统 Accessibility prompt,随后有界轮询(默认 30s)并如实报告终态:授权打印 granted 退出 0,窗口内未授权打印 pending 说明退出 1(stdout 文本,区别于 stderr 的 Error)。prompt 是异步的,请求返回不代表已授权。
 
-`status --snapshot` 输出扩展 JSON contract(`locked` / `startedAt` / `autoUnlockTargetDate` / `unlockHotkey`,键按字母序固定,日期为 ISO-8601 GMT,无值日期为 `null`);`--json` 的单行 contract 保持字节稳定。老 Agent 无 snapshot capability 时命令显式报错,不回退用 `status` 伪造字段。
+`status --snapshot` 输出扩展 JSON contract(`autoUnlockTargetDate` / `lastUnlockAt` / `lastUnlockReason` / `locked` / `startedAt` / `unlockHotkey`,键按字母序固定,日期为 ISO-8601 GMT,无值日期与无记录字段为 `null`);`lastUnlockReason` 是当前 Agent 代最近一次解锁的原因(`explicit` / `gesture` / `autoUnlock` / `focusFilter` / `eventTapFailure`),只作诊断与展示,不参与任何判定。`--json` 的单行 contract 保持字节稳定。老 Agent 无 snapshot capability 时命令显式报错,不回退用 `status` 伪造字段。
 
 `register-agent` 在 Agent 不可达时启动一次 KeyboardLocker App 来完成 `SMAppService` 注册(注册只能由 App bundle 执行),随后短暂轮询确认 Agent 可达；若出现 Login Items 批准或 Accessibility 授权要求,命令会指出对应的系统设置入口。Agent 已经可达时它不启动 App,直接报告。
 

@@ -46,7 +46,7 @@ Widget ──────┘              ├─ Settings ownership (source of t
 |---------|------|------|
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
 | 设置(真相源) | **Agent** | Agent 加载、拥有并持久化默认/用户设置、负责应用它们。读取经 `XPCClient.currentSettings()`,写入经 capability-gated `applySettings`(protocol 1.8):Agent 先用 `KeyboardLockerSettings.validated()` 校验(护栏定义在 `Common`、由 Agent 强制,任何写入面共用)再落盘,并返回落盘后的权威值。**locked 时写入只落盘,不触碰当前锁**——`LockEngine.updateSettings` 会重算 auto-unlock window(`.disabled` 直接取消 timer),mid-lock 应用会破坏活动锁的 fail-safe,因此新值只 seed 下一次 lock;这不违反"只有 `LockEngine` 的显式 settings update 才能重新应用设置",而是选择在 locked 时不发起那次 update。设置编辑 UI 在 App 内(`SettingsView`),但绝不在 wrapper 侧落地 store。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
-| 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline 与 active settings。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
+| 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline、active settings 与上次解锁记录(原因 + 权威时刻)。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | 锁定可发现性通知 | **Agent**(`LockStatusNotifier`) | "Keyboard Locked" 通知的投递与移除跟随引擎的同一次状态转换,任何入口、App 是否运行都覆盖;wrapper 不发布锁状态通知。Agent 启动时清除上一代退出留下的残留。 |
@@ -68,7 +68,7 @@ App 可以持久化纯 presentation 状态,例如“是否已完成首次安全�
 - safety check 是 capability-gated 的一次性 Agent 操作：仅在 unlocked 时创建新锁,沿用 Agent 持久化的解锁热键,但把该轮 active settings 的 auto-unlock 强制为固定 10 秒。fail-safe timer 由 Agent/`LockEngine` 持有,因此 App 退出、崩溃或 XPC 断开都不能让测试失去自动解锁兜底；该 override 不写回 settings store。若调用时已 locked,Agent 原子返回 already locked 且不修改既有锁。App 只在重新查询到权威 unlocked 后把 presentation completion 标记为完成。
 - interactive lock request 会原子返回本次调用是否完成 `unlocked → locked`。这个 outcome 只描述状态转换,不建立客户端所有权、引用计数或 session。只有真正完成转换的 interactive request 才会让该轮全局锁额外接受 `Ctrl+C` 解锁；重复请求不得改变既有锁的输入手势。发起并等待中的 CLI 进程对本轮锁负有退出清理责任：它观察 SIGTERM/SIGHUP/SIGINT,退出前尽力释放锁(有界等待后无论如何退出)。wire protocol 不携带 interactive lock 的代际令牌,清理无法区分自己创建的锁与等待期间由他入口重建的锁——若本轮锁已被解开且另一入口重新锁定,清理会释放较新的锁,这与任意入口可解锁同一全局锁的契约一致;SIGKILL/SIGSTOP 不可观察,遗留锁仍由解锁热键、通知 Unlock Now、auto-unlock 等全局途径解开。这是输入手势语义的进程侧延伸,不构成 session 或所有权。
 - Focus Filter 是 **activation-triggered acquisition**,不是“Focus active 期间持续保持 locked”的 policy。Focus 激活时的 `true` 最多尝试一次 `unlocked → locked`,并只在成功创建锁时记录该 Focus-owned generation；Focus 关闭时的 `false` 只条件性解除仍由它创建且未被普通 `lock` 接管的同一代。已有普通锁不会被 Focus 认领。显式 unlock、解锁热键、auto-unlock timeout、event-tap failure 或 Agent 退出 / 重启都可以在 Focus 仍 active 时提前结束该 generation；实现不会查询当前 Focus 后自动重建锁,也不会在同一次 Focus activation 内持续 relock。这个进程内 marker 不暴露给 wrapper,也不改变“任意入口可显式 unlock 同一个全局锁”的契约。
-- `status()` 保留为兼容旧 wrapper 的最小布尔查询；需要呈现锁定时长、auto-unlock deadline 或 active settings 的 wrapper 使用 capability-gated `lockStatusSnapshot()`。snapshot 传输权威时间点,不传会立即过期的 duration/countdown counter。
+- `status()` 保留为兼容旧 wrapper 的最小布尔查询；需要呈现锁定时长、auto-unlock deadline、active settings 或上次解锁记录的 wrapper 使用 capability-gated `lockStatusSnapshot()`。snapshot 传输权威时间点,不传会立即过期的 duration/countdown counter。
 - 要对状态变化做出反应,订阅全局广播(`LockStateSubscriber`)。绝不从"我这次调用是否成功"去推断状态。
 
 ## 状态同步

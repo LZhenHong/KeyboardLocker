@@ -1,5 +1,52 @@
 import Foundation
 
+/// Why the most recent lock generation ended, paired with the authoritative time it ended.
+///
+/// The record survives later locks, so a currently locked keyboard can still report how the
+/// previous one ended; it is nil until this Agent generation observes its first unlock.
+/// Wrappers use it for presentation and diagnostics only — it never gates what any entry point
+/// may do next.
+public struct UnlockRecord: Codable, Equatable, Sendable {
+  public enum Reason: String, Codable, Sendable {
+    /// A wrapper, the notification's Unlock Now action, or agent replacement requested it.
+    case explicit
+    /// The configured unlock hotkey or the interactive Ctrl+C gesture ended the lock.
+    case gesture
+    /// The auto-unlock timer reached its deadline.
+    case autoUnlock
+    /// Focus deactivation conditionally released the lock generation it created.
+    case focusFilter
+    /// The event tap could not be re-enabled, so the lock failed open.
+    case eventTapFailure
+  }
+
+  public let reason: Reason
+  public let date: Date
+
+  public init(reason: Reason, date: Date) {
+    self.reason = reason
+    self.date = date
+  }
+}
+
+public extension UnlockRecord.Reason {
+  /// Short English phrase for popover and diagnostics presentation.
+  var displayName: String {
+    switch self {
+    case .explicit:
+      "Manual"
+    case .gesture:
+      "Hotkey"
+    case .autoUnlock:
+      "Auto-unlock"
+    case .focusFilter:
+      "Focus"
+    case .eventTapFailure:
+      "Tap failure"
+    }
+  }
+}
+
 /// One authoritative, point-in-time view of the global keyboard lock.
 ///
 /// Wrappers may cache this value for presentation, but the Agent remains the source of truth.
@@ -14,6 +61,9 @@ public struct LockStatusSnapshot: Codable, Equatable, Sendable {
   public let startedAt: Date?
   public let autoUnlockTargetDate: Date?
   public let settings: KeyboardLockerSettings
+  /// Additive format-1 field: payloads written before `UnlockRecord` existed omit the key and
+  /// decode as nil.
+  public let lastUnlock: UnlockRecord?
 
   public init(
     formatVersion: Int = Self.currentFormatVersion,
@@ -21,7 +71,8 @@ public struct LockStatusSnapshot: Codable, Equatable, Sendable {
     isLocked: Bool,
     startedAt: Date?,
     autoUnlockTargetDate: Date?,
-    settings: KeyboardLockerSettings
+    settings: KeyboardLockerSettings,
+    lastUnlock: UnlockRecord? = nil
   ) {
     self.formatVersion = formatVersion
     self.capturedAt = capturedAt
@@ -29,6 +80,7 @@ public struct LockStatusSnapshot: Codable, Equatable, Sendable {
     self.startedAt = startedAt
     self.autoUnlockTargetDate = autoUnlockTargetDate
     self.settings = settings
+    self.lastUnlock = lastUnlock
   }
 
   fileprivate var hasConsistentLockState: Bool {

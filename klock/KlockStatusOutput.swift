@@ -20,11 +20,13 @@ enum KlockStatusOutput: Equatable {
   }
 
   /// The `--snapshot` payload is a separate, richer contract: `--json` stays byte-stable.
-  /// Keys are emitted in alphabetical order and dates as ISO-8601 in GMT (absent dates are
-  /// `null`) so automation can compare output verbatim.
+  /// Keys are emitted in alphabetical order and dates as ISO-8601 in GMT (absent dates and the
+  /// absent last-unlock record are `null`) so automation can compare output verbatim.
   static func render(snapshot: LockStatusSnapshot) -> String {
     let object: [String: Any] = [
       "autoUnlockTargetDate": snapshot.autoUnlockTargetDate.map(iso8601String) ?? NSNull(),
+      "lastUnlockAt": snapshot.lastUnlock.map { iso8601String($0.date) } ?? NSNull(),
+      "lastUnlockReason": snapshot.lastUnlock?.reason.rawValue ?? NSNull(),
       "locked": snapshot.isLocked,
       "startedAt": snapshot.startedAt.map(iso8601String) ?? NSNull(),
       "unlockHotkey": snapshot.settings.unlockHotkey.displayString,

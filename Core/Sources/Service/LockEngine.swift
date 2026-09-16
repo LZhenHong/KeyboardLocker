@@ -47,6 +47,7 @@ struct LockRuntimeState: Equatable {
   private(set) var autoUnlockTargetDate: Date?
   private(set) var focusOwnedLockGeneration: UInt64?
   private(set) var isLocked = false
+  private(set) var lastUnlock: UnlockRecord?
   private(set) var lockGeneration: UInt64?
   private(set) var startedAt: Date?
 
@@ -123,13 +124,17 @@ struct LockRuntimeState: Equatable {
     autoUnlockTargetDate = date
   }
 
-  mutating func end() {
+  /// Every unlock path funnels through here so the record always pairs the real reason with the
+  /// Agent's own clock. The record survives a later `begin` on purpose: a running lock may still
+  /// report how the previous one ended.
+  mutating func end(reason: UnlockRecord.Reason, at date: Date) {
     allowsControlCUnlock = false
     autoUnlockTargetDate = nil
     focusOwnedLockGeneration = nil
     isLocked = false
     lockGeneration = nil
     startedAt = nil
+    lastUnlock = UnlockRecord(reason: reason, date: date)
   }
 
   func statusSnapshot(capturedAt: Date) -> LockStatusSnapshot {
@@ -138,7 +143,8 @@ struct LockRuntimeState: Equatable {
       isLocked: isLocked,
       startedAt: startedAt,
       autoUnlockTargetDate: autoUnlockTargetDate,
-      settings: activeSettings
+      settings: activeSettings,
+      lastUnlock: lastUnlock
     )
   }
 }
@@ -491,7 +497,7 @@ final class LockEngine {
         source: .focusFilter
       )
     } else if let generation = runtimeState.focusOwnedGenerationForRelease {
-      unlock(ifLockGeneration: generation)
+      unlock(ifLockGeneration: generation, reason: .focusFilter)
     }
   }
 
@@ -576,7 +582,7 @@ final class LockEngine {
     }
 
     cancelScheduledAutoUnlock = dependencies.scheduleTimer(schedule.delay) { [weak self] in
-      self?.unlock(ifLockGeneration: lockGeneration)
+      self?.unlock(ifLockGeneration: lockGeneration, reason: .autoUnlock)
     }
   }
 
@@ -587,20 +593,28 @@ final class LockEngine {
   }
 
   func unlock() {
+    endActiveLock(reason: .explicit, fencedTo: nil)
+  }
+
+  private func unlock(ifLockGeneration generation: UInt64, reason: UnlockRecord.Reason) {
+    endActiveLock(reason: reason, fencedTo: generation)
+  }
+
+  /// Shared teardown for every unlock path. The fence rejects stale timers, gestures, and Focus
+  /// releases that arrive after a newer lock generation began.
+  private func endActiveLock(reason: UnlockRecord.Reason, fencedTo generation: UInt64?) {
+    if let generation {
+      guard runtimeState.matchesCurrentLockGeneration(generation) else {
+        return
+      }
+    }
     guard runtimeState.isLocked else {
       return
     }
 
     cancelAutoUnlockTimer()
     teardownEventTap()
-    resetLockState()
-  }
-
-  private func unlock(ifLockGeneration generation: UInt64) {
-    guard runtimeState.matchesCurrentLockGeneration(generation) else {
-      return
-    }
-    unlock()
+    resetLockState(reason: reason)
   }
 
   private func teardownEventTap() {
@@ -608,8 +622,8 @@ final class LockEngine {
     installedTap = nil
   }
 
-  private func resetLockState() {
-    runtimeState.end()
+  private func resetLockState(reason: UnlockRecord.Reason) {
+    runtimeState.end(reason: reason, at: dependencies.now())
 
     publishStateChange()
     Self.logger.info("Unlocked")
@@ -647,7 +661,7 @@ final class LockEngine {
 
     cancelAutoUnlockTimer()
     teardownEventTap()
-    resetLockState()
+    resetLockState(reason: .eventTapFailure)
   }
 
   func handleEvent(
@@ -668,7 +682,7 @@ final class LockEngine {
         guard let lockGeneration else {
           return
         }
-        self?.unlock(ifLockGeneration: lockGeneration)
+        self?.unlock(ifLockGeneration: lockGeneration, reason: .gesture)
       }
     }
 

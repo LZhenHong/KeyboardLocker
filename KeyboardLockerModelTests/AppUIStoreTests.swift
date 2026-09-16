@@ -98,6 +98,43 @@ struct AppUIStoreTests {
   // MARK: - Lock detail
 
   @Test
+  func lastUnlockRecordIsDerivedFromTheAuthoritativeSnapshot() {
+    let record = UnlockRecord(
+      reason: .autoUnlock,
+      date: Date(timeIntervalSinceReferenceDate: 90)
+    )
+    let store = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: false),
+        lockSnapshot: LockStatusSnapshot(
+          capturedAt: Date(timeIntervalSinceReferenceDate: 100),
+          isLocked: false,
+          startedAt: nil,
+          autoUnlockTargetDate: nil,
+          settings: .default,
+          lastUnlock: record
+        ),
+        settingsState: .loaded(.default)
+      )
+    )
+
+    #expect(store.lastUnlock == record)
+  }
+
+  @Test
+  func lastUnlockIsNilWithoutARecordOrSnapshot() {
+    let store = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: false),
+        lockSnapshot: makeLockSnapshot(isLocked: false, settings: .default),
+        settingsState: .loaded(.default)
+      )
+    )
+
+    #expect(store.lastUnlock == nil)
+  }
+
+  @Test
   func lockDetailIsDerivedFromTheAuthoritativeSnapshot() {
     let started = Date(timeIntervalSinceReferenceDate: 100)
     let deadline = Date(timeIntervalSinceReferenceDate: 160)

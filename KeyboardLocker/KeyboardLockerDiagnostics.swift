@@ -116,6 +116,7 @@ struct KeyboardLockerDiagnosticsCollector {
         "Status: \(value.isLocked ? "locked" : "unlocked")",
         "Started: \(value.startedAt.map(format) ?? "none")",
         "Auto Unlock: \(value.autoUnlockTargetDate.map(format) ?? "none")",
+        "Last Unlock: \(value.lastUnlock.map { "\($0.reason.rawValue) at \(format($0.date))" } ?? "none")",
         "Policy: \(value.settings.autoUnlockPolicy.diagnosticDescription)",
         "Unlock Hotkey: \(value.settings.unlockHotkey.displayString)",
       ])

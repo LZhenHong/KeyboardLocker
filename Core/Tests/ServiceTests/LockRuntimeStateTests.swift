@@ -69,6 +69,7 @@ struct LockRuntimeStateTests {
   @Test
   func endedLockCanBeginAgainWithoutRetainingTimingState() {
     let firstStart = Date(timeIntervalSinceReferenceDate: 1000)
+    let firstEnd = firstStart.addingTimeInterval(60)
     let secondStart = firstStart.addingTimeInterval(90)
     var state = LockRuntimeState()
 
@@ -80,12 +81,13 @@ struct LockRuntimeStateTests {
       ) == .acquired
     )
     state.setAutoUnlockTargetDate(firstStart.addingTimeInterval(60))
-    state.end()
+    state.end(reason: .explicit, at: firstEnd)
 
     #expect(!state.allowsControlCUnlock)
     #expect(!state.isLocked)
     #expect(state.startedAt == nil)
     #expect(state.autoUnlockTargetDate == nil)
+    #expect(state.lastUnlock == UnlockRecord(reason: .explicit, date: firstEnd))
     #expect(
       state.begin(
         settings: .default,
@@ -95,6 +97,8 @@ struct LockRuntimeStateTests {
     )
     #expect(!state.allowsControlCUnlock)
     #expect(state.startedAt == secondStart)
+    // A running lock still reports how the previous one ended.
+    #expect(state.lastUnlock == UnlockRecord(reason: .explicit, date: firstEnd))
   }
 
   @Test
@@ -210,10 +214,11 @@ struct LockRuntimeStateTests {
 
     #expect(state.focusOwnedLockGeneration == firstGeneration)
 
-    state.end()
+    state.end(reason: .focusFilter, at: firstStart.addingTimeInterval(30))
 
     #expect(state.focusOwnedLockGeneration == nil)
     #expect(state.lockGeneration == nil)
+    #expect(state.lastUnlock?.reason == .focusFilter)
 
     _ = state.begin(
       settings: .default,
@@ -238,10 +243,11 @@ struct LockRuntimeStateTests {
     state.markCurrentLockAsFocusOwned()
     let generation = try #require(state.focusOwnedGenerationForRelease)
 
-    state.end()
+    state.end(reason: .gesture, at: Date(timeIntervalSinceReferenceDate: 1030))
 
     #expect(state.focusOwnedGenerationForRelease == nil)
     #expect(!state.matchesCurrentLockGeneration(generation))
+    #expect(state.lastUnlock?.reason == .gesture)
   }
 
   @Test
@@ -255,7 +261,7 @@ struct LockRuntimeStateTests {
     state.markCurrentLockAsFocusOwned()
     let focusGeneration = try #require(state.focusOwnedGenerationForRelease)
 
-    state.end()
+    state.end(reason: .explicit, at: Date(timeIntervalSinceReferenceDate: 1000))
     _ = state.begin(
       settings: .default,
       allowsControlCUnlock: false,
@@ -300,6 +306,7 @@ struct LockRuntimeStateTests {
   @Test
   func snapshotClearsRuntimeDatesAfterUnlock() {
     let capturedAt = Date(timeIntervalSinceReferenceDate: 1000)
+    let unlockedAt = capturedAt.addingTimeInterval(-2)
     var state = LockRuntimeState()
     _ = state.begin(
       settings: .default,
@@ -307,7 +314,7 @@ struct LockRuntimeStateTests {
       at: capturedAt.addingTimeInterval(-10)
     )
     state.setAutoUnlockTargetDate(capturedAt.addingTimeInterval(50))
-    state.end()
+    state.end(reason: .autoUnlock, at: unlockedAt)
 
     #expect(
       state.statusSnapshot(capturedAt: capturedAt) == LockStatusSnapshot(
@@ -315,7 +322,8 @@ struct LockRuntimeStateTests {
         isLocked: false,
         startedAt: nil,
         autoUnlockTargetDate: nil,
-        settings: .default
+        settings: .default,
+        lastUnlock: UnlockRecord(reason: .autoUnlock, date: unlockedAt)
       )
     )
   }

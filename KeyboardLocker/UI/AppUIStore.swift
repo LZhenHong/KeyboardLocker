@@ -65,6 +65,12 @@ final class AppUIStore: ObservableObject {
     snapshot.lockSnapshot?.startedAt
   }
 
+  /// How the most recent lock generation ended, straight from the Agent's snapshot.
+  /// Presentation and diagnostics only; it never feeds a decision.
+  var lastUnlock: UnlockRecord? {
+    snapshot.lockSnapshot?.lastUnlock
+  }
+
   var canEditSettings: Bool {
     editableSettings != nil && !isBusy
   }

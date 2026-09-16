@@ -71,6 +71,7 @@ struct StatusPage: View {
   /// the state row and the toolbar.
   private var showsDetail: Bool {
     store.isLocked
+      || (!store.isLocked && store.lastUnlock != nil)
       || store.snapshot.hasSettingsPendingNextLock
       || store.snapshot.lastError != nil
       || !store.recoveryActions.isEmpty
@@ -81,6 +82,15 @@ struct StatusPage: View {
       if store.isLocked, let started = store.lockStartDate {
         InfoRow(label: "Locked since", systemImage: "clock") {
           Text(started, style: .time).font(.callout.monospacedDigit())
+        }
+      }
+
+      // Answers "why is my keyboard unlocked right now" — e.g. a timer expiry the user did
+      // not watch happen. Only meaningful while unlocked; a running lock reports its own row.
+      if !store.isLocked, let lastUnlock = store.lastUnlock {
+        InfoRow(label: "Last unlocked", systemImage: "clock.arrow.circlepath") {
+          Text(lastUnlock.date, style: .time).font(.callout.monospacedDigit())
+            + Text(" · \(lastUnlock.reason.displayName)")
         }
       }
 

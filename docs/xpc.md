@@ -542,7 +542,7 @@ sequenceDiagram
 | `unlockKeyboard` | `unlock()` | `LockEngine` | 幂等地解除全局锁 |
 | `status` | `status()` | `LockEngine` | 读取 Agent 当前的权威锁状态 |
 | `toggleKeyboard` | `toggle()` | `AgentService` / `LockEngine` | capability-gated;在同一 MainActor turn 内原子翻转全局锁并返回翻转后状态;非幂等,丢失 reply 只能归入 outcome unknown |
-| `lockStatusSnapshot` | `lockStatusSnapshot()` | `LockEngine` / `AgentService` | capability-gated query；在一个 Agent execution turn 中读取布尔状态、capture time、锁定起点、auto-unlock deadline 与 active settings，并以有大小上限的 format-1 JSON payload 返回 |
+| `lockStatusSnapshot` | `lockStatusSnapshot()` | `LockEngine` / `AgentService` | capability-gated query；在一个 Agent execution turn 中读取布尔状态、capture time、锁定起点、auto-unlock deadline、active settings 与上次解锁记录，并以有大小上限的 format-1 JSON payload 返回 |
 | `prepareForReplacement` | `prepareForReplacement(unlockIfNeeded:expectedAgentInstanceID:)` | `AgentService` | Agent 原子校验 expected instance,安装短期 prepared drain,可在同一 execution turn 解锁,返回同 generation ticket |
 | `commitReplacement` | `commitReplacement(ticket:)` | `AgentService` | 在提交 unregister 前把 prepared drain 幂等切换为不可过期的 committed drain |
 | `replacementStatus` | `replacementStatus(ticket:)` | `AgentService` | 查询 exact ticket 的 inactive/prepared/committed phase,恢复丢失的 commit reply |

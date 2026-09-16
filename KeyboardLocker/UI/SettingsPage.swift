@@ -14,20 +14,37 @@ struct SettingsPage: View {
 
   @State private var draft: KeyboardLockerSettings?
   @State private var hotkeyRejection: KeyboardLockerSettingsValidationError?
-  @State private var isConfirmingDisabledAutoUnlock = false
+  @State private var timeoutText = ""
+  @State private var timeoutUnit: TimeoutUnit = .seconds
+  @State private var timeoutRejection: String?
+  @State private var lastTimedSeconds: TimeInterval = 60
+  @FocusState private var timeoutFieldFocused: Bool
 
-  private static let timeoutChoices: [TimeInterval] = [15, 30, 60, 120, 300, 600, 1800, 3600]
+  private enum TimeoutUnit {
+    case seconds
+    case minutes
+
+    var factor: TimeInterval {
+      self == .minutes ? 60 : 1
+    }
+
+    var label: String {
+      self == .minutes ? "min" : "sec"
+    }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       header
       Divider()
       body(for: store.settingsUnavailableMessage)
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
       Divider()
       // App-side tools stay reachable even when the Agent's settings are unavailable.
       toolsSection
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
     .onAppear {
       // Re-read on appear in case a change was made from another surface while this was closed.
@@ -37,22 +54,10 @@ struct SettingsPage: View {
     .onChange(of: store.editableSettings) { _ in
       syncDraft()
     }
-    .confirmationDialog(
-      "Turn off auto-unlock?",
-      isPresented: $isConfirmingDisabledAutoUnlock
-    ) {
-      Button("Turn Off Auto-Unlock", role: .destructive) {
-        commit(policy: .disabled)
+    .onChange(of: timeoutFieldFocused) { focused in
+      if !focused {
+        settleTimeoutFieldOnFocusLoss()
       }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(
-        """
-        The keyboard will stay locked until you unlock it with the hotkey, the notification's \
-        Unlock Now button, the menu bar, a widget, or `klock unlock`. Without a timeout there is \
-        no automatic recovery if the hotkey does not reach KeyboardLocker.
-        """
-      )
     }
   }
 
@@ -79,7 +84,7 @@ struct SettingsPage: View {
         .hidden()
     }
     .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.vertical, 8)
   }
 
   // MARK: - Body
@@ -91,9 +96,9 @@ struct SettingsPage: View {
         store.reconcile()
       }
     } else if let draft {
-      VStack(alignment: .leading, spacing: 18) {
-        hotkeySection(draft: draft)
-        autoUnlockSection(draft: draft)
+      VStack(alignment: .leading, spacing: 10) {
+        hotkeyRow(draft: draft)
+        autoUnlockRows(draft: draft)
         statusFootnotes
       }
     } else {
@@ -108,23 +113,26 @@ struct SettingsPage: View {
 
   // MARK: - Sections
 
-  private func hotkeySection(draft: KeyboardLockerSettings) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      SectionHeader("Unlock Hotkey")
-
-      HotkeyRecorderField(
-        hotkey: draft.unlockHotkey,
-        isEnabled: store.canEditSettings
-      ) { outcome in
-        switch outcome {
-        case let .accepted(hotkey):
-          hotkeyRejection = nil
-          commit(hotkey: hotkey)
-        case let .rejected(error):
-          hotkeyRejection = error
+  private func hotkeyRow(draft: KeyboardLockerSettings) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Text("Unlock Hotkey")
+        Spacer(minLength: 12)
+        HotkeyRecorderField(
+          hotkey: draft.unlockHotkey,
+          isEnabled: store.canEditSettings
+        ) { outcome in
+          switch outcome {
+          case let .accepted(hotkey):
+            hotkeyRejection = nil
+            commit(hotkey: hotkey)
+          case let .rejected(error):
+            hotkeyRejection = error
+          }
         }
+        .frame(width: 120)
       }
-      .frame(maxWidth: .infinity)
+      .help("Click, then press a shortcut.")
 
       if let hotkeyRejection {
         Label {
@@ -138,38 +146,56 @@ struct SettingsPage: View {
           Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
         .font(.caption)
-      } else {
-        Text("Click, then press a shortcut.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
     }
   }
 
-  private func autoUnlockSection(draft: KeyboardLockerSettings) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      SectionHeader("Auto-Unlock")
-
-      Picker("Unlock automatically", selection: autoUnlockSelection(draft: draft)) {
-        ForEach(Self.timeoutChoices, id: \.self) { seconds in
-          Text(Self.timeoutLabel(seconds)).tag(TimeInterval?.some(seconds))
-        }
-        Divider()
-        Text("Never (not recommended)").tag(TimeInterval?.none)
+  private func autoUnlockRows(draft: KeyboardLockerSettings) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("Auto-Unlock")
+        Spacer(minLength: 12)
+        Toggle("Auto-unlock", isOn: autoUnlockEnabledBinding(draft: draft))
+          .labelsHidden()
+          .disabled(!store.canEditSettings)
       }
-      .labelsHidden()
-      .disabled(!store.canEditSettings)
       .help("The background agent owns this timer and unlocks even if KeyboardLocker quits. The countdown pauses while the Mac is asleep.")
 
-      Text(Self.autoUnlockFooter(for: draft.autoUnlockPolicy))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      // The duration editor only exists while auto-unlock is on; a disabled editor would read
+      // as broken, and a hidden one costs nothing because its task context is gone.
+      if draft.autoUnlockPolicy.timeout != nil {
+        HStack {
+          Text("Duration")
+          Spacer(minLength: 12)
+          TextField("", text: $timeoutText)
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 64)
+            .focused($timeoutFieldFocused)
+            .onSubmit(commitTimeoutText)
+            .disabled(!store.canEditSettings)
+
+          Picker("Unit", selection: timeoutUnitBinding) {
+            Text(TimeoutUnit.seconds.label).tag(TimeoutUnit.seconds)
+            Text(TimeoutUnit.minutes.label).tag(TimeoutUnit.minutes)
+          }
+          .labelsHidden()
+          .fixedSize()
+          .disabled(!store.canEditSettings)
+        }
+
+        if let timeoutRejection {
+          Text(timeoutRejection)
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
     }
   }
 
   private var toolsSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 8) {
       // Rendered only when it can actually run: a disabled button would read as broken here.
       if store.canRunSafetyCheck {
         Button(action: actions.confirmSafetyCheck) {
@@ -223,20 +249,70 @@ struct SettingsPage: View {
 
   // MARK: - Editing
 
-  private func autoUnlockSelection(
+  private func autoUnlockEnabledBinding(
     draft: KeyboardLockerSettings
-  ) -> Binding<TimeInterval?> {
+  ) -> Binding<Bool> {
     Binding(
-      get: { draft.autoUnlockPolicy.timeout },
-      set: { newValue in
-        guard let seconds = newValue else {
-          // Reachable but gated: removing the fail-safe deserves an explicit decision.
-          isConfirmingDisabledAutoUnlock = true
-          return
-        }
-        commit(policy: .timed(seconds: seconds))
+      get: { draft.autoUnlockPolicy.timeout != nil },
+      set: { enabled in
+        // Toggling off disables the fail-safe directly; the user can always turn it back on.
+        commit(policy: enabled ? .timed(seconds: lastTimedSeconds) : .disabled)
       }
     )
+  }
+
+  /// Switching units converts the current value instead of silently reinterpreting it, and a
+  /// valid displayed value commits immediately so the text can never lie about what is stored.
+  private var timeoutUnitBinding: Binding<TimeoutUnit> {
+    Binding(
+      get: { timeoutUnit },
+      set: { newUnit in
+        let oldUnit = timeoutUnit
+        timeoutUnit = newUnit
+        guard let value = Double(timeoutText), value > 0 else {
+          return
+        }
+        timeoutText = Self.formatTimeout(value * oldUnit.factor, unit: newUnit)
+        commitTimeoutText()
+      }
+    )
+  }
+
+  private func commitTimeoutText() {
+    guard let draft else {
+      return
+    }
+    guard let value = Double(timeoutText.trimmingCharacters(in: .whitespaces)), value > 0 else {
+      timeoutRejection = "Enter a positive number."
+      return
+    }
+    let seconds = (value * timeoutUnit.factor).rounded()
+    do {
+      _ = try KeyboardLockerSettings(
+        autoUnlockPolicy: .timed(seconds: seconds),
+        unlockHotkey: draft.unlockHotkey
+      )
+      .validated()
+    } catch {
+      timeoutRejection = error.localizedDescription
+      return
+    }
+    timeoutRejection = nil
+    if draft.autoUnlockPolicy.timeout != seconds {
+      commit(policy: .timed(seconds: seconds))
+    }
+  }
+
+  /// Returning focus means the field either commits a valid value or snaps back to the stored
+  /// one — the text must never keep showing a value the Agent does not hold.
+  private func settleTimeoutFieldOnFocusLoss() {
+    commitTimeoutText()
+    if timeoutRejection != nil {
+      timeoutRejection = nil
+      if let seconds = draft?.autoUnlockPolicy.timeout {
+        timeoutText = Self.formatTimeout(seconds, unit: timeoutUnit)
+      }
+    }
   }
 
   private func commit(hotkey: KeyboardLockerSettings.Hotkey) {
@@ -265,49 +341,35 @@ struct SettingsPage: View {
   private func syncDraft() {
     draft = store.editableSettings
     hotkeyRejection = nil
+
+    // Never clobber the field while the user is typing in it.
+    guard !timeoutFieldFocused,
+          let seconds = store.editableSettings?.autoUnlockPolicy.timeout
+    else {
+      return
+    }
+    lastTimedSeconds = seconds
+    timeoutRejection = nil
+    if seconds >= 60, seconds.truncatingRemainder(dividingBy: 60) == 0 {
+      timeoutUnit = .minutes
+    } else {
+      timeoutUnit = .seconds
+    }
+    timeoutText = Self.formatTimeout(seconds, unit: timeoutUnit)
   }
 
   // MARK: - Copy
 
-  private static func timeoutLabel(_ seconds: TimeInterval) -> String {
-    let minutes = Int(seconds) / 60
-    let remainder = Int(seconds) % 60
-    if minutes == 0 {
-      return "After \(remainder) seconds"
+  private static func formatTimeout(_ seconds: TimeInterval, unit: TimeoutUnit) -> String {
+    let value = seconds / unit.factor
+    if value.rounded() == value {
+      return "\(Int(value))"
     }
-    if remainder == 0 {
-      return minutes == 1 ? "After 1 minute" : "After \(minutes) minutes"
-    }
-    return "After \(minutes)m \(remainder)s"
-  }
-
-  private static func autoUnlockFooter(
-    for policy: KeyboardLockerSettings.AutoUnlockPolicy
-  ) -> String {
-    switch policy {
-    case .disabled:
-      "No automatic unlock. Use the hotkey or `klock unlock`."
-    case .timed:
-      "Unlocks even if the app quits."
-    }
+    return String(value)
   }
 }
 
 // MARK: - Shared small views
-
-private struct SectionHeader: View {
-  let title: String
-
-  init(_ title: String) {
-    self.title = title
-  }
-
-  var body: some View {
-    Text(title.uppercased())
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(.secondary)
-  }
-}
 
 /// Shared presentation for an agent value the app could not read.
 private struct UnavailableRow: View {

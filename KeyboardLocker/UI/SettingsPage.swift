@@ -9,6 +9,7 @@ import SwiftUI
 /// cannot leave the form showing a configuration that is not stored.
 struct SettingsPage: View {
   @ObservedObject var store: AppUIStore
+  let actions: PopoverActions
   let goBack: () -> Void
 
   @State private var draft: KeyboardLockerSettings?
@@ -22,6 +23,10 @@ struct SettingsPage: View {
       header
       Divider()
       body(for: store.settingsUnavailableMessage)
+        .padding(16)
+      Divider()
+      // App-side tools stay reachable even when the Agent's settings are unavailable.
+      toolsSection
         .padding(16)
     }
     .onAppear {
@@ -134,7 +139,7 @@ struct SettingsPage: View {
         }
         .font(.caption)
       } else {
-        Text("Click the field, then press the shortcut you want to use to unlock the keyboard.")
+        Text("Click, then press a shortcut.")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -154,12 +159,33 @@ struct SettingsPage: View {
       }
       .labelsHidden()
       .disabled(!store.canEditSettings)
+      .help("The background agent owns this timer and unlocks even if KeyboardLocker quits. The countdown pauses while the Mac is asleep.")
 
       Text(Self.autoUnlockFooter(for: draft.autoUnlockPolicy))
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  private var toolsSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      // Rendered only when it can actually run: a disabled button would read as broken here.
+      if store.canRunSafetyCheck {
+        Button(action: actions.confirmSafetyCheck) {
+          Label("Run 10-Second Safety Check", systemImage: "checkmark.shield")
+        }
+        .help("Lock the keyboard for 10 seconds to prove the unlock paths work. The mouse stays usable and the agent always unlocks.")
+      }
+
+      Button(action: actions.manageCommandLineTool) {
+        Label("Manage klock Command…", systemImage: "terminal")
+      }
+      .help("Install, remove, or get the PATH command for the `klock` Terminal command. Shell configuration files are never modified.")
+    }
+    .buttonStyle(.borderless)
+    .labelStyle(.titleAndIcon)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   @ViewBuilder
@@ -260,15 +286,9 @@ struct SettingsPage: View {
   ) -> String {
     switch policy {
     case .disabled:
-      """
-      Auto-unlock is off. Unlock with the hotkey, the notification's Unlock Now button, the menu \
-      bar, a widget, or `klock unlock`.
-      """
+      "No automatic unlock. Use the hotkey or `klock unlock`."
     case .timed:
-      """
-      The background agent owns this timer, so it still releases the keyboard if KeyboardLocker \
-      quits. The countdown pauses while the Mac is asleep.
-      """
+      "Unlocks even if the app quits."
     }
   }
 }

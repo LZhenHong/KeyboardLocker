@@ -4,6 +4,8 @@ import SwiftUI
 /// The popover's status page: what the lock is doing now, the primary action, and any recovery
 /// the current agent state calls for.
 ///
+/// Layout is a row grid: a single state row carries the status and the primary Lock/Unlock action,
+/// optional detail rows sit below it, and the bottom bar pairs the hotkey hint with the menu.
 /// Every value comes from the coordinator's authoritative snapshot via `store`; the view only maps
 /// state to presentation. Actions that need a modal confirmation or a System Settings jump are
 /// carried by `PopoverActions`, keeping this view free of `NSAlert`.
@@ -14,19 +16,23 @@ struct StatusPage: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      header
-      Divider()
-      content
+      stateRow
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+      if showsDetail {
+        Divider()
+        detail
+          .padding(.horizontal, 16)
+          .padding(.vertical, 14)
+      }
       Divider()
       toolbar
     }
   }
 
-  // MARK: - Header
+  // MARK: - State row
 
-  private var header: some View {
+  private var stateRow: some View {
     HStack(alignment: .center, spacing: 12) {
       ZStack {
         Circle()
@@ -41,30 +47,40 @@ struct StatusPage: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(statusTitle)
           .font(.headline)
-        Text(statusSubtitle)
+        statusSubtitle
           .font(.subheadline)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
       Spacer(minLength: 0)
+
+      if store.canPerformLockAction {
+        Button(store.isLocked ? "Unlock" : "Lock") {
+          store.performDisplayedLockAction()
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut(.defaultAction)
+      }
     }
-    .padding(16)
   }
 
-  // MARK: - Content
+  // MARK: - Detail
 
-  private var content: some View {
+  /// Detail rows only exist when the state has something to say; a healthy unlocked page is just
+  /// the state row and the toolbar.
+  private var showsDetail: Bool {
+    store.isLocked
+      || store.snapshot.hasSettingsPendingNextLock
+      || store.snapshot.lastError != nil
+      || !store.recoveryActions.isEmpty
+  }
+
+  private var detail: some View {
     VStack(alignment: .leading, spacing: 14) {
-      if store.isLocked {
-        lockDetail
-      }
-
-      if let hotkey = displayedHotkey {
-        InfoRow(label: "Unlock hotkey", systemImage: "keyboard") {
-          Text(hotkey.displayString)
-            .font(.callout.monospaced())
-            .foregroundStyle(.primary)
+      if store.isLocked, let started = store.lockStartDate {
+        InfoRow(label: "Locked since", systemImage: "clock") {
+          Text(started, style: .time).font(.callout.monospacedDigit())
         }
       }
 
@@ -79,69 +95,8 @@ struct StatusPage: View {
         FootnoteLabel(error, systemImage: "exclamationmark.triangle.fill", tint: .orange)
       }
 
-      actionButtons
-    }
-  }
-
-  private var lockDetail: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if let deadline = store.autoUnlockDeadline {
-        InfoRow(label: "Unlocks in", systemImage: "timer") {
-          // The authoritative deadline is transported; the countdown is derived locally so no
-          // stale counter crosses XPC.
-          Text(timerInterval: Date()...deadline, countsDown: true)
-            .font(.callout.monospacedDigit())
-        }
-        Text("The countdown pauses while the Mac is asleep, so the keyboard may stay locked longer than shown.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      } else if store.activeSettings?.autoUnlockPolicy == .disabled {
-        InfoRow(label: "Unlocks automatically", systemImage: "timer") {
-          Text("Never").foregroundStyle(.secondary)
-        }
-      }
-
-      if let started = store.lockStartDate {
-        InfoRow(label: "Locked since", systemImage: "clock") {
-          Text(started, style: .time).font(.callout.monospacedDigit())
-        }
-      }
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color(nsColor: .quaternaryLabelColor).opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-  }
-
-  private var actionButtons: some View {
-    VStack(spacing: 8) {
-      if store.canPerformLockAction {
-        Button {
-          store.performDisplayedLockAction()
-        } label: {
-          Label(
-            store.isLocked ? "Unlock Keyboard" : "Lock Keyboard",
-            systemImage: store.isLocked ? "lock.open.fill" : "lock.fill"
-          )
-          .frame(maxWidth: .infinity)
-        }
-        .controlSize(.large)
-        .buttonStyle(.borderedProminent)
-        .keyboardShortcut(.defaultAction)
-      }
-
       ForEach(store.recoveryActions, id: \.self) { action in
         recoveryButton(action)
-      }
-
-      if store.canRunSafetyCheck {
-        Button {
-          actions.confirmSafetyCheck()
-        } label: {
-          Label("Run 10-Second Safety Check", systemImage: "checkmark.shield")
-            .frame(maxWidth: .infinity)
-        }
-        .controlSize(.large)
-        .buttonStyle(.bordered)
       }
     }
   }
@@ -196,16 +151,18 @@ struct StatusPage: View {
 
   private var toolbar: some View {
     HStack(spacing: 4) {
-      Button(action: openSettings) {
-        Label("Settings", systemImage: "gearshape")
+      if let hotkey = displayedHotkey {
+        Text("Unlock hotkey \(hotkey.displayString)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
-      .disabled(store.isBusy)
 
       Spacer(minLength: 0)
 
       Menu {
+        Button("Settings…", action: openSettings)
+          .disabled(store.isBusy)
         Button("Copy Diagnostics", action: actions.copyDiagnostics)
-        Button("Command Line Tool…", action: actions.manageCommandLineTool)
         Divider()
         Button("Quit KeyboardLocker", action: actions.quit)
       } label: {
@@ -287,23 +244,34 @@ struct StatusPage: View {
     }
   }
 
-  private var statusSubtitle: String {
+  @ViewBuilder
+  private var statusSubtitle: some View {
     if let activity = store.snapshot.activity {
-      return Self.activityLabel(activity)
-    }
-    switch store.snapshot.state {
-    case .checking:
-      return "Checking the background agent…"
-    case .agentApprovalRequired:
-      return "Enable KeyboardLocker in System Settings → General → Login Items."
-    case let .agentReplacementInProgress(message),
-         let .agentUpdateRequired(_, message),
-         let .unavailable(message, _):
-      return message
-    case .accessibilityRequired:
-      return "The background agent needs Accessibility access before it can filter keyboard events."
-    case .ready:
-      return "Mouse and trackpad stay available while locked."
+      Text(Self.activityLabel(activity))
+    } else {
+      switch store.snapshot.state {
+      case .ready(isLocked: true):
+        if let deadline = store.autoUnlockDeadline {
+          // The authoritative deadline is transported; the countdown is derived locally so no
+          // stale counter crosses XPC.
+          Text("Unlocks in ")
+            + Text(timerInterval: Date()...deadline, countsDown: true).monospacedDigit()
+        } else {
+          Text("No auto-unlock.")
+        }
+      case .ready(isLocked: false):
+        Text("Mouse and trackpad keep working.")
+      case .checking:
+        Text("Checking the background agent…")
+      case .agentApprovalRequired:
+        Text("Enable KeyboardLocker in System Settings → General → Login Items.")
+      case let .agentReplacementInProgress(message),
+           let .agentUpdateRequired(_, message),
+           let .unavailable(message, _):
+        Text(message)
+      case .accessibilityRequired:
+        Text("The background agent needs Accessibility access before it can filter keyboard events.")
+      }
     }
   }
 
@@ -329,7 +297,7 @@ struct StatusPage: View {
 
 // MARK: - Shared small views
 
-/// A leading label + trailing value row, used for lock detail and hotkey.
+/// A leading label + trailing value row, used for lock detail.
 private struct InfoRow<Value: View>: View {
   let label: String
   let systemImage: String

@@ -31,6 +31,7 @@ struct PopoverRootView: View {
       case .settings:
         SettingsPage(
           store: store,
+          actions: actions,
           goBack: { navigate(to: .status) }
         )
         .transition(.opacity)

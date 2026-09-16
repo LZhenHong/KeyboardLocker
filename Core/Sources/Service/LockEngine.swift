@@ -289,6 +289,12 @@ struct LockEngineDependencies {
   var hasAccessibilityPermission: @MainActor () -> Bool
   var installEventTap: @MainActor (LockEngine) throws -> any InstalledEventTap
   var scheduleTimer: MainActorTimerScheduler
+  /// Registers a main-actor observer fired once per system wake and returns its cancellation.
+  /// The auto-unlock timer runs on the monotonic clock and pauses during sleep, while the
+  /// published deadline is wall-clock — this signal is what lets the engine reconcile them.
+  var observeSystemWake: @MainActor (
+    @escaping @MainActor @Sendable () -> Void
+  ) -> @MainActor () -> Void
   var broadcastStateChange: () -> Void
   var now: () -> Date
 
@@ -297,6 +303,17 @@ struct LockEngineDependencies {
       hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
       installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
       scheduleTimer: liveMainActorTimerScheduler,
+      observeSystemWake: { handler in
+        let center = NSWorkspace.shared.notificationCenter
+        let observer = center.addObserver(
+          forName: NSWorkspace.didWakeNotification,
+          object: nil,
+          queue: .main
+        ) { _ in
+          MainActor.assumeIsolated { handler() }
+        }
+        return { center.removeObserver(observer) }
+      },
       broadcastStateChange: { LockStateBroadcaster.broadcast() },
       now: { Date() }
     )
@@ -450,6 +467,7 @@ final class LockEngine {
   private var installedTap: (any InstalledEventTap)?
   private var eventTapGeneration: UInt64 = 0
   private var cancelScheduledAutoUnlock: (() -> Void)?
+  private var cancelWakeObservation: (() -> Void)?
   private var runtimeState = LockRuntimeState()
   private var stateChangeHandler: () -> Void = {}
 
@@ -464,6 +482,9 @@ final class LockEngine {
 
   init(dependencies: LockEngineDependencies) {
     self.dependencies = dependencies
+    cancelWakeObservation = dependencies.observeSystemWake { [weak self] in
+      self?.reconcileAutoUnlockAfterWake()
+    }
   }
 
   /// Wires Agent-owned presentation after both the engine and its observer exist. The production
@@ -582,6 +603,33 @@ final class LockEngine {
     }
 
     cancelScheduledAutoUnlock = dependencies.scheduleTimer(schedule.delay) { [weak self] in
+      self?.unlock(ifLockGeneration: lockGeneration, reason: .autoUnlock)
+    }
+  }
+
+  /// The auto-unlock timer runs on the monotonic clock, which pauses while the system sleeps,
+  /// but `autoUnlockTargetDate` is published wall-clock. Reconcile the two on wake: expire
+  /// immediately when the deadline passed during sleep, otherwise re-arm for the remaining
+  /// wall-clock interval so the lock still ends at the advertised time instead of drifting by
+  /// the sleep duration.
+  private func reconcileAutoUnlockAfterWake() {
+    guard runtimeState.isLocked,
+          let deadline = runtimeState.autoUnlockTargetDate,
+          let lockGeneration = runtimeState.lockGeneration
+    else {
+      return
+    }
+
+    let remaining = deadline.timeIntervalSince(dependencies.now())
+    guard remaining > 0 else {
+      unlock(ifLockGeneration: lockGeneration, reason: .autoUnlock)
+      return
+    }
+
+    // Cancel only the pending fire — the published deadline must not be rewritten by a
+    // sleep/wake cycle, so this path deliberately does not go through `cancelAutoUnlockTimer`.
+    cancelScheduledAutoUnlock?()
+    cancelScheduledAutoUnlock = dependencies.scheduleTimer(remaining) { [weak self] in
       self?.unlock(ifLockGeneration: lockGeneration, reason: .autoUnlock)
     }
   }

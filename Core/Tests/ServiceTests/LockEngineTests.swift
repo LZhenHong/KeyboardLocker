@@ -14,6 +14,7 @@ final class LockEngineTests {
   private var stateChangeCount: Int
   private var hasAccessibilityPermission: Bool
   private var now: Date
+  private var wakeHandler: (@MainActor @Sendable () -> Void)?
 
   init() {
     tap = FakeInstalledEventTap()
@@ -23,6 +24,7 @@ final class LockEngineTests {
     stateChangeCount = 0
     hasAccessibilityPermission = true
     now = Date(timeIntervalSinceReferenceDate: 1000)
+    wakeHandler = nil
   }
 
   // MARK: - Acquisition
@@ -300,6 +302,81 @@ final class LockEngineTests {
     #expect(tap.teardownCallCount == 0)
   }
 
+  // MARK: - Wake reconciliation
+
+  @Test
+  func wakeAfterDeadlineUnlocksAtOnce() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    // The monotonic timer paused while the system slept past the wall-clock deadline.
+    now = now.addingTimeInterval(120)
+    simulateWake()
+
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
+    #expect(broadcastCount == 2)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .autoUnlock, date: now))
+  }
+
+  @Test
+  func wakeBeforeDeadlineRearmsAgainstTheOriginalDeadline() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    let originalDeadline = now.addingTimeInterval(60)
+
+    // Thirty wall-clock seconds passed while the monotonic timer stood still.
+    now = now.addingTimeInterval(30)
+    simulateWake()
+
+    #expect(engine.isLocked)
+    #expect(scheduler.timers.count == 2)
+    #expect(scheduler.timers[0].isCancelled)
+    #expect(scheduler.timers[1].interval == 30)
+    // The published deadline never drifts with a sleep/wake cycle.
+    #expect(engine.statusSnapshot.autoUnlockTargetDate == originalDeadline)
+
+    now = originalDeadline
+    scheduler.timers[1].fire()
+    #expect(!engine.isLocked)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .autoUnlock, date: now))
+  }
+
+  @Test
+  func wakeWithoutLockOrDeadlineIsANoOp() throws {
+    let engine = makeEngine()
+
+    simulateWake()
+    #expect(scheduler.timers.isEmpty)
+    #expect(broadcastCount == 0)
+
+    _ = try engine.lock(settings: makeSettings(autoUnlockPolicy: .disabled))
+    simulateWake()
+
+    #expect(engine.isLocked)
+    #expect(scheduler.timers.isEmpty)
+    #expect(broadcastCount == 1)
+  }
+
+  @Test
+  func staleWakeRearmCannotUnlockANewerLock() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    now = now.addingTimeInterval(30)
+    simulateWake()
+    let rearmedTimer = scheduler.timers[1]
+
+    engine.unlock()
+    _ = try engine.lock(settings: makeSettings())
+    #expect(scheduler.timers.count == 3)
+
+    // The re-armed timer's cancel lost the race against an already-queued fire; the
+    // generation fence must protect the newer lock.
+    rearmedTimer.fire()
+    #expect(engine.isLocked)
+  }
+
   // MARK: - Last unlock record
 
   @Test
@@ -387,11 +464,20 @@ final class LockEngineTests {
         return self.tap
       },
       scheduleTimer: scheduler.scheduler,
+      observeSystemWake: { handler in
+        self.wakeHandler = handler
+        return { self.wakeHandler = nil }
+      },
       broadcastStateChange: { self.broadcastCount += 1 },
       now: { self.now }
     ))
     engine.setStateChangeHandler { self.stateChangeCount += 1 }
     return engine
+  }
+
+  /// Delivers the system-wake signal the live dependencies bridge from `NSWorkspace`.
+  private func simulateWake() {
+    wakeHandler?()
   }
 
   private func makeSettings(

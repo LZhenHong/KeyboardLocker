@@ -159,7 +159,7 @@ struct SettingsPage: View {
           .labelsHidden()
           .disabled(!store.canEditSettings)
       }
-      .help("The background agent owns this timer and unlocks even if KeyboardLocker quits. The countdown pauses while the Mac is asleep.")
+      .help("The background agent owns this timer and unlocks even if KeyboardLocker quits. Waking the Mac reconciles the countdown with the clock deadline.")
 
       // The duration editor only exists while auto-unlock is on; a disabled editor would read
       // as broken, and a hidden one costs nothing because its task context is gone.

@@ -161,9 +161,29 @@ final class HotkeyRecorderView: NSView {
 
   private func refreshAppearance() {
     refreshTitle()
-    layer?.borderColor = (isRecording ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
-    layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+    // Resolving a dynamic NSColor to a CGColor bakes in whatever appearance is current at
+    // conversion time, so pin the resolution to this view's own appearance and re-run it when
+    // that changes — otherwise the chrome goes stale after a light/dark switch.
+    let applyColors = {
+      self.layer?.borderColor = (self.isRecording ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+      self.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+    }
+    if window != nil {
+      effectiveAppearance.performAsCurrentDrawingAppearance(applyColors)
+    } else {
+      applyColors()
+    }
     needsDisplay = true
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    refreshAppearance()
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    refreshAppearance()
   }
 
   private func refreshTitle() {

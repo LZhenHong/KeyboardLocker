@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Root of the menu-bar popover: a single surface that swaps between the status page, the
-/// settings page, and the statistics page, so the user never leaves the popover.
+/// settings page, and the statistics page, so the user never leaves the popover. (The FAQ lives
+/// in a standalone window instead — its content outgrew the fixed popover width.)
 ///
 /// Navigation is a lightweight `@State` enum rather than `NavigationStack`: the popover is a fixed,
 /// small surface with no need for a navigation bar or a growing back stack, and a plain crossfade

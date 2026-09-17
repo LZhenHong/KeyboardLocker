@@ -19,6 +19,7 @@ final class StatusItemController: NSObject {
   private var blockedInputHUD: BlockedInputHUDController?
   private var lockHotkeyController: LockHotkeyController?
   private var countdownTimer: Timer?
+  private let faqPresenter = FAQWindowPresenter()
   private var popoverPresenter: PopoverPresenter!
   private var currentSnapshot: AppCoordinator.Snapshot
   private var hasOfferedSafetyCheckThisLaunch = false
@@ -98,6 +99,7 @@ final class StatusItemController: NSObject {
       confirmSafetyCheck: { [weak self] in self?.confirmSafetyCheck() },
       copyDiagnostics: { [weak self] in self?.copyDiagnostics() },
       manageCommandLineTool: { [weak self] in self?.manageCommandLineTool() },
+      openFAQ: { [weak self] in self?.openFAQ() },
       openLoginItemsSettings: { [weak self] in self?.openLoginItemsSettings() },
       openAccessibilitySettings: { [weak self] in self?.openAccessibilitySettings() },
       quit: { [weak self] in self?.quit() }
@@ -438,6 +440,12 @@ final class StatusItemController: NSObject {
 
   fileprivate func openLoginItemsSettings() {
     SMAppService.openSystemSettingsLoginItems()
+  }
+
+  fileprivate func openFAQ() {
+    // Same rule as the alerts: the transient popover must not cover the presented surface.
+    popoverPresenter.close()
+    faqPresenter.show()
   }
 
   fileprivate func openAccessibilitySettings() {

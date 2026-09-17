@@ -17,6 +17,8 @@ struct PopoverActions {
   var confirmSafetyCheck: () -> Void
   var copyDiagnostics: () -> Void
   var manageCommandLineTool: () -> Void
+  /// The FAQ lives in a standalone window owned by the AppKit layer, not inside the popover.
+  var openFAQ: () -> Void
   var openLoginItemsSettings: () -> Void
   var openAccessibilitySettings: () -> Void
   /// Quit is destructive while locked (removes the only menu-bar indicator), so the controller
@@ -31,6 +33,7 @@ struct PopoverActions {
     confirmSafetyCheck: {},
     copyDiagnostics: {},
     manageCommandLineTool: {},
+    openFAQ: {},
     openLoginItemsSettings: {},
     openAccessibilitySettings: {},
     quit: {}

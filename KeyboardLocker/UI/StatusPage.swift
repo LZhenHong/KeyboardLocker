@@ -176,6 +176,11 @@ struct StatusPage: View {
       }
       .help("Lock statistics")
 
+      Button(action: actions.openFAQ) {
+        Image(systemName: "questionmark.circle")
+      }
+      .help("Frequently asked questions")
+
       Menu {
         // One-off quick locks: the saved auto-unlock policy is never changed by these, and a
         // running lock cannot adopt an override, so they only exist while unlocked and ready.
@@ -189,6 +194,7 @@ struct StatusPage: View {
         }
         Button("Settings…", action: openSettings)
           .disabled(store.isBusy)
+        Button("FAQ…", action: actions.openFAQ)
         Button("Copy Diagnostics", action: actions.copyDiagnostics)
         Divider()
         Button("Quit KeyboardLocker", action: actions.quit)

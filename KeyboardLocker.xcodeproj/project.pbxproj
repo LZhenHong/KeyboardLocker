@@ -21,6 +21,8 @@
 		F2BFFD012EEFAF1A0065F041 /* Service in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD002EEFAF1A0065F041 /* Service */; };
 		F2BFFD032EEFAF200065F041 /* Client in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD022EEFAF200065F041 /* Client */; };
 		F2BFFD042EEFAF210065F041 /* SystemSurfaces in Frameworks */ = {isa = PBXBuildFile; productRef = F2BFFD052EEFAF210065F041 /* SystemSurfaces */; };
+		F2FA0C1A0000000000000001 /* FAQ.md in Resources */ = {isa = PBXBuildFile; fileRef = F2FA0C1A0000000000000002 /* FAQ.md */; };
+		F2FA0C1A0000000000000003 /* FAQ.md in Resources */ = {isa = PBXBuildFile; fileRef = F2FA0C1A0000000000000002 /* FAQ.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +130,7 @@
 		F21304362ECDADC900735580 /* Core */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = Core; sourceTree = "<group>"; };
 		F213049B2ECDC1AA00735580 /* KeyboardLockerAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyboardLockerAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F21304B42ECDC26400735580 /* klock */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = klock; sourceTree = BUILT_PRODUCTS_DIR; };
+		F2FA0C1A0000000000000002 /* FAQ.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = FAQ.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -326,6 +329,7 @@
 				F213049C2ECDC1AA00735580 /* KeyboardLockerAgent */,
 				F21304B52ECDC26400735580 /* klock */,
 				A10000000000000000000002 /* KeyboardLockerModelTests */,
+				F2FA0C1A0000000000000002 /* FAQ.md */,
 				F21304292ECDAD3500735580 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -562,6 +566,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2FA0C1A0000000000000003 /* FAQ.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -583,6 +588,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2FA0C1A0000000000000001 /* FAQ.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -90,6 +90,12 @@ Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` W
 
 因此权限被拒时,按设计静默的入口(Services、URL、AppleScript 的 `lock` / `unlock`)没有任何用户可见的成功反馈。需要确认结果的调用方应使用 `klock status --json`、Shortcuts 返回值或 AppleScript 返回值。
 
+## Sounds 与 Typing Hint
+
+锁定与解锁的状态转换还会让 **Agent 进程自己**播放一声简短提示音(锁定 / 解锁各一,与通知同一 state-change 槽位驱动),App 是否运行都覆盖。locked 期间被 event tap 吞掉的按键(不含解锁手势本身)会触发一条 Agent 侧节流的无载荷提示信号;主 App 正在运行且权威状态仍为 locked 时,显示一个不抢焦点、不拦截鼠标的屏幕提示,列出当前解锁热键(配置了 unlock phrase 时提示手势存在,不显示短语本体)。
+
+两者都是 presentation-only 的便利面:提示音在设置关闭时静默,Typing Hint 在 App 未运行时不显示也不补发;它们的内容永远不是状态源。开关在 Settings 的 Feedback 区(Lock Sounds / Typing Hint),经既有 settings 链路(protocol 1.8)流转,locked 时写入只落盘、下一代锁生效。
+
 ## AppleScript
 
 应用 scripting dictionary 提供三个 command：

@@ -505,6 +505,10 @@ final class LockEngine {
 
   private static let autoRepeatFlagValue: Int64 = 1
 
+  /// Minimum interval between blocked-input nudges. Enforced here, at the input boundary, so a
+  /// held key cannot flood the notification centers and subscribers can stay trivial.
+  private static let blockedInputReportThrottle: TimeInterval = 4
+
   private let dependencies: LockEngineDependencies
   private var installedTap: (any InstalledEventTap)?
   private var eventTapGeneration: UInt64 = 0
@@ -515,6 +519,8 @@ final class LockEngine {
   private var phraseMatcher: UnlockPhraseMatcher?
   private var runtimeState = LockRuntimeState()
   private var stateChangeHandler: () -> Void = {}
+  private var blockedInputHandler: () -> Void = {}
+  private var lastBlockedInputReportAt: Date?
 
   var isLocked: Bool {
     runtimeState.isLocked
@@ -536,6 +542,13 @@ final class LockEngine {
   /// composition root installs exactly one handler before exposing the XPC listener.
   func setStateChangeHandler(_ handler: @escaping () -> Void) {
     stateChangeHandler = handler
+  }
+
+  /// Installs the blocked-input nudge. Fired (already settings-gated and throttled) when the
+  /// lock swallows a keystroke that is not an unlock gesture, so a presentation surface can
+  /// explain why typing has no effect.
+  func setBlockedInputHandler(_ handler: @escaping () -> Void) {
+    blockedInputHandler = handler
   }
 
   @discardableResult
@@ -626,6 +639,9 @@ final class LockEngine {
 
   private func markLocked() {
     configureAutoUnlockTimerIfNeeded()
+    // A new lock generation re-arms the feedback nudge: the first swallowed keystroke of this
+    // lock should surface immediately, not inherit the previous lock's throttle window.
+    lastBlockedInputReportAt = nil
     publishStateChange()
     Self.logger.info("Locked")
   }
@@ -782,9 +798,32 @@ final class LockEngine {
       unlockFromInputGesture(.gesture)
     } else if shouldUnlockViaPhrase(type: type, event: event) {
       unlockFromInputGesture(.phrase)
+    } else {
+      reportBlockedInput(type: type)
     }
 
     return nil
+  }
+
+  /// Nudges presentation surfaces when the lock swallows a key press that is not an unlock
+  /// gesture. Only key-downs and keyboard system controls report: key-ups and flags-changed
+  /// carry no "typing" intent, and counting them would fire the nudge on the release of the
+  /// unlock hotkey itself. Throttled per lock generation and gated by the active settings.
+  private func reportBlockedInput(type: CGEventType) {
+    guard type == .keyDown || type == LockedKeyboardEventPolicy.systemDefinedEventType else {
+      return
+    }
+    guard runtimeState.activeSettings.blockedInputFeedbackEnabled else {
+      return
+    }
+
+    let now = dependencies.now()
+    if let lastReport = lastBlockedInputReportAt,
+       now.timeIntervalSince(lastReport) < Self.blockedInputReportThrottle {
+      return
+    }
+    lastBlockedInputReportAt = now
+    blockedInputHandler()
   }
 
   /// Input-gesture unlocks dispatch through the main queue so the tap callback stays

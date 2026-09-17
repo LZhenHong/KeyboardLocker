@@ -55,6 +55,12 @@ public enum NotificationNames {
   /// Posted on both the Darwin and Distributed centers without any payload; the signal is only
   /// a hint, and subscribers always re-query the Agent for the authoritative state.
   public static let stateChanged = "io.lzhlovesjyq.keyboardlocker.state.changed"
+
+  /// Notification name for swallowed input while locked.
+  /// Posted by the Agent (throttled at the input boundary) without any payload; it is a
+  /// presentation hint, not a state change — subscribers re-confirm the lock state against the
+  /// Agent before showing anything.
+  public static let blockedInput = "io.lzhlovesjyq.keyboardlocker.input.blocked"
 }
 
 // MARK: - XPC Service Protocol

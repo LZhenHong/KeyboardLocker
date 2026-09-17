@@ -67,15 +67,25 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
   /// Optional type-to-unlock phrase; nil disables the gesture. Additive Codable field: payloads
   /// written before it existed decode as nil, and a nil value is omitted when encoding.
   public var unlockPhrase: String?
+  /// Whether the Agent plays a sound on lock/unlock transitions. Additive Codable field:
+  /// payloads written before it existed decode as enabled.
+  public var soundEffectsEnabled: Bool
+  /// Whether the Agent nudges presentation surfaces when it swallows keystrokes while locked.
+  /// Additive Codable field: payloads written before it existed decode as enabled.
+  public var blockedInputFeedbackEnabled: Bool
 
   public init(
     autoUnlockPolicy: AutoUnlockPolicy,
     unlockHotkey: Hotkey,
-    unlockPhrase: String? = nil
+    unlockPhrase: String? = nil,
+    soundEffectsEnabled: Bool = true,
+    blockedInputFeedbackEnabled: Bool = true
   ) {
     self.autoUnlockPolicy = autoUnlockPolicy
     self.unlockHotkey = unlockHotkey
     self.unlockPhrase = unlockPhrase
+    self.soundEffectsEnabled = soundEffectsEnabled
+    self.blockedInputFeedbackEnabled = blockedInputFeedbackEnabled
   }
 
   /// Default settings for initial launch or reset
@@ -106,6 +116,42 @@ extension KeyboardLockerSettings.Hotkey: Codable {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(UInt16(keyCode), forKey: .keyCode)
     try container.encode(modifierFlags.rawValue, forKey: .modifierFlags)
+  }
+}
+
+extension KeyboardLockerSettings {
+  /// Customized so additive fields stay decodable from older payloads: a missing Bool decodes
+  /// as its default instead of failing the whole settings read. Key names for the original
+  /// fields are frozen at what synthesized Codable emitted — persisted settings and older
+  /// Agents on the wire carry exactly these keys.
+  private enum CodingKeys: String, CodingKey {
+    case autoUnlockPolicy
+    case unlockHotkey
+    case unlockPhrase
+    case soundEffectsEnabled
+    case blockedInputFeedbackEnabled
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    autoUnlockPolicy = try container.decode(AutoUnlockPolicy.self, forKey: .autoUnlockPolicy)
+    unlockHotkey = try container.decode(Hotkey.self, forKey: .unlockHotkey)
+    unlockPhrase = try container.decodeIfPresent(String.self, forKey: .unlockPhrase)
+    soundEffectsEnabled = try container.decodeIfPresent(
+      Bool.self, forKey: .soundEffectsEnabled
+    ) ?? true
+    blockedInputFeedbackEnabled = try container.decodeIfPresent(
+      Bool.self, forKey: .blockedInputFeedbackEnabled
+    ) ?? true
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(autoUnlockPolicy, forKey: .autoUnlockPolicy)
+    try container.encode(unlockHotkey, forKey: .unlockHotkey)
+    try container.encodeIfPresent(unlockPhrase, forKey: .unlockPhrase)
+    try container.encode(soundEffectsEnabled, forKey: .soundEffectsEnabled)
+    try container.encode(blockedInputFeedbackEnabled, forKey: .blockedInputFeedbackEnabled)
   }
 }
 

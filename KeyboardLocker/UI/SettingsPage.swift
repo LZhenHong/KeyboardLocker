@@ -108,6 +108,7 @@ struct SettingsPage: View {
       VStack(alignment: .leading, spacing: 14) {
         unlockSection(draft: draft)
         autoUnlockSection(draft: draft)
+        feedbackSection(draft: draft)
         statusFootnotes
       }
     } else {
@@ -228,6 +229,28 @@ struct SettingsPage: View {
       } else {
         hintFooter("Unlocks automatically after the set duration, even if KeyboardLocker quits.")
       }
+    }
+  }
+
+  private func feedbackSection(draft: KeyboardLockerSettings) -> some View {
+    settingsSection("Feedback") {
+      settingsRow("Lock Sounds") {
+        Toggle("Lock sounds", isOn: soundEffectsBinding(draft: draft))
+          .labelsHidden()
+          .toggleStyle(.switch)
+          .disabled(!store.canEditSettings)
+      }
+
+      rowDivider
+
+      settingsRow("Typing Hint") {
+        Toggle("Typing hint", isOn: typingHintBinding(draft: draft))
+          .labelsHidden()
+          .toggleStyle(.switch)
+          .disabled(!store.canEditSettings)
+      }
+    } footer: {
+      hintFooter("Play a sound when the keyboard locks or unlocks, and show an on-screen hint when keys are pressed while locked.")
     }
   }
 
@@ -426,6 +449,32 @@ struct SettingsPage: View {
       set: { enabled in
         // Toggling off disables the fail-safe directly; the user can always turn it back on.
         commit(policy: enabled ? .timed(seconds: lastTimedSeconds) : .disabled)
+      }
+    )
+  }
+
+  private func soundEffectsBinding(
+    draft: KeyboardLockerSettings
+  ) -> Binding<Bool> {
+    Binding(
+      get: { draft.soundEffectsEnabled },
+      set: { enabled in
+        var updated = draft
+        updated.soundEffectsEnabled = enabled
+        commit(updated)
+      }
+    )
+  }
+
+  private func typingHintBinding(
+    draft: KeyboardLockerSettings
+  ) -> Binding<Bool> {
+    Binding(
+      get: { draft.blockedInputFeedbackEnabled },
+      set: { enabled in
+        var updated = draft
+        updated.blockedInputFeedbackEnabled = enabled
+        commit(updated)
       }
     )
   }

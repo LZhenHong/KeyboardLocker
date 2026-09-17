@@ -33,6 +33,38 @@ struct KeyboardLockerSettingsCodingTests {
   }
 
   @Test
+  func payloadWithoutFeedbackFieldsDecodesAsEnabled() throws {
+    // The pre-feedback wire shape, built by stripping the keys from a current payload so the
+    // test cannot drift from the real encoder's layout.
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 42),
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
+    )
+    var object = try #require(
+      JSONSerialization.jsonObject(with: settings.encodedForXPC()) as? [String: Any]
+    )
+    object.removeValue(forKey: "soundEffectsEnabled")
+    object.removeValue(forKey: "blockedInputFeedbackEnabled")
+    let legacyPayload = try JSONSerialization.data(withJSONObject: object)
+
+    let decoded = try KeyboardLockerSettings.decodedFromXPC(legacyPayload)
+    #expect(decoded.soundEffectsEnabled)
+    #expect(decoded.blockedInputFeedbackEnabled)
+  }
+
+  @Test
+  func explicitFeedbackValuesRoundTrip() throws {
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .disabled,
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand]),
+      soundEffectsEnabled: false,
+      blockedInputFeedbackEnabled: false
+    )
+
+    #expect(try KeyboardLockerSettings.decodedFromXPC(settings.encodedForXPC()) == settings)
+  }
+
+  @Test
   func missingPayloadIsRejected() {
     #expect(throws: KeyboardLockerSettingsCodingError.missingPayload) {
       try KeyboardLockerSettings.decodedFromXPC(nil)

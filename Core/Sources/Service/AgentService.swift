@@ -39,6 +39,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
   @MainActor private let settingsStore: any SettingsPersisting
   @MainActor private let engine: any LockEngineServing
   @MainActor private var lockStatusNotifier: LockStatusNotifier?
+  @MainActor private var lockSoundPlayer: LockSoundPlayer?
   @MainActor private let expirationScheduler: MainActorTimerScheduler
   @MainActor private var replacement = ReplacementTransaction()
   @MainActor private var replacementPreparationCancellation: (() -> Void)?
@@ -69,8 +70,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
       snapshot: { engine.statusSnapshot },
       unlock: { engine.unlock() }
     )
-    engine.setStateChangeHandler { [weak notifier] in
+    let soundPlayer = LockSoundPlayer(
+      sounds: LiveLockSoundService(),
+      snapshot: { engine.statusSnapshot }
+    )
+    engine.setStateChangeHandler { [weak notifier, weak soundPlayer] in
       notifier?.lockStateDidChange()
+      soundPlayer?.lockStateDidChange()
+    }
+    engine.setBlockedInputHandler {
+      LockStateBroadcaster.broadcastBlockedInput()
     }
 
     let settingsStore = KeyboardLockerSettingsStore()
@@ -82,6 +91,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
       expirationScheduler: liveMainActorTimerScheduler
     )
     lockStatusNotifier = notifier
+    lockSoundPlayer = soundPlayer
     notifier.start()
   }
 

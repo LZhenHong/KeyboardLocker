@@ -1,4 +1,5 @@
 import AppKit
+import Client
 import ServiceManagement
 
 /// Owns the menu-bar status item and the popover it toggles.
@@ -15,6 +16,7 @@ final class StatusItemController: NSObject {
   private let safetyCheckStore: SafetyCheckExperienceStore
   private let statusItem: NSStatusItem
   private let uiStore: AppUIStore
+  private var blockedInputHUD: BlockedInputHUDController?
   private var popoverPresenter: PopoverPresenter!
   private var currentSnapshot: AppCoordinator.Snapshot
   private var hasOfferedSafetyCheckThisLaunch = false
@@ -45,6 +47,18 @@ final class StatusItemController: NSObject {
     let store = AppUIStore(coordinator: coordinator)
     uiStore = store
     super.init()
+
+    // The HUD reads only the coordinator's authoritative snapshot: when the Agent's nudge
+    // arrives after the lock already ended, no hint is produced and nothing flashes.
+    blockedInputHUD = BlockedInputHUDController { [weak store] in
+      guard let store, store.isLocked, let settings = store.activeSettings else {
+        return nil
+      }
+      return BlockedInputHUDController.Hint(
+        hotkeyDisplay: settings.unlockHotkey.displayString,
+        hasUnlockPhrase: settings.unlockPhrase != nil
+      )
+    }
 
     // Actions capture `self`, so the popover can only be built once `self` exists.
     popoverPresenter = PopoverPresenter(

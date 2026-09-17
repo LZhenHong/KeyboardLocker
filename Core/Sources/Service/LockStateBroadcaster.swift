@@ -18,23 +18,26 @@ import Foundation
 public enum LockStateBroadcaster {
   /// Broadcasts a lock state change to all system notification channels.
   public static func broadcast() {
-    postDarwin()
-    postDistributed()
+    post(name: NotificationNames.stateChanged)
   }
 
-  private static func postDarwin() {
+  /// Broadcasts that keystrokes were swallowed while locked. This is a presentation hint, not
+  /// a state change: the Agent throttles it at the input boundary, and subscribers re-confirm
+  /// the authoritative lock state before showing anything.
+  public static func broadcastBlockedInput() {
+    post(name: NotificationNames.blockedInput)
+  }
+
+  private static func post(name: String) {
     CFNotificationCenterPostNotification(
       CFNotificationCenterGetDarwinNotifyCenter(),
-      CFNotificationName(NotificationNames.stateChanged as CFString),
+      CFNotificationName(name as CFString),
       nil,
       nil,
       true
     )
-  }
-
-  private static func postDistributed() {
     DistributedNotificationCenter.default().post(
-      name: Notification.Name(NotificationNames.stateChanged),
+      name: Notification.Name(name),
       object: nil
     )
   }

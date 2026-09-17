@@ -35,7 +35,7 @@ Focus ───────┼── XPC ──▶ Agent  ◀── the ONLY exe
 AppleScript ─┤              ├─ LockEngine        (event tap, lock lifecycle)
 Widget ──────┘              ├─ Settings ownership (source of truth)
                             ├─ Accessibility      (permission gate)
-                            └─ Lock notification (discoverability surface)
+                            └─ Lock notification + sounds (discoverability surfaces)
 ```
 
 这里的 `Core`、SwiftPM product、运行进程和 XPC connection 是不同层次。完整的构建依赖图、进程图和调用时序见 [XPC 实现与使用指南](xpc.md)。
@@ -50,6 +50,8 @@ Widget ──────┘              ├─ Settings ownership (source of t
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | 锁定可发现性通知 | **Agent**(`LockStatusNotifier`) | "Keyboard Locked" 通知的投递与移除跟随引擎的同一次状态转换,任何入口、App 是否运行都覆盖;wrapper 不发布锁状态通知。Agent 启动时清除上一代退出留下的残留。 |
+| 锁定/解锁提示音 | **Agent**(`LockSoundPlayer`) | 与通知共用引擎的同一个 state-change 槽位,只在 locked/unlocked 边沿各播放一声,由该代 active settings 的 `soundEffectsEnabled` 门控;wrapper 不播放状态提示音。 |
+| 被拦输入提示信号 | **Agent**(`LockEngine` → `LockStateBroadcaster`) | locked 时被吞掉的非解锁手势按键(keyDown 与 keyboard system control;keyUp/flagsChanged 不参与,避免解锁热键的释放动作误报)在输入边界按锁代际节流后发出无载荷 Darwin+Distributed 通知。这是 presentation hint,不是状态广播;wrapper 不发送这条信号。 |
 | UI / 意图翻译 | **Wrapper** | wrapper 可以持有视图状态,并协调只存在于自身进程的系统边界(例如 App 的 `SMAppService` 生命周期);不得复制 Agent 的锁、设置或 Accessibility 领域逻辑。 |
 
 App 的 Agent readiness/replacement 协调属于 wrapper 与 Service Management、XPC 两个系统边界之间的应用层编排,不是第二份锁核心。它必须保持为无锁状态真相源的薄协调器：`AppCoordinator` 只消费 Agent/系统查询并暴露应用状态与动作，不依赖 presentation framework；后续 UI 只能映射这些状态与动作。任何 CGEventTap、设置持久化和 Accessibility 判定仍只在 Agent 内执行。
@@ -84,6 +86,8 @@ App 可以持久化纯 presentation 状态,例如“是否已完成首次安全�
 `LockStateSubscriber` 把通知当作*提示*而非真相:订阅后的初始校准和收到的任一信号(Darwin 或 Distributed)都会向 Agent 拉取权威状态。多个并发信号被串行合并,相同状态被去重;subscription 取消后,尚未进入 handler 的在途结果会被丢弃。已经开始执行的 handler 不可被回溯撤销。Agent 之所以在两个通道都广播,只是为了让被挂起的 App 能被唤醒(Darwin)、让正在运行的 App 能及时更新(Distributed)。通知的载荷永远不是真相源。
 
 `SystemSurfaces` 的 reload request 是 presentation invalidation,不是领域状态广播：它不携带状态、不触碰 Agent,只请求 WidgetKit / ControlCenter 重新执行 provider。主 App、Widget 与 Focus extension 可以在 Agent 确认 mutation 后请求刷新；主 App 运行时还把已经由 `LockStateSubscriber` 回拉并去重的外部变化桥接为刷新提示。CLI 与 Agent 不链接 presentation module——这不只是边界约定：实测(macOS 26)`chronod` 会把非 extension 容器进程的 reload 请求按 `Ignoring restricted or unknown extension` 忽略,因此 `klock` 即使链接 `SystemSurfaces` 也无法真正触发刷新。主 App 未运行时,CLI、热键或 event-tap failure 造成的变化只能等待 WidgetKit 的下一次 provider execution；系统始终可以合并或延后 reload,因此任何 wrapper 都不得承诺即时 UI 同步。
+
+被拦输入提示信号(`NotificationNames.blockedInput`)语义与 reload request 相同:presentation hint,不携带状态。Agent 只在该代 active settings 开启 `blockedInputFeedbackEnabled` 时发出,并在输入边界节流(每代锁首次即报,之后每 4 秒至多一条;新一代锁重新武装)。主 App 收到信号后必须重新核对权威快照仍为 locked 才显示 HUD——信号可能恰好先于一次解锁到达;App 未运行时信号不排队、不补发,直接丢弃。任何 wrapper 都不得从这条信号推断或缓存锁状态。
 
 `klock lock` 先发出 atomic interactive lock request。只有 outcome 为 acquired 时,它才等待并报告后续解锁；本轮 event tap 会把 `Ctrl+C` 当作额外解锁手势并在 Agent 内消费该事件。若 outcome 为 already locked,CLI 必须说明本命令没有创建新锁并立即退出,不能把 App 或另一个 CLI 已建立的锁变成自己的可取消 session。acquired 后的等待同时使用 `LockStateSubscriber` 获得及时更新,并周期性查询 `status()` 以恢复双通道通知都丢失或 Agent 重启的场景;连续无法取得权威状态时必须报错退出,不能把 transport failure 猜成 unlocked。
 

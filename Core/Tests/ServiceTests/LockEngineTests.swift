@@ -13,6 +13,7 @@ final class LockEngineTests {
   private var installCount: Int
   private var broadcastCount: Int
   private var stateChangeCount: Int
+  private var blockedInputCount: Int
   private var hasAccessibilityPermission: Bool
   private var now: Date
   private var wakeHandler: (@MainActor @Sendable () -> Void)?
@@ -24,6 +25,7 @@ final class LockEngineTests {
     installCount = 0
     broadcastCount = 0
     stateChangeCount = 0
+    blockedInputCount = 0
     hasAccessibilityPermission = true
     now = Date(timeIntervalSinceReferenceDate: 1000)
     wakeHandler = nil
@@ -191,6 +193,84 @@ final class LockEngineTests {
     #expect(engine.handleEvent(type: .keyDown, event: controlC) == nil)
     await flushMainQueue()
     #expect(!engine.isLocked)
+  }
+
+  // MARK: - Blocked-input feedback
+
+  @Test
+  func swallowedKeyDownReportsOncePerThrottleWindow() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    let event = makeKeyEvent(keyCode: 40)
+
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    #expect(blockedInputCount == 1)
+
+    // Inside the window a burst collapses into the one report.
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    #expect(blockedInputCount == 1)
+
+    now = now.addingTimeInterval(5)
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    #expect(blockedInputCount == 2)
+  }
+
+  @Test
+  func blockedInputReportRespectsSettingsGate() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(blockedInputFeedbackEnabled: false))
+
+    #expect(engine.handleEvent(type: .keyDown, event: makeKeyEvent(keyCode: 40)) == nil)
+    #expect(blockedInputCount == 0)
+  }
+
+  @Test
+  func unlockHotkeyDoesNotReportBlockedInput() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    let event = makeKeyEvent(keyCode: 4, flags: .maskShift)
+    #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    #expect(blockedInputCount == 0)
+  }
+
+  @Test
+  func keyUpAndFlagsChangedDoNotReportBlockedInput() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    #expect(engine.handleEvent(type: .keyUp, event: makeKeyEvent(keyCode: 40)) == nil)
+    #expect(engine.handleEvent(type: .flagsChanged, event: makeKeyEvent(keyCode: 56)) == nil)
+    #expect(blockedInputCount == 0)
+  }
+
+  @Test
+  func phraseInputReportsAtMostOnceAndMatchReportsNothing() async throws {
+    let engine = makeEngine()
+    keyCodesByCharacter = ["a": 0, "b": 1, "c": 2]
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "abc"))
+
+    type("abc", on: engine)
+    // 'a' nudges once, 'b' falls inside the throttle window, and 'c' completes the phrase.
+    #expect(blockedInputCount == 1)
+
+    await flushMainQueue()
+    #expect(!engine.isLocked)
+  }
+
+  @Test
+  func newLockGenerationReArmsBlockedInputReport() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    #expect(engine.handleEvent(type: .keyDown, event: makeKeyEvent(keyCode: 40)) == nil)
+    #expect(blockedInputCount == 1)
+
+    engine.unlock()
+    _ = try engine.lock(settings: makeSettings())
+
+    // Still inside the previous window, but a fresh generation reports immediately.
+    #expect(engine.handleEvent(type: .keyDown, event: makeKeyEvent(keyCode: 40)) == nil)
+    #expect(blockedInputCount == 2)
   }
 
   // MARK: - Event tap failure
@@ -636,6 +716,7 @@ final class LockEngineTests {
       now: { self.now }
     ))
     engine.setStateChangeHandler { self.stateChangeCount += 1 }
+    engine.setBlockedInputHandler { self.blockedInputCount += 1 }
     return engine
   }
 
@@ -646,12 +727,14 @@ final class LockEngineTests {
 
   private func makeSettings(
     autoUnlockPolicy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60),
-    unlockPhrase: String? = nil
+    unlockPhrase: String? = nil,
+    blockedInputFeedbackEnabled: Bool = true
   ) -> KeyboardLockerSettings {
     KeyboardLockerSettings(
       autoUnlockPolicy: autoUnlockPolicy,
       unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 4, modifierFlags: .maskShift),
-      unlockPhrase: unlockPhrase
+      unlockPhrase: unlockPhrase,
+      blockedInputFeedbackEnabled: blockedInputFeedbackEnabled
     )
   }
 

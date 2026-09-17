@@ -38,6 +38,70 @@ struct AppUIStoreTests {
     #expect(store.canEditSettings)
   }
 
+  // MARK: - Gesture hint
+
+  @Test
+  func unlockedWithLockHotkeyHintsTheLockGesture() {
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 60),
+      unlockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: CGKeyCode(SharedConstants.defaultUnlockKeyCode),
+        modifierFlags: [.maskControl, .maskCommand]
+      ),
+      lockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: 40,
+        modifierFlags: [.maskControl, .maskCommand]
+      )
+    )
+    let store = makeStore(
+      snapshot: makeSnapshot(settingsState: .loaded(settings))
+    )
+
+    #expect(store.hotkeyHint == "Lock hotkey \(settings.lockHotkey!.displayString)")
+  }
+
+  @Test
+  func unlockedWithoutLockHotkeyKeepsTheUnlockHint() {
+    let store = makeStore(
+      snapshot: makeSnapshot(settingsState: .loaded(.default))
+    )
+
+    #expect(store.hotkeyHint == "Unlock hotkey \(KeyboardLockerSettings.default.unlockHotkey.displayString)")
+  }
+
+  @Test
+  func lockedHintsTheUnlockGestureFromActiveSettings() {
+    let activeSettings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 60),
+      unlockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: CGKeyCode(SharedConstants.defaultUnlockKeyCode),
+        modifierFlags: [.maskControl, .maskAlternate]
+      ),
+      lockHotkey: KeyboardLockerSettings.Hotkey(
+        keyCode: 40,
+        modifierFlags: [.maskControl, .maskCommand]
+      )
+    )
+    let store = makeStore(
+      snapshot: makeSnapshot(
+        state: .ready(isLocked: true),
+        lockSnapshot: makeLockSnapshot(isLocked: true, settings: activeSettings),
+        settingsState: .loaded(activeSettings)
+      )
+    )
+
+    #expect(store.hotkeyHint == "Unlock hotkey \(activeSettings.unlockHotkey.displayString)")
+  }
+
+  @Test
+  func gestureHintIsAbsentWhileSettingsAreUnavailable() {
+    let store = makeStore(
+      snapshot: makeSnapshot(settingsState: .loading)
+    )
+
+    #expect(store.hotkeyHint == nil)
+  }
+
   // MARK: - Timed quick locks
 
   @Test

@@ -360,6 +360,47 @@ struct AppCoordinatorTests {
 
   @Test
   @MainActor
+  func performLockLocksThroughClientAndSettlesBackToReady() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.performLock()
+    try await waitUntil {
+      coordinator.activity == nil && coordinator.state == .ready(isLocked: true)
+    }
+
+    #expect(client.lockCallCount == 1)
+    #expect(coordinator.lastError == nil)
+  }
+
+  @Test
+  @MainActor
+  func performLockSurfacesFailureWithoutTouchingState() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    client.lockError = AppCoordinatorTestError.expected
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.performLock()
+    try await waitUntil {
+      coordinator.activity == nil && coordinator.lastError != nil
+    }
+
+    #expect(client.lockCallCount == 1)
+    #expect(coordinator.state == .ready(isLocked: false))
+  }
+
+  @Test
+  @MainActor
   func loadLockHistoryPublishesLoadedEntries() async throws {
     let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
     let entries = [
@@ -463,6 +504,7 @@ private final class FakeAgentClient: AgentClientServing {
   var currentSettingsError: Error?
   var applySettingsError: Error?
   var lockStatusSnapshotError: Error?
+  var lockError: Error?
   var lockHistoryResult: Result<LockHistory, Error> = .success(LockHistory(entries: []))
   private(set) var lockHistoryCallCount = 0
   /// What a running lock is enforcing. Distinct from `storedSettings` so tests can model a write
@@ -489,6 +531,9 @@ private final class FakeAgentClient: AgentClientServing {
 
   func lock() async throws {
     lockCallCount += 1
+    if let lockError {
+      throw lockError
+    }
     isLocked = true
   }
 

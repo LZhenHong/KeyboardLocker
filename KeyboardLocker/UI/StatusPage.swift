@@ -5,10 +5,11 @@ import SwiftUI
 /// the current agent state calls for.
 ///
 /// Layout is a row grid: a single state row carries the status and the primary Lock/Unlock action,
-/// optional detail rows sit below it, and the bottom bar pairs the hotkey hint with the menu.
-/// Every value comes from the coordinator's authoritative snapshot via `store`; the view only maps
-/// state to presentation. Actions that need a modal confirmation or a System Settings jump are
-/// carried by `PopoverActions`, keeping this view free of `NSAlert`.
+/// optional detail rows sit below it, and the bottom bar pairs the gesture hint with the menu.
+/// The hint follows the action available right now — lock hotkey while unlocked, unlock hotkey
+/// while locked. Every value comes from the coordinator's authoritative snapshot via `store`;
+/// the view only maps state to presentation. Actions that need a modal confirmation or a System
+/// Settings jump are carried by `PopoverActions`, keeping this view free of `NSAlert`.
 struct StatusPage: View {
   @ObservedObject var store: AppUIStore
   let actions: PopoverActions
@@ -162,8 +163,8 @@ struct StatusPage: View {
 
   private var toolbar: some View {
     HStack(spacing: 4) {
-      if let hotkey = displayedHotkey {
-        Text("Unlock hotkey \(hotkey.displayString)")
+      if let hint = store.hotkeyHint {
+        Text(hint)
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -208,10 +209,6 @@ struct StatusPage: View {
 
   /// Quick-lock presets offered by the toolbar menu, in minutes.
   private static let timedLockPresets = [5, 10, 30]
-
-  private var displayedHotkey: KeyboardLockerSettings.Hotkey? {
-    store.activeSettings?.unlockHotkey ?? store.editableSettings?.unlockHotkey
-  }
 
   private var statusTint: Color {
     if store.snapshot.activity != nil {

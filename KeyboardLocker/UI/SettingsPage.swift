@@ -21,6 +21,12 @@ struct SettingsPage: View {
   @State private var phraseText = ""
   @State private var phraseRejection: String?
   @State private var lastPhrase = "unlock"
+  @State private var lockHotkeyRejection: KeyboardLockerSettingsValidationError?
+  /// Restored when the lock hotkey is re-enabled; ⌃⌘K is the suggested starting point.
+  @State private var lastLockHotkey = KeyboardLockerSettings.Hotkey(
+    keyCode: 40, // kVK_ANSI_K
+    modifierFlags: [.maskControl, .maskCommand]
+  )
   @FocusState private var timeoutFieldFocused: Bool
   @FocusState private var phraseFieldFocused: Bool
 
@@ -106,6 +112,7 @@ struct SettingsPage: View {
       }
     } else if let draft {
       VStack(alignment: .leading, spacing: 14) {
+        lockHotkeySection(draft: draft)
         unlockSection(draft: draft)
         autoUnlockSection(draft: draft)
         feedbackSection(draft: draft)
@@ -228,6 +235,50 @@ struct SettingsPage: View {
         hintFooter("Unlocks even if KeyboardLocker quits. 5 seconds to 60 minutes.")
       } else {
         hintFooter("Unlocks automatically after the set duration, even if KeyboardLocker quits.")
+      }
+    }
+  }
+
+  private func lockHotkeySection(draft: KeyboardLockerSettings) -> some View {
+    settingsSection("Lock Hotkey") {
+      settingsRow("Enabled") {
+        Toggle("Lock hotkey", isOn: lockHotkeyEnabledBinding(draft: draft))
+          .labelsHidden()
+          .toggleStyle(.switch)
+          .disabled(!store.canEditSettings)
+      }
+
+      // The recorder only exists while the gesture is on, mirroring the phrase editor.
+      if let lockHotkey = draft.lockHotkey {
+        rowDivider
+
+        settingsRow("Hotkey") {
+          HotkeyRecorderField(
+            hotkey: lockHotkey,
+            isEnabled: store.canEditSettings
+          ) { outcome in
+            switch outcome {
+            case let .accepted(hotkey):
+              lockHotkeyRejection = nil
+              lastLockHotkey = hotkey
+              commit(lockHotkey: hotkey)
+            case let .rejected(error):
+              lockHotkeyRejection = error
+            }
+          }
+          .frame(width: 124)
+        }
+      }
+    } footer: {
+      if let lockHotkeyRejection {
+        errorFooter {
+          Text(lockHotkeyRejection.localizedDescription)
+          if let suggestion = lockHotkeyRejection.recoverySuggestion {
+            Text(suggestion).foregroundStyle(.secondary)
+          }
+        }
+      } else {
+        hintFooter("Locks the keyboard from anywhere while KeyboardLocker is running.")
       }
     }
   }
@@ -453,6 +504,26 @@ struct SettingsPage: View {
     )
   }
 
+  private func lockHotkeyEnabledBinding(
+    draft: KeyboardLockerSettings
+  ) -> Binding<Bool> {
+    Binding(
+      get: { draft.lockHotkey != nil },
+      set: { enabled in
+        // Toggling off drops the gesture; toggling on restores the last recorded combination.
+        commit(lockHotkey: enabled ? lastLockHotkey : nil)
+      }
+    )
+  }
+
+  private func commit(lockHotkey: KeyboardLockerSettings.Hotkey?) {
+    guard var updated = draft else {
+      return
+    }
+    updated.lockHotkey = lockHotkey
+    commit(updated)
+  }
+
   private func soundEffectsBinding(
     draft: KeyboardLockerSettings
   ) -> Binding<Bool> {
@@ -559,9 +630,13 @@ struct SettingsPage: View {
   private func syncDraft() {
     draft = store.editableSettings
     hotkeyRejection = nil
+    lockHotkeyRejection = nil
 
     if let phrase = store.editableSettings?.unlockPhrase {
       lastPhrase = phrase
+    }
+    if let lockHotkey = store.editableSettings?.lockHotkey {
+      lastLockHotkey = lockHotkey
     }
     if !phraseFieldFocused {
       phraseText = store.editableSettings?.unlockPhrase ?? ""

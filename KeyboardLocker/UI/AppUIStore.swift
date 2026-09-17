@@ -65,6 +65,22 @@ final class AppUIStore: ObservableObject {
     snapshot.lockSnapshot?.startedAt
   }
 
+  /// The bottom-bar gesture hint, following the action available right now: the lock hotkey
+  /// while unlocked (when one is configured — it is what the App has registered), the unlock
+  /// hotkey while locked. The unlock hint prefers the running lock's active settings, since
+  /// that is the combination the engine will actually match.
+  var hotkeyHint: String? {
+    if isLocked {
+      return (activeSettings?.unlockHotkey ?? editableSettings?.unlockHotkey)
+        .map { "Unlock hotkey \($0.displayString)" }
+    }
+    if let lockHotkey = editableSettings?.lockHotkey {
+      return "Lock hotkey \(lockHotkey.displayString)"
+    }
+    return (activeSettings?.unlockHotkey ?? editableSettings?.unlockHotkey)
+      .map { "Unlock hotkey \($0.displayString)" }
+  }
+
   /// How the most recent lock generation ended, straight from the Agent's snapshot.
   /// Presentation and diagnostics only; it never feeds a decision.
   var lastUnlock: UnlockRecord? {

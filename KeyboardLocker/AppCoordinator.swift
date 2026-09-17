@@ -289,6 +289,35 @@ final class AppCoordinator {
     }
   }
 
+  /// Locks the keyboard from the global lock hotkey. One direction only — never unlock — and
+  /// idempotent by the Agent's contract, so a repeat press while already locked is absorbed
+  /// without touching the running lock.
+  func performLock() {
+    guard activity == nil else {
+      return
+    }
+
+    reconciliationTask?.cancel()
+    activity = .locking
+    lastError = nil
+
+    Task { [weak self] in
+      guard let self else {
+        return
+      }
+
+      var actionError: String?
+      do {
+        try await client.lock()
+      } catch {
+        actionError = error.localizedDescription
+      }
+
+      activity = nil
+      startReconciliation(preserving: actionError)
+    }
+  }
+
   /// Locks with a one-off auto-unlock override that never touches the persisted settings.
   /// Only a healthy unlocked state offers this; a running lock never adopts an override mid-lock.
   func performTimedLock(seconds: TimeInterval) {

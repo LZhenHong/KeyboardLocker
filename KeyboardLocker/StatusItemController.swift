@@ -17,6 +17,7 @@ final class StatusItemController: NSObject {
   private let statusItem: NSStatusItem
   private let uiStore: AppUIStore
   private var blockedInputHUD: BlockedInputHUDController?
+  private var lockHotkeyController: LockHotkeyController?
   private var countdownTimer: Timer?
   private var popoverPresenter: PopoverPresenter!
   private var currentSnapshot: AppCoordinator.Snapshot
@@ -60,6 +61,17 @@ final class StatusItemController: NSObject {
         hasUnlockPhrase: settings.unlockPhrase != nil
       )
     }
+
+    // The global lock hotkey fires exactly one intent: lock. Registration tracks the settings
+    // value in `render`; a failure is reported once per edit.
+    lockHotkeyController = LockHotkeyController(
+      onFire: { [weak self] in
+        self?.coordinator.performLock()
+      },
+      onRegistrationFailure: { [weak self] hotkey in
+        self?.presentLockHotkeyRegistrationFailure(hotkey)
+      }
+    )
 
     // Actions capture `self`, so the popover can only be built once `self` exists.
     popoverPresenter = PopoverPresenter(
@@ -120,6 +132,7 @@ final class StatusItemController: NSObject {
     }
 
     updateCountdown(for: snapshot)
+    lockHotkeyController?.update(hotkey: uiStore.editableSettings?.lockHotkey)
     blockedInputHUD?.handleLockStateChange(isLocked: uiStore.isLocked)
     handleSafetyCheckExperience(snapshot)
   }
@@ -326,6 +339,20 @@ final class StatusItemController: NSObject {
       NSApp.activateForUserPresentation()
       alert.runModal()
     }
+  }
+
+  private func presentLockHotkeyRegistrationFailure(
+    _ hotkey: KeyboardLockerSettings.Hotkey
+  ) {
+    let alert = NSAlert()
+    alert.messageText = "Could Not Register Lock Hotkey"
+    alert.informativeText = """
+    \(hotkey.displayString) may already be used by another app or a system shortcut. \
+    Choose a different combination in Settings.
+    """
+    alert.addButton(withTitle: "OK")
+    NSApp.activateForUserPresentation()
+    alert.runModal()
   }
 
   // MARK: - Confirmed actions (carried into the popover via PopoverActions)

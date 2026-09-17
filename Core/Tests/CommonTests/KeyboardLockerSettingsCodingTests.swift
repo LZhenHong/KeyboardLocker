@@ -65,6 +65,32 @@ struct KeyboardLockerSettingsCodingTests {
   }
 
   @Test
+  func payloadWithoutLockHotkeyDecodesAsDisabled() throws {
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 42),
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
+    )
+    var object = try #require(
+      JSONSerialization.jsonObject(with: settings.encodedForXPC()) as? [String: Any]
+    )
+    object.removeValue(forKey: "lockHotkey")
+    let legacyPayload = try JSONSerialization.data(withJSONObject: object)
+
+    #expect(try KeyboardLockerSettings.decodedFromXPC(legacyPayload).lockHotkey == nil)
+  }
+
+  @Test
+  func lockHotkeyRoundTrips() throws {
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 42),
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand]),
+      lockHotkey: .init(keyCode: 40, modifierFlags: [.maskControl, .maskCommand])
+    )
+
+    #expect(try KeyboardLockerSettings.decodedFromXPC(settings.encodedForXPC()) == settings)
+  }
+
+  @Test
   func missingPayloadIsRejected() {
     #expect(throws: KeyboardLockerSettingsCodingError.missingPayload) {
       try KeyboardLockerSettings.decodedFromXPC(nil)

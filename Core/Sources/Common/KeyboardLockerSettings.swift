@@ -74,18 +74,26 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
   /// Additive Codable field: payloads written before it existed decode as enabled.
   public var blockedInputFeedbackEnabled: Bool
 
+  /// Optional global hotkey that locks the keyboard from anywhere while the App is running;
+  /// nil disables it. Additive Codable field: payloads written before it existed decode as nil,
+  /// and a nil value is omitted when encoding. Registered App-side (Carbon), deliberately not
+  /// in the engine — see the architecture contract for the gesture asymmetry rule.
+  public var lockHotkey: Hotkey?
+
   public init(
     autoUnlockPolicy: AutoUnlockPolicy,
     unlockHotkey: Hotkey,
     unlockPhrase: String? = nil,
     soundEffectsEnabled: Bool = true,
-    blockedInputFeedbackEnabled: Bool = true
+    blockedInputFeedbackEnabled: Bool = true,
+    lockHotkey: Hotkey? = nil
   ) {
     self.autoUnlockPolicy = autoUnlockPolicy
     self.unlockHotkey = unlockHotkey
     self.unlockPhrase = unlockPhrase
     self.soundEffectsEnabled = soundEffectsEnabled
     self.blockedInputFeedbackEnabled = blockedInputFeedbackEnabled
+    self.lockHotkey = lockHotkey
   }
 
   /// Default settings for initial launch or reset
@@ -130,6 +138,7 @@ extension KeyboardLockerSettings {
     case unlockPhrase
     case soundEffectsEnabled
     case blockedInputFeedbackEnabled
+    case lockHotkey
   }
 
   public init(from decoder: any Decoder) throws {
@@ -143,6 +152,7 @@ extension KeyboardLockerSettings {
     blockedInputFeedbackEnabled = try container.decodeIfPresent(
       Bool.self, forKey: .blockedInputFeedbackEnabled
     ) ?? true
+    lockHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .lockHotkey)
   }
 
   public func encode(to encoder: any Encoder) throws {
@@ -152,6 +162,7 @@ extension KeyboardLockerSettings {
     try container.encodeIfPresent(unlockPhrase, forKey: .unlockPhrase)
     try container.encode(soundEffectsEnabled, forKey: .soundEffectsEnabled)
     try container.encode(blockedInputFeedbackEnabled, forKey: .blockedInputFeedbackEnabled)
+    try container.encodeIfPresent(lockHotkey, forKey: .lockHotkey)
   }
 }
 
@@ -262,6 +273,12 @@ public extension KeyboardLockerSettings {
   /// immediate feedback — duplicating them in a wrapper would let the two drift apart.
   func validated() throws -> Self {
     _ = try unlockHotkey.validated()
+    // An optional lock hotkey follows the same guardrails: without a modifier it would swallow
+    // a plain keystroke somewhere the user did not intend, and an unmappable key could never
+    // be displayed back.
+    if let lockHotkey {
+      _ = try lockHotkey.validated()
+    }
 
     var normalized = self
     if let unlockPhrase {

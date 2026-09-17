@@ -11,7 +11,8 @@ struct KeyboardLockerSettingsValidationTests {
     keyCode: CGKeyCode = mappableKeyCode,
     modifiers: CGEventFlags = [.maskControl, .maskCommand],
     policy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60),
-    phrase: String? = nil
+    phrase: String? = nil,
+    lockHotkey: KeyboardLockerSettings.Hotkey? = nil
   ) -> KeyboardLockerSettings {
     KeyboardLockerSettings(
       autoUnlockPolicy: policy,
@@ -19,7 +20,8 @@ struct KeyboardLockerSettingsValidationTests {
         keyCode: keyCode,
         modifierFlags: modifiers
       ),
-      unlockPhrase: phrase
+      unlockPhrase: phrase,
+      lockHotkey: lockHotkey
     )
   }
 
@@ -38,6 +40,38 @@ struct KeyboardLockerSettingsValidationTests {
 
     #expect(throws: KeyboardLockerSettingsValidationError.hotkeyMissingModifier) {
       try candidate.validated()
+    }
+  }
+
+  // MARK: - Lock hotkey guardrails
+
+  @Test
+  func lockHotkeyWithoutModifierIsRejected() {
+    let candidate = Self.settings(
+      lockHotkey: .init(keyCode: Self.mappableKeyCode, modifierFlags: [])
+    )
+
+    #expect(throws: KeyboardLockerSettingsValidationError.hotkeyMissingModifier) {
+      try candidate.validated()
+    }
+  }
+
+  @Test
+  func validLockHotkeyPasses() throws {
+    let validated = try Self.settings(
+      lockHotkey: .init(keyCode: Self.mappableKeyCode, modifierFlags: [.maskControl, .maskCommand])
+    ).validated()
+
+    #expect(validated.lockHotkey == .init(
+      keyCode: Self.mappableKeyCode,
+      modifierFlags: [.maskControl, .maskCommand]
+    ))
+  }
+
+  @Test
+  func nilLockHotkeyPassesValidation() throws {
+    #expect(throws: Never.self) {
+      try Self.settings(lockHotkey: nil).validated()
     }
   }
 

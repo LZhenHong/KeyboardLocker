@@ -45,6 +45,16 @@ final class AppCoordinator {
     case running
   }
 
+  /// The Agent's bounded lock history, loaded on demand by the statistics page. Kept out of the
+  /// readiness path: it is presentation detail whose failure must not downgrade a ready state,
+  /// and `unavailable` is shown honestly rather than substituted with an empty list.
+  enum HistoryState: Equatable {
+    case idle
+    case loading
+    case loaded([LockHistoryEntry])
+    case unavailable(String)
+  }
+
   /// The Agent's persisted configuration — what the next lock will use, and what the settings UI
   /// edits. A read failure stays `unavailable`: presenting `.default` would invent a second
   /// source of truth and could show an unlock hotkey the Agent is not actually using.
@@ -70,6 +80,7 @@ final class AppCoordinator {
     /// lock is enforcing. `nil` when the Agent could not be reached for it.
     let lockSnapshot: LockStatusSnapshot?
     let settingsState: SettingsState
+    let historyState: HistoryState
 
     /// Agent-supplied detail defaults to absent so callers that only care about readiness — tests
     /// and previews — do not have to describe a lock snapshot they are not exercising.
@@ -79,7 +90,8 @@ final class AppCoordinator {
       lastError: String?,
       safetyCheckState: SafetyCheckState,
       lockSnapshot: LockStatusSnapshot? = nil,
-      settingsState: SettingsState = .loading
+      settingsState: SettingsState = .loading,
+      historyState: HistoryState = .idle
     ) {
       self.state = state
       self.activity = activity
@@ -87,6 +99,7 @@ final class AppCoordinator {
       self.safetyCheckState = safetyCheckState
       self.lockSnapshot = lockSnapshot
       self.settingsState = settingsState
+      self.historyState = historyState
     }
 
     /// Whether stored settings differ from what the running lock enforces, i.e. a write landed
@@ -137,6 +150,12 @@ final class AppCoordinator {
     }
   }
 
+  private(set) var historyState: HistoryState = .idle {
+    didSet {
+      publishSnapshotIfNeeded()
+    }
+  }
+
   var snapshot: Snapshot {
     Snapshot(
       state: state,
@@ -144,7 +163,8 @@ final class AppCoordinator {
       lastError: lastError,
       safetyCheckState: safetyCheckState,
       lockSnapshot: lockSnapshot,
-      settingsState: settingsState
+      settingsState: settingsState,
+      historyState: historyState
     )
   }
 
@@ -155,6 +175,7 @@ final class AppCoordinator {
   }
 
   private var agentDetailTask: Task<Void, Never>?
+  private var historyTask: Task<Void, Never>?
   private var reconciliationTask: Task<Void, Never>?
   private var needsFollowUpReconciliation = false
   private var pendingUpdatePlan: AgentUpdatePlan?
@@ -376,6 +397,30 @@ final class AppCoordinator {
       // Re-reads the authoritative lock snapshot so a locked keyboard's unchanged active settings
       // become visible next to the newly stored ones.
       startReconciliation(preserving: actionError)
+    }
+  }
+
+  /// Loads the Agent's lock history for the statistics page. Independent of the readiness
+  /// lifecycle: the page asks explicitly, and a failure becomes `unavailable` in place.
+  func loadLockHistory() {
+    historyTask?.cancel()
+    historyState = .loading
+    historyTask = Task { [weak self] in
+      guard let self else {
+        return
+      }
+      do {
+        let history = try await client.lockHistory()
+        guard !Task.isCancelled else {
+          return
+        }
+        historyState = .loaded(history.entries)
+      } catch {
+        guard !Task.isCancelled else {
+          return
+        }
+        historyState = .unavailable(error.localizedDescription)
+      }
     }
   }
 

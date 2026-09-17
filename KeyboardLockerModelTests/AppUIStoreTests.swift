@@ -361,6 +361,10 @@ private struct UnusedAgentClient: AgentClientServing {
     unexpected()
   }
 
+  func lockHistory() async throws -> LockHistory {
+    unexpected()
+  }
+
   func prepareForReplacement(
     unlockIfNeeded _: Bool,
     expectedAgentInstanceID _: UUID

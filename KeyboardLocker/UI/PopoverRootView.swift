@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Root of the menu-bar popover: a single surface that swaps between the status page and the
-/// settings page, so the user never leaves the popover to change configuration.
+/// Root of the menu-bar popover: a single surface that swaps between the status page, the
+/// settings page, and the statistics page, so the user never leaves the popover.
 ///
 /// Navigation is a lightweight `@State` enum rather than `NavigationStack`: the popover is a fixed,
 /// small surface with no need for a navigation bar or a growing back stack, and a plain crossfade
@@ -15,6 +15,7 @@ struct PopoverRootView: View {
   enum Page {
     case status
     case settings
+    case stats
   }
 
   var body: some View {
@@ -24,7 +25,8 @@ struct PopoverRootView: View {
         StatusPage(
           store: store,
           actions: actions,
-          openSettings: { navigate(to: .settings) }
+          openSettings: { navigate(to: .settings) },
+          openStats: { navigate(to: .stats) }
         )
         .transition(.opacity)
 
@@ -32,6 +34,13 @@ struct PopoverRootView: View {
         SettingsPage(
           store: store,
           actions: actions,
+          goBack: { navigate(to: .status) }
+        )
+        .transition(.opacity)
+
+      case .stats:
+        StatsPage(
+          store: store,
           goBack: { navigate(to: .status) }
         )
         .transition(.opacity)

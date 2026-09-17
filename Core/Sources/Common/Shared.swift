@@ -122,6 +122,11 @@ public protocol KeyboardLockerServiceProtocol {
   /// `LockStatusSnapshot`. This is additive; legacy clients continue using `status`.
   func lockStatusSnapshot(reply: @escaping (Data?, Error?) -> Void)
 
+  /// Returns the Agent's bounded history of completed lock generations as JSON-encoded
+  /// `LockHistory`. Read-only presentation detail; entries are authoritative records, and any
+  /// aggregation is derived by the caller.
+  func lockHistory(reply: @escaping (Data?, Error?) -> Void)
+
   /// Atomically enters a short-lived fail-safe drain and optionally unlocks before returning its
   /// exclusive ownership ticket.
   func prepareForReplacement(

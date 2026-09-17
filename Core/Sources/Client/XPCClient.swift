@@ -275,6 +275,17 @@ public final class XPCClient: @unchecked Sendable {
     return try LockStatusSnapshot.decodedFromXPC(data)
   }
 
+  /// The Agent's bounded history of completed lock generations.
+  public func lockHistory() async throws -> LockHistory {
+    let connection = try await negotiatedConnection(
+      requiring: [.lockHistory]
+    )
+    let data: Data? = try await withProxyReturning(using: connection) { service, resume in
+      service.lockHistory { resume($0, $1) }
+    }
+    return try LockHistory.decodedFromXPC(data)
+  }
+
   /// Enters the Agent's fail-safe replacement drain and returns its ownership ticket.
   public func prepareForReplacement(
     unlockIfNeeded: Bool,
@@ -666,6 +677,7 @@ enum XPCFeatureNegotiation {
     .focusFilterLock: 5,
     .interactiveLock: 3,
     .lockControl: 0,
+    .lockHistory: 10,
     .lockStatusSnapshot: 4,
     .lockToggle: 6,
     .prepareForReplacement: 0,

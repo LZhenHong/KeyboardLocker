@@ -40,6 +40,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
   @MainActor private let engine: any LockEngineServing
   @MainActor private var lockStatusNotifier: LockStatusNotifier?
   @MainActor private var lockSoundPlayer: LockSoundPlayer?
+  @MainActor private var lockHistoryRecorder: LockHistoryRecorder?
   @MainActor private let expirationScheduler: MainActorTimerScheduler
   @MainActor private var replacement = ReplacementTransaction()
   @MainActor private var replacementPreparationCancellation: (() -> Void)?
@@ -74,12 +75,16 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
       sounds: LiveLockSoundService(),
       snapshot: { engine.statusSnapshot }
     )
+    let historyRecorder = LockHistoryRecorder(store: LockHistoryStore())
     engine.setStateChangeHandler { [weak notifier, weak soundPlayer] in
       notifier?.lockStateDidChange()
       soundPlayer?.lockStateDidChange()
     }
     engine.setBlockedInputHandler {
       LockStateBroadcaster.broadcastBlockedInput()
+    }
+    engine.setLockHistoryHandler { [weak historyRecorder] entry in
+      historyRecorder?.record(entry)
     }
 
     let settingsStore = KeyboardLockerSettingsStore()
@@ -92,6 +97,7 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
     )
     lockStatusNotifier = notifier
     lockSoundPlayer = soundPlayer
+    lockHistoryRecorder = historyRecorder
     notifier.start()
   }
 
@@ -243,6 +249,18 @@ public final class AgentService: NSObject, KeyboardLockerServiceProtocol, @unche
     executeOnMainActor(reply: reply) { reply in
       do {
         let data = try self.engine.statusSnapshot.encodedForXPC()
+        reply(data, nil)
+      } catch {
+        reply(nil, error)
+      }
+    }
+  }
+
+  public func lockHistory(reply: @escaping (Data?, Error?) -> Void) {
+    executeOnMainActor(reply: reply) { reply in
+      do {
+        let history = LockHistory(entries: self.lockHistoryRecorder?.entries ?? [])
+        let data = try history.encodedForXPC()
         reply(data, nil)
       } catch {
         reply(nil, error)

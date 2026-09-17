@@ -14,6 +14,7 @@ final class LockEngineTests {
   private var broadcastCount: Int
   private var stateChangeCount: Int
   private var blockedInputCount: Int
+  private var historyEntries: [LockHistoryEntry]
   private var hasAccessibilityPermission: Bool
   private var now: Date
   private var wakeHandler: (@MainActor @Sendable () -> Void)?
@@ -26,6 +27,7 @@ final class LockEngineTests {
     broadcastCount = 0
     stateChangeCount = 0
     blockedInputCount = 0
+    historyEntries = []
     hasAccessibilityPermission = true
     now = Date(timeIntervalSinceReferenceDate: 1000)
     wakeHandler = nil
@@ -271,6 +273,67 @@ final class LockEngineTests {
     // Still inside the previous window, but a fresh generation reports immediately.
     #expect(engine.handleEvent(type: .keyDown, event: makeKeyEvent(keyCode: 40)) == nil)
     #expect(blockedInputCount == 2)
+  }
+
+  // MARK: - Lock history
+
+  @Test
+  func explicitUnlockRecordsTheCompletedGeneration() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    let startedAt = now
+
+    now = now.addingTimeInterval(30)
+    engine.unlock()
+    // A redundant unlock while already unlocked records nothing.
+    engine.unlock()
+
+    #expect(historyEntries == [
+      LockHistoryEntry(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(30), reason: .explicit),
+    ])
+  }
+
+  @Test
+  func autoUnlockRecordsItsReason() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    let startedAt = now
+
+    now = now.addingTimeInterval(60)
+    scheduler.timers[0].fire()
+
+    #expect(historyEntries.map(\.reason) == [.autoUnlock])
+    #expect(historyEntries.first?.startedAt == startedAt)
+    #expect(historyEntries.first?.endedAt == startedAt.addingTimeInterval(60))
+  }
+
+  @Test
+  func gestureUnlockRecordsItsReason() async throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    #expect(engine.handleEvent(type: .keyDown, event: makeKeyEvent(keyCode: 4, flags: .maskShift)) == nil)
+    await flushMainQueue()
+
+    #expect(historyEntries.map(\.reason) == [.gesture])
+  }
+
+  @Test
+  func everyGenerationAppendsInOrder() throws {
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+    now = now.addingTimeInterval(10)
+    engine.unlock()
+
+    now = now.addingTimeInterval(5)
+    _ = try engine.lock(settings: makeSettings())
+    now = now.addingTimeInterval(20)
+    engine.unlock()
+
+    #expect(historyEntries.count == 2)
+    #expect(historyEntries[0].duration == 10)
+    #expect(historyEntries[1].duration == 20)
+    #expect(historyEntries[1].startedAt > historyEntries[0].endedAt)
   }
 
   // MARK: - Event tap failure
@@ -717,6 +780,7 @@ final class LockEngineTests {
     ))
     engine.setStateChangeHandler { self.stateChangeCount += 1 }
     engine.setBlockedInputHandler { self.blockedInputCount += 1 }
+    engine.setLockHistoryHandler { self.historyEntries.append($0) }
     return engine
   }
 

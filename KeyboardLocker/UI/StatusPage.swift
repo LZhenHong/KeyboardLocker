@@ -13,6 +13,7 @@ struct StatusPage: View {
   @ObservedObject var store: AppUIStore
   let actions: PopoverActions
   let openSettings: () -> Void
+  let openStats: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -168,6 +169,11 @@ struct StatusPage: View {
       }
 
       Spacer(minLength: 0)
+
+      Button(action: openStats) {
+        Image(systemName: "chart.bar")
+      }
+      .help("Lock statistics")
 
       Menu {
         // One-off quick locks: the saved auto-unlock policy is never changed by these, and a

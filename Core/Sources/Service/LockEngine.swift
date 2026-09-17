@@ -521,6 +521,7 @@ final class LockEngine {
   private var stateChangeHandler: () -> Void = {}
   private var blockedInputHandler: () -> Void = {}
   private var lastBlockedInputReportAt: Date?
+  private var lockHistoryHandler: (LockHistoryEntry) -> Void = { _ in }
 
   var isLocked: Bool {
     runtimeState.isLocked
@@ -549,6 +550,12 @@ final class LockEngine {
   /// explain why typing has no effect.
   func setBlockedInputHandler(_ handler: @escaping () -> Void) {
     blockedInputHandler = handler
+  }
+
+  /// Installs the history hook. Fired once per completed lock generation, just before its
+  /// runtime state is cleared, so the entry always pairs the true start with the true end.
+  func setLockHistoryHandler(_ handler: @escaping (LockHistoryEntry) -> Void) {
+    lockHistoryHandler = handler
   }
 
   @discardableResult
@@ -739,7 +746,14 @@ final class LockEngine {
   }
 
   private func resetLockState(reason: UnlockRecord.Reason) {
-    runtimeState.end(reason: reason, at: dependencies.now())
+    let endedAt = dependencies.now()
+    // Record the completed generation before `end` clears its start time.
+    if let startedAt = runtimeState.startedAt {
+      lockHistoryHandler(
+        LockHistoryEntry(startedAt: startedAt, endedAt: endedAt, reason: reason)
+      )
+    }
+    runtimeState.end(reason: reason, at: endedAt)
     // No keystroke residue may survive the lock that collected it.
     phraseMatcher = nil
 

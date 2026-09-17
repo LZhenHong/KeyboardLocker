@@ -47,6 +47,7 @@ Widget ──────┘              ├─ Settings ownership (source of t
 | 锁/解锁执行(CGEventTap) | **Agent**(`Service/LockEngine`) | 只在这里运行,不在别处。没有任何 wrapper 触碰 CGEventTap。 |
 | 设置(真相源) | **Agent** | Agent 加载、拥有并持久化默认/用户设置、负责应用它们。读取经 `XPCClient.currentSettings()`,写入经 capability-gated `applySettings`(protocol 1.8):Agent 先用 `KeyboardLockerSettings.validated()` 校验(护栏定义在 `Common`、由 Agent 强制,任何写入面共用)再落盘,并返回落盘后的权威值。**locked 时写入只落盘,不触碰当前锁**——`LockEngine.updateSettings` 会重算 auto-unlock window(`.disabled` 直接取消 timer),mid-lock 应用会破坏活动锁的 fail-safe,因此新值只 seed 下一次 lock;这不违反"只有 `LockEngine` 的显式 settings update 才能重新应用设置",而是选择在 locked 时不发起那次 update。设置编辑 UI 在 App 内(`SettingsView`),但绝不在 wrapper 侧落地 store。读取失败必须显式呈现为 unavailable,不能把 wrapper 的 `.default` 冒充为 Agent 当前值。 |
 | 锁状态快照 | **Agent**(`Service/LockEngine`) | `XPCClient.lockStatusSnapshot()` 一次返回同一 execution turn 中的 `isLocked`、锁定起点、auto-unlock deadline、active settings 与上次解锁记录(原因 + 权威时刻)。wrapper 可以缓存它用于呈现,但不能从缓存反推或修改 Agent 状态。 |
+| 锁定历史 | **Agent**(`Service/LockHistoryRecorder` + `LockHistoryStore`) | 每次锁代际结束时由引擎在状态清除前记录(起点 / 终点 / 原因),Agent 持有有界(`LockHistory.retentionLimit` = 200 条)落盘历史。wrapper 只经 capability-gated `lockHistory`(protocol 1.10)读取;计数、时长、原因分布等聚合由 consumer 从权威记录派生(与 snapshot 的 countdown 规则相同)。历史只作呈现与诊断,不参与任何判定;Agent 退出而中断的代际不产生记录;落盘失败只记日志,绝不阻塞解锁路径。 |
 | Accessibility 权限 | **Agent** | Agent 持有权限,并在执行锁定时校验(`AccessibilityManager.hasPermission()`)。wrapper 只能经 XPC 查询状态或请求 Agent 触发系统 prompt,不得自行调用 Accessibility API。权限 prompt 是异步的;请求完成不代表已授权,wrapper 必须重新查询。 |
 | 状态广播 | **Agent**(`LockStateBroadcaster`) | 只有核心发出状态。wrapper 只订阅,从不发出。 |
 | 锁定可发现性通知 | **Agent**(`LockStatusNotifier`) | "Keyboard Locked" 通知的投递与移除跟随引擎的同一次状态转换,任何入口、App 是否运行都覆盖;wrapper 不发布锁状态通知。Agent 启动时清除上一代退出留下的残留。 |
@@ -130,6 +131,7 @@ Agent 更新必须遵守以下边界:
 以下是本契约要防范的具体失败模式:
 
 - wrapper 自己持有 `KeyboardLockerSettingsStore` / `UserDefaults` → 设置与核心漂移(Agent 会基于过期或默认设置行动)。
+- wrapper 自己记录或持久化锁定历史 → 与 Agent 的有界历史漂移;历史与设置一样只有一个真相源,wrapper 只能读取和派生聚合。
 - wrapper 在设置 payload 缺失或损坏时回退 `.default` → wrapper 凭空制造第二份“当前设置”,展示的解锁方式可能与 Agent 实际执行不一致。
 - 引入"会话"抽象、暗示客户端拥有锁 → 造成"某个面无法解开另一个面锁上的锁"这种迷惑行为。
 - 锁/设置逻辑在 App 与 CLI 之间重复 → 正是 DRY 规则要禁止的维护爆炸。

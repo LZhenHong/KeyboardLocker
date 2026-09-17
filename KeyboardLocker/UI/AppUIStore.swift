@@ -71,6 +71,19 @@ final class AppUIStore: ObservableObject {
     snapshot.lockSnapshot?.lastUnlock
   }
 
+  /// The statistics page's history state, loaded on demand when the page appears.
+  var historyState: AppCoordinator.HistoryState {
+    snapshot.historyState
+  }
+
+  /// Aggregates derived from the loaded entries; nil until history lands.
+  var historyStats: LockHistoryStats? {
+    guard case let .loaded(entries) = snapshot.historyState else {
+      return nil
+    }
+    return LockHistoryStats.compute(entries: entries, now: Date())
+  }
+
   var canEditSettings: Bool {
     editableSettings != nil && !isBusy
   }
@@ -166,6 +179,10 @@ final class AppUIStore: ObservableObject {
 
   func performTimedLock(seconds: TimeInterval) {
     coordinator.performTimedLock(seconds: seconds)
+  }
+
+  func loadLockHistory() {
+    coordinator.loadLockHistory()
   }
 
   func startSafetyCheck() {

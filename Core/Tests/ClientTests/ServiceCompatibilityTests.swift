@@ -137,6 +137,12 @@ struct ServiceCompatibilityTests {
   }
 
   @Test
+  func currentContractRequiresLockHistorySelector() {
+    #expect(ServiceContract.requiredCapabilities.contains(.lockHistory))
+    #expect(ServiceContract.protocolVersion.minor >= 10)
+  }
+
+  @Test
   func agentWithoutCommittedDrainIsNotCurrentContractCompatible() {
     let requirements = makeRequirements()
     let descriptor = makeDescriptor(

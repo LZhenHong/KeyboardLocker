@@ -69,6 +69,8 @@ protocol AgentSettingsServing: Sendable {
     _ settings: KeyboardLockerSettings
   ) async throws -> KeyboardLockerSettings
   func lockStatusSnapshot() async throws -> LockStatusSnapshot
+  /// The Agent's bounded history of completed lock generations, for the statistics page.
+  func lockHistory() async throws -> LockHistory
 }
 
 @MainActor
@@ -249,6 +251,10 @@ struct LiveAgentClient: AgentClientServing {
 
   func lockStatusSnapshot() async throws -> LockStatusSnapshot {
     try await XPCClient.shared.lockStatusSnapshot()
+  }
+
+  func lockHistory() async throws -> LockHistory {
+    try await XPCClient.shared.lockHistory()
   }
 
   func requestAccessibilityPermission() async throws {

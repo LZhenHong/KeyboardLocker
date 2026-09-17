@@ -358,6 +358,57 @@ struct AppCoordinatorTests {
     )
   }
 
+  @Test
+  @MainActor
+  func loadLockHistoryPublishesLoadedEntries() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    let entries = [
+      LockHistoryEntry(
+        startedAt: Date(timeIntervalSinceReferenceDate: 10_000),
+        endedAt: Date(timeIntervalSinceReferenceDate: 10_090),
+        reason: .explicit
+      ),
+    ]
+    client.lockHistoryResult = .success(LockHistory(entries: entries))
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.loadLockHistory()
+    try await waitUntil {
+      coordinator.historyState == .loaded(entries)
+    }
+
+    #expect(client.lockHistoryCallCount == 1)
+  }
+
+  @Test
+  @MainActor
+  func failedHistoryLoadBecomesUnavailableWithoutDowngradingReadyState() async throws {
+    let client = FakeAgentClient(isLocked: false, hasAccessibilityPermission: true)
+    client.lockHistoryResult = .failure(AppCoordinatorTestError.expected)
+    let coordinator = makeCoordinator(
+      client: client,
+      lifecycle: FakeAgentLifecycle(),
+      observer: FakeLockStateObserver(),
+      initialState: .ready(isLocked: false)
+    )
+
+    coordinator.loadLockHistory()
+    try await waitUntil {
+      if case .unavailable = coordinator.historyState {
+        return true
+      }
+      return false
+    }
+
+    // History is presentation detail: its failure must not downgrade a ready state.
+    #expect(coordinator.state == .ready(isLocked: false))
+  }
+
   @MainActor
   private func makeCoordinator(
     client: FakeAgentClient,
@@ -412,6 +463,8 @@ private final class FakeAgentClient: AgentClientServing {
   var currentSettingsError: Error?
   var applySettingsError: Error?
   var lockStatusSnapshotError: Error?
+  var lockHistoryResult: Result<LockHistory, Error> = .success(LockHistory(entries: []))
+  private(set) var lockHistoryCallCount = 0
   /// What a running lock is enforcing. Distinct from `storedSettings` so tests can model a write
   /// that landed while locked and only takes effect on the next lock.
   var activeSettings: KeyboardLockerSettings?
@@ -500,6 +553,11 @@ private final class FakeAgentClient: AgentClientServing {
       autoUnlockTargetDate: nil,
       settings: activeSettings ?? storedSettings
     )
+  }
+
+  func lockHistory() async throws -> LockHistory {
+    lockHistoryCallCount += 1
+    return try lockHistoryResult.get()
   }
 
   func prepareForReplacement(

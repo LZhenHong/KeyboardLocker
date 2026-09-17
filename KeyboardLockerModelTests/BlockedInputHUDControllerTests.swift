@@ -74,4 +74,57 @@ final class BlockedInputHUDControllerTests {
     controller.handleSignal()
     #expect(presented.count == 1)
   }
+
+  @Test
+  func unlockDismissesThePresentedHUD() {
+    var dismissCount = 0
+    let hint = BlockedInputHUDController.Hint(hotkeyDisplay: "⌃⌘L", hasUnlockPhrase: false)
+    let controller = BlockedInputHUDController(
+      hintProvider: { hint },
+      present: { _ in },
+      dismiss: { dismissCount += 1 },
+      now: { Date(timeIntervalSinceReferenceDate: 1000) }
+    )
+
+    controller.handleSignal()
+    controller.handleLockStateChange(isLocked: false)
+
+    #expect(dismissCount == 1)
+  }
+
+  @Test
+  func stayingLockedKeepsTheHUDUp() {
+    var dismissCount = 0
+    let hint = BlockedInputHUDController.Hint(hotkeyDisplay: "⌃⌘L", hasUnlockPhrase: false)
+    let controller = BlockedInputHUDController(
+      hintProvider: { hint },
+      present: { _ in },
+      dismiss: { dismissCount += 1 },
+      now: { Date(timeIntervalSinceReferenceDate: 1000) }
+    )
+
+    controller.handleSignal()
+    controller.handleLockStateChange(isLocked: true)
+
+    #expect(dismissCount == 0)
+  }
+
+  @Test
+  func unlockRearmsPresentationForTheNextLockGeneration() {
+    var presented: [BlockedInputHUDController.Hint] = []
+    let now = Date(timeIntervalSinceReferenceDate: 1000)
+    let hint = BlockedInputHUDController.Hint(hotkeyDisplay: "⌃⌘L", hasUnlockPhrase: false)
+    let controller = BlockedInputHUDController(
+      hintProvider: { hint },
+      present: { presented.append($0) },
+      now: { now }
+    )
+
+    controller.handleSignal()
+    controller.handleLockStateChange(isLocked: false)
+    // The relock signal lands inside the coalescing window, but unlock cleared the latch.
+    controller.handleSignal()
+
+    #expect(presented.count == 2)
+  }
 }

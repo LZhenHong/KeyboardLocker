@@ -23,6 +23,7 @@ final class BlockedInputHUDController {
 
   private let hintProvider: @MainActor () -> Hint?
   private let present: @MainActor (Hint) -> Void
+  private let dismissHUD: @MainActor () -> Void
   private let now: () -> Date
   // Optional-with-default so the observer closure may capture `self` during init: by the time
   // it is installed, every other stored property already has a value.
@@ -32,10 +33,12 @@ final class BlockedInputHUDController {
   init(
     hintProvider: @escaping @MainActor () -> Hint?,
     present: @escaping @MainActor (Hint) -> Void,
+    dismiss: @escaping @MainActor () -> Void = {},
     now: @escaping () -> Date = { Date() }
   ) {
     self.hintProvider = hintProvider
     self.present = present
+    dismissHUD = dismiss
     self.now = now
     signalObserver = BlockedInputSignalObserver { [weak self] in
       MainActor.assumeIsolated {
@@ -46,9 +49,11 @@ final class BlockedInputHUDController {
 
   convenience init(hintProvider: @escaping @MainActor () -> Hint?) {
     let presenter = BlockedInputHUDPresenter()
-    self.init(hintProvider: hintProvider) { hint in
-      presenter.show(hint)
-    }
+    self.init(
+      hintProvider: hintProvider,
+      present: { hint in presenter.show(hint) },
+      dismiss: { presenter.hide() }
+    )
   }
 
   func handleSignal() {
@@ -62,6 +67,18 @@ final class BlockedInputHUDController {
     }
     lastPresentedAt = now
     present(hint)
+  }
+
+  /// Authoritative-state follow-up: the bezel's message is only true while locked, so it comes
+  /// down the moment the lock ends instead of outliving it until the dismiss timer fires.
+  /// Unlocking also clears the coalescing latch — a signal from the next lock generation must
+  /// present immediately, mirroring the engine's per-generation re-arm.
+  func handleLockStateChange(isLocked: Bool) {
+    guard !isLocked else {
+      return
+    }
+    lastPresentedAt = nil
+    dismissHUD()
   }
 }
 
@@ -126,11 +143,15 @@ private final class BlockedInputHUDPresenter {
 
   private var panel: NSPanel?
   private var dismissTask: Task<Void, Never>?
+  /// Bumped by every show/hide so a stale fade-out completion can never close a panel that a
+  /// newer transition has already reclaimed.
+  private var transitionGeneration = 0
 
   func show(_ hint: BlockedInputHUDController.Hint) {
     // A signal arriving while visible refreshes the content and restarts the dismiss clock
     // instead of stacking panels.
     dismissTask?.cancel()
+    transitionGeneration &+= 1
 
     let panel = panel ?? makePanel()
     self.panel = panel
@@ -146,17 +167,37 @@ private final class BlockedInputHUDPresenter {
       panel.animator().alphaValue = 1
     }
 
-    dismissTask = Task { @MainActor [weak panel] in
+    dismissTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .seconds(Self.visibleDuration))
-      guard !Task.isCancelled, let panel else {
+      guard !Task.isCancelled else {
         return
       }
-      NSAnimationContext.runAnimationGroup { context in
-        context.duration = Self.fadeDuration
-        panel.animator().alphaValue = 0
-      } completionHandler: {
-        panel.orderOut(nil)
+      self?.fadeOutAndClose()
+    }
+  }
+
+  /// Pulls the bezel down early — the lock it described is over. Safe against a show that
+  /// lands mid-fade: the generation check inside `fadeOutAndClose` keeps the newer panel open.
+  func hide() {
+    dismissTask?.cancel()
+    dismissTask = nil
+    transitionGeneration &+= 1
+    fadeOutAndClose()
+  }
+
+  private func fadeOutAndClose() {
+    guard let panel, panel.isVisible else {
+      return
+    }
+    let generation = transitionGeneration
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = Self.fadeDuration
+      panel.animator().alphaValue = 0
+    } completionHandler: { [weak self, weak panel] in
+      guard let self, self.transitionGeneration == generation else {
+        return
       }
+      panel?.orderOut(nil)
     }
   }
 

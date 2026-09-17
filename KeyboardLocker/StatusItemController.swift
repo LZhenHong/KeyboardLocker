@@ -120,6 +120,7 @@ final class StatusItemController: NSObject {
     }
 
     updateCountdown(for: snapshot)
+    blockedInputHUD?.handleLockStateChange(isLocked: uiStore.isLocked)
     handleSafetyCheckExperience(snapshot)
   }
 

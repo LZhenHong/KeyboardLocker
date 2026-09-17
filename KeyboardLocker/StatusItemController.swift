@@ -17,6 +17,7 @@ final class StatusItemController: NSObject {
   private let statusItem: NSStatusItem
   private let uiStore: AppUIStore
   private var blockedInputHUD: BlockedInputHUDController?
+  private var countdownTimer: Timer?
   private var popoverPresenter: PopoverPresenter!
   private var currentSnapshot: AppCoordinator.Snapshot
   private var hasOfferedSafetyCheckThisLaunch = false
@@ -118,7 +119,86 @@ final class StatusItemController: NSObject {
       button.toolTip = appearance.title
     }
 
+    updateCountdown(for: snapshot)
     handleSafetyCheckExperience(snapshot)
+  }
+
+  // MARK: - Menu-bar countdown
+
+  /// Monospaced digits plus the always-five-character `mm:ss` text from `MenuBarCountdown`
+  /// keep the rendered title the same width at every tick.
+  private static let countdownFont = NSFont.monospacedDigitSystemFont(
+    ofSize: NSFont.systemFontSize,
+    weight: .regular
+  )
+
+  private func updateCountdown(for snapshot: AppCoordinator.Snapshot) {
+    let deadline = snapshot.state.knownLockState == true
+      ? snapshot.lockSnapshot?.autoUnlockTargetDate
+      : nil
+    guard let deadline else {
+      stopCountdownTimer()
+      clearCountdownTitle()
+      return
+    }
+    startCountdownTimerIfNeeded()
+    applyCountdownTitle(deadline: deadline)
+  }
+
+  private func applyCountdownTitle(deadline: Date) {
+    guard let text = MenuBarCountdown.text(deadline: deadline, now: Date()) else {
+      return
+    }
+    // The leading space widens the icon–text gap: `NSStatusBarButton` exposes no image-title
+    // spacing API. It is one constant-width character, so the width-stability contract holds.
+    statusItem.button?.attributedTitle = NSAttributedString(
+      string: " \(text)",
+      attributes: [.font: Self.countdownFont]
+    )
+    // `variableLength` lets AppKit lay out image + title itself (a hand-measured fixed length
+    // cannot see the button's internal padding and truncated the text). The content width is
+    // constant — five monospaced-digit characters — so the auto-sized item width is constant
+    // too: it grows once when the countdown appears and shrinks back on unlock, state changes
+    // rather than per-second jitter.
+    statusItem.length = NSStatusItem.variableLength
+  }
+
+  private func clearCountdownTitle() {
+    guard statusItem.length != NSStatusItem.squareLength else {
+      return
+    }
+    statusItem.button?.attributedTitle = NSAttributedString()
+    statusItem.length = NSStatusItem.squareLength
+  }
+
+  private func startCountdownTimerIfNeeded() {
+    guard countdownTimer == nil else {
+      return
+    }
+    let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.countdownTimerFired()
+      }
+    }
+    timer.tolerance = 0.1
+    countdownTimer = timer
+  }
+
+  private func stopCountdownTimer() {
+    countdownTimer?.invalidate()
+    countdownTimer = nil
+  }
+
+  private func countdownTimerFired() {
+    let deadline = currentSnapshot.state.knownLockState == true
+      ? currentSnapshot.lockSnapshot?.autoUnlockTargetDate
+      : nil
+    guard let deadline else {
+      stopCountdownTimer()
+      clearCountdownTitle()
+      return
+    }
+    applyCountdownTitle(deadline: deadline)
   }
 
   private func makeAppearance(

@@ -18,7 +18,11 @@ struct SettingsPage: View {
   @State private var timeoutUnit: TimeoutUnit = .seconds
   @State private var timeoutRejection: String?
   @State private var lastTimedSeconds: TimeInterval = 60
+  @State private var phraseText = ""
+  @State private var phraseRejection: String?
+  @State private var lastPhrase = "unlock"
   @FocusState private var timeoutFieldFocused: Bool
+  @FocusState private var phraseFieldFocused: Bool
 
   private enum TimeoutUnit {
     case seconds
@@ -57,6 +61,11 @@ struct SettingsPage: View {
     .onChange(of: timeoutFieldFocused) { focused in
       if !focused {
         settleTimeoutFieldOnFocusLoss()
+      }
+    }
+    .onChange(of: phraseFieldFocused) { focused in
+      if !focused {
+        settlePhraseFieldOnFocusLoss()
       }
     }
   }
@@ -98,6 +107,7 @@ struct SettingsPage: View {
     } else if let draft {
       VStack(alignment: .leading, spacing: 10) {
         hotkeyRow(draft: draft)
+        phraseRow(draft: draft)
         autoUnlockRows(draft: draft)
         statusFootnotes
       }
@@ -146,6 +156,41 @@ struct SettingsPage: View {
           Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
         .font(.caption)
+      }
+    }
+  }
+
+  private func phraseRow(draft: KeyboardLockerSettings) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Text("Unlock Phrase")
+        Spacer(minLength: 12)
+        Toggle("Unlock phrase", isOn: phraseEnabledBinding(draft: draft))
+          .labelsHidden()
+          .disabled(!store.canEditSettings)
+      }
+      .help("While locked, type this phrase to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
+
+      // The editor only exists while the gesture is on; a disabled field would read as broken.
+      if draft.unlockPhrase != nil {
+        HStack {
+          Text("Phrase")
+          Spacer(minLength: 12)
+          TextField("unlock me", text: $phraseText)
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 120)
+            .focused($phraseFieldFocused)
+            .onSubmit(commitPhraseText)
+            .disabled(!store.canEditSettings)
+        }
+
+        if let phraseRejection {
+          Text(phraseRejection)
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
   }
@@ -249,6 +294,60 @@ struct SettingsPage: View {
 
   // MARK: - Editing
 
+  private func phraseEnabledBinding(
+    draft: KeyboardLockerSettings
+  ) -> Binding<Bool> {
+    Binding(
+      get: { draft.unlockPhrase != nil },
+      set: { enabled in
+        // Toggling off drops the gesture entirely; toggling on restores the last edited phrase.
+        commit(phrase: enabled ? lastPhrase : nil)
+      }
+    )
+  }
+
+  /// Same contract as the timeout field: a valid value commits immediately; an invalid one is
+  /// rejected with the shared guardrail's message and the field snaps back on focus loss, so the
+  /// text can never keep showing a phrase the Agent does not hold.
+  private func commitPhraseText() {
+    guard let draft else {
+      return
+    }
+    let normalized: String?
+    do {
+      normalized = try KeyboardLockerSettings(
+        autoUnlockPolicy: draft.autoUnlockPolicy,
+        unlockHotkey: draft.unlockHotkey,
+        unlockPhrase: phraseText
+      )
+      .validated()
+      .unlockPhrase
+    } catch {
+      phraseRejection = error.localizedDescription
+      return
+    }
+    phraseRejection = nil
+    if let normalized, draft.unlockPhrase != normalized {
+      commit(phrase: normalized)
+    }
+  }
+
+  private func settlePhraseFieldOnFocusLoss() {
+    commitPhraseText()
+    if phraseRejection != nil {
+      phraseRejection = nil
+      phraseText = draft?.unlockPhrase ?? ""
+    }
+  }
+
+  private func commit(phrase: String?) {
+    guard var updated = draft else {
+      return
+    }
+    updated.unlockPhrase = phrase
+    commit(updated)
+  }
+
   private func autoUnlockEnabledBinding(
     draft: KeyboardLockerSettings
   ) -> Binding<Bool> {
@@ -341,6 +440,14 @@ struct SettingsPage: View {
   private func syncDraft() {
     draft = store.editableSettings
     hotkeyRejection = nil
+
+    if let phrase = store.editableSettings?.unlockPhrase {
+      lastPhrase = phrase
+    }
+    if !phraseFieldFocused {
+      phraseText = store.editableSettings?.unlockPhrase ?? ""
+      phraseRejection = nil
+    }
 
     // Never clobber the field while the user is typing in it.
     guard !timeoutFieldFocused,

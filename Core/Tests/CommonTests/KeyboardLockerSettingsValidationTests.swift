@@ -10,14 +10,16 @@ struct KeyboardLockerSettingsValidationTests {
   private static func settings(
     keyCode: CGKeyCode = mappableKeyCode,
     modifiers: CGEventFlags = [.maskControl, .maskCommand],
-    policy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60)
+    policy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60),
+    phrase: String? = nil
   ) -> KeyboardLockerSettings {
     KeyboardLockerSettings(
       autoUnlockPolicy: policy,
       unlockHotkey: KeyboardLockerSettings.Hotkey(
         keyCode: keyCode,
         modifierFlags: modifiers
-      )
+      ),
+      unlockPhrase: phrase
     )
   }
 
@@ -130,5 +132,50 @@ struct KeyboardLockerSettingsValidationTests {
     let twice = try once.validated()
 
     #expect(once == twice)
+  }
+
+  // MARK: - Unlock phrase guardrails
+
+  @Test
+  func nilPhraseDisablesTheGesture() throws {
+    #expect(try Self.settings().validated().unlockPhrase == nil)
+  }
+
+  @Test
+  func phraseIsLowercasedAndPreserved() throws {
+    let validated = try Self.settings(phrase: "Unlock Me 2").validated()
+
+    #expect(validated.unlockPhrase == "unlock me 2")
+  }
+
+  @Test(arguments: ["cat", "unlock me", String(repeating: "a", count: 64)])
+  func phrasesInsideTheLengthRangeAreAccepted(phrase: String) throws {
+    #expect(try Self.settings(phrase: phrase).validated().unlockPhrase == phrase)
+  }
+
+  @Test(arguments: ["", "ab", "  ", String(repeating: "a", count: 65)])
+  func phrasesOutsideTheLengthRangeAreRejected(phrase: String) {
+    #expect(
+      throws: KeyboardLockerSettingsValidationError.unlockPhraseInvalidLength(
+        KeyboardLockerSettings.allowedUnlockPhraseLength
+      )
+    ) {
+      try Self.settings(phrase: phrase).validated()
+    }
+  }
+
+  @Test(arguments: ["unlock!", "café", "open\tsesame", "pass/word"])
+  func phrasesWithDisallowedCharactersAreRejected(phrase: String) {
+    #expect(throws: KeyboardLockerSettingsValidationError.unlockPhraseInvalidCharacters) {
+      try Self.settings(phrase: phrase).validated()
+    }
+  }
+
+  @Test
+  func spaceOnlyPhraseIsRejected() {
+    // Inside the length range and the character set, but a held spacebar must not be a gesture.
+    #expect(throws: KeyboardLockerSettingsValidationError.unlockPhraseInvalidCharacters) {
+      try Self.settings(phrase: "   ").validated()
+    }
   }
 }

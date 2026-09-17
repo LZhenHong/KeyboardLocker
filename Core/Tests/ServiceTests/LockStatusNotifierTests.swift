@@ -63,6 +63,32 @@ final class LockStatusNotifierTests {
   }
 
   @Test
+  func lockedNotificationMentionsThePhraseGestureWithoutRevealingIt() async throws {
+    snapshot = Self.makeSnapshot(isLocked: true, unlockPhrase: "unlock me")
+    let notifier = makeNotifier()
+
+    notifier.lockStateDidChange()
+    await notifier.waitUntilIdle()
+
+    let post = try #require(notifications.posts.first)
+    #expect(post.body.contains("type your unlock phrase"), "body: \(post.body)")
+    // The phrase itself is never printed into a system surface.
+    #expect(!post.body.contains("unlock me"), "body: \(post.body)")
+  }
+
+  @Test
+  func lockedNotificationOmitsThePhraseHintWhenDisabled() async throws {
+    snapshot = Self.makeSnapshot(isLocked: true)
+    let notifier = makeNotifier()
+
+    notifier.lockStateDidChange()
+    await notifier.waitUntilIdle()
+
+    let post = try #require(notifications.posts.first)
+    #expect(!post.body.contains("phrase"), "body: \(post.body)")
+  }
+
+  @Test
   func unlockTransitionRemovesNotificationWithoutRequestingAuthorization() async {
     snapshot = Self.makeSnapshot(isLocked: false)
     let notifier = makeNotifier()
@@ -138,14 +164,17 @@ final class LockStatusNotifierTests {
 
   private static func makeSnapshot(
     isLocked: Bool,
-    autoUnlockTargetDate: Date? = nil
+    autoUnlockTargetDate: Date? = nil,
+    unlockPhrase: String? = nil
   ) -> LockStatusSnapshot {
-    LockStatusSnapshot(
+    var settings = KeyboardLockerSettings.default
+    settings.unlockPhrase = unlockPhrase
+    return LockStatusSnapshot(
       capturedAt: Date(timeIntervalSinceReferenceDate: 1000),
       isLocked: isLocked,
       startedAt: isLocked ? Date(timeIntervalSinceReferenceDate: 1000) : nil,
       autoUnlockTargetDate: autoUnlockTargetDate,
-      settings: .default
+      settings: settings
     )
   }
 

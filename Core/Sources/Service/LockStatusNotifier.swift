@@ -102,6 +102,10 @@ final class LockStatusNotifier {
 
   private static func makeBody(snapshot: LockStatusSnapshot) -> String {
     var lines = ["Press \(snapshot.settings.unlockHotkey.displayString) or choose Unlock Now."]
+    // Advertise the gesture without ever printing the phrase itself.
+    if snapshot.settings.unlockPhrase != nil {
+      lines.append("Or type your unlock phrase.")
+    }
     if let target = snapshot.autoUnlockTargetDate {
       lines.append("Auto-unlocks at \(target.formatted(date: .omitted, time: .shortened)).")
     }

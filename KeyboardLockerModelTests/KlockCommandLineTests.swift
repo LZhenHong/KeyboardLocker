@@ -140,6 +140,25 @@ struct KlockCommandLineTests {
     #expect(result.stderr == ["Warning: Could not read the configured unlock shortcut: settings unavailable"])
   }
 
+  @Test
+  func interactiveLockMentionsThePhraseGestureWhenConfigured() async {
+    let client = FakeKlockClient()
+    var settings = KeyboardLockerSettings.testFixture
+    settings.unlockPhrase = "unlock me"
+    client.settingsResult = .success(settings)
+    let hotkey = KeyboardLockerSettings.testFixture.unlockHotkey.displayString
+
+    let result = await runKlock(arguments: ["lock"], client: client)
+
+    #expect(result.exitCode == 0)
+    // The hint mentions the gesture; the phrase itself is never printed.
+    #expect(result.stdout == [
+      "Locked. Press \(hotkey) or Ctrl+C to unlock, or type your unlock phrase.",
+      "Unlocked.",
+    ])
+    #expect(!result.stdout.joined().contains("unlock me"))
+  }
+
   // MARK: - Timed lock
 
   @Test

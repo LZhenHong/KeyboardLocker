@@ -82,7 +82,7 @@ Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` W
 
 ## Notifications
 
-任一入口使键盘进入 locked 时,**Agent 进程自己**发布一条 `Keyboard Locked` 通知：内容直接来自 Agent 持有的 active settings 与 auto-unlock deadline,展示当前解锁热键,并在 timed auto-unlock policy 下附带截止时间。通知使用固定 identifier,重复锁定只替换内容,不会堆叠;任一入口解开同一个全局锁——显式 unlock、解锁热键、auto-unlock timeout 或 event-tap fail-open——通知都随同一次状态转换移除。因为投递/移除与锁状态转换发生在同一进程,通知不会比锁活得更久,与哪个 wrapper 在运行无关;若 Agent 在 locked 时退出(event tap 随进程释放),残留通知由下一次 Agent 启动时清除。
+任一入口使键盘进入 locked 时,**Agent 进程自己**发布一条 `Keyboard Locked` 通知：内容直接来自 Agent 持有的 active settings 与 auto-unlock deadline,展示当前解锁热键(配置了 unlock phrase 时追加手势提示,但不显示短语本身),并在 timed auto-unlock policy 下附带截止时间。通知使用固定 identifier,重复锁定只替换内容,不会堆叠;任一入口解开同一个全局锁——显式 unlock、解锁热键、auto-unlock timeout 或 event-tap fail-open——通知都随同一次状态转换移除。因为投递/移除与锁状态转换发生在同一进程,通知不会比锁活得更久,与哪个 wrapper 在运行无关;若 Agent 在 locked 时退出(event tap 随进程释放),残留通知由下一次 Agent 启动时清除。
 
 通知携带 `Unlock Now` 操作按钮。键盘被锁时鼠标与触控板仍然可用,点击按钮由 Agent 本地执行幂等 `unlock`,不需要拉起任何 App。
 
@@ -115,7 +115,7 @@ end tell
 
 ## CLI
 
-交互式锁定会等待后续 unlock。只有本次命令真正创建新锁时,Agent 才为该轮锁临时启用 `Ctrl+C` 解锁：
+交互式锁定会等待后续 unlock。只有本次命令真正创建新锁时,Agent 才为该轮锁临时启用 `Ctrl+C` 解锁;若设置了 unlock phrase,锁定提示会追加 `or type your unlock phrase`(提示手势存在,不显示短语内容):
 
 ```bash
 klock lock

@@ -145,13 +145,11 @@ enum KlockCLI {
     printOut: (String) -> Void,
     printError: @escaping (String) -> Void
   ) async -> Int32 {
-    let unlockHotkey: Result<String, Error>
+    let settings: Result<KeyboardLockerSettings, Error>
     do {
-      unlockHotkey = try await .success(
-        client.currentSettings().unlockHotkey.displayString
-      )
+      settings = try await .success(client.currentSettings())
     } catch {
-      unlockHotkey = .failure(error)
+      settings = .failure(error)
     }
 
     // Observe termination before sending the mutation. If a signal arrives while the XPC reply is
@@ -203,9 +201,13 @@ enum KlockCLI {
     }
 
     let durationClause = autoUnlockSeconds.map { " for \(formatLockDuration($0))" } ?? ""
-    switch unlockHotkey {
-    case let .success(hotkey):
-      printOut("Locked\(durationClause). Press \(hotkey) or Ctrl+C to unlock.")
+    switch settings {
+    case let .success(settings):
+      // Mention the gesture without ever printing the phrase itself.
+      let phraseClause = settings.unlockPhrase == nil ? "" : ", or type your unlock phrase"
+      printOut(
+        "Locked\(durationClause). Press \(settings.unlockHotkey.displayString) or Ctrl+C to unlock\(phraseClause)."
+      )
 
     case let .failure(error):
       printOut(

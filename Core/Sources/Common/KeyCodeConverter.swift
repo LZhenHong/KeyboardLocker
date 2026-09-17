@@ -27,6 +27,25 @@ public enum KeyCodeConverter {
     return result.isEmpty ? nil : result
   }
 
+  /// Maps a key press to the character it would type on the current ASCII-capable layout,
+  /// honoring shift state. The Agent's unlock-phrase matcher consumes this; shortcut display
+  /// keeps using `stringFromKeyCode`.
+  /// - Returns: The typed character, or nil for unmappable keys and multi-codepoint results
+  ///   (dead-key remnants, control sequences), which are not phrase input.
+  public static func typedCharacter(for keyCode: CGKeyCode, shiftDown: Bool) -> Character? {
+    let string: String? = if Thread.isMainThread {
+      characterFromKeyboardLayout(keyCode, action: kUCKeyActionDown, shiftDown: shiftDown)
+    } else {
+      DispatchQueue.main.sync {
+        characterFromKeyboardLayout(keyCode, action: kUCKeyActionDown, shiftDown: shiftDown)
+      }
+    }
+    guard let string, string.count == 1 else {
+      return nil
+    }
+    return string.first
+  }
+
   // MARK: - Private Helpers
 
   /// Convert modifier flags to symbol string
@@ -58,10 +77,10 @@ public enum KeyCodeConverter {
   /// - Returns: Uppercase character or symbol, nil when the keyboard layout cannot map it
   private static func keyCharacter(for keyCode: CGKeyCode) -> String? {
     let character: String? = if Thread.isMainThread {
-      characterFromKeyboardLayout(keyCode)
+      characterFromKeyboardLayout(keyCode, action: kUCKeyActionDisplay, shiftDown: false)
     } else {
       DispatchQueue.main.sync {
-        characterFromKeyboardLayout(keyCode)
+        characterFromKeyboardLayout(keyCode, action: kUCKeyActionDisplay, shiftDown: false)
       }
     }
     return character?.uppercased()
@@ -72,12 +91,19 @@ public enum KeyCodeConverter {
   /// Reads the ASCII-capable layout rather than the current input source: an active input
   /// method (e.g. Pinyin) may carry no Unicode layout data, which would render the hotkey as
   /// "?" precisely while the user is typing in a non-Latin context.
-  /// - Parameter keyCode: CGKeyCode value
+  /// - Parameters:
+  ///   - keyCode: CGKeyCode value
+  ///   - action: `kUCKeyActionDisplay` for presentation, `kUCKeyActionDown` for typed input
+  ///   - shiftDown: whether shift was held, for typed-input fidelity
   /// - Returns: Character string or nil
   /// TIS/TSM APIs abort the process when a UI process calls them concurrently. Keep the complete
   /// input-source lookup and translation on the main thread so every wrapper shares one safe
   /// process-local serialization boundary.
-  private static func characterFromKeyboardLayout(_ keyCode: CGKeyCode) -> String? {
+  private static func characterFromKeyboardLayout(
+    _ keyCode: CGKeyCode,
+    action: Int,
+    shiftDown: Bool
+  ) -> String? {
     let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource().takeRetainedValue()
     guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
       return nil
@@ -90,11 +116,14 @@ public enum KeyCodeConverter {
     var length = 0
     var chars = [UniChar](repeating: 0, count: 4)
 
+    // UCKeyTranslate takes modifier state in the high-byte layout: Carbon's shiftKey (0x0200)
+    // arrives as 0x02.
+    let modifierState = shiftDown ? UInt32(shiftKey >> 8) : 0
     let error = UCKeyTranslate(
       layout,
       keyCode,
-      UInt16(kUCKeyActionDisplay),
-      0, // No modifiers - we want the base character
+      UInt16(action),
+      UInt32(modifierState),
       UInt32(LMGetKbdType()),
       UInt32(kUCKeyTranslateNoDeadKeysMask),
       &deadKeyState,

@@ -11,10 +11,25 @@ struct KeyboardLockerSettingsCodingTests {
       unlockHotkey: .init(
         keyCode: 12,
         modifierFlags: [.maskAlternate, .maskShift]
-      )
+      ),
+      unlockPhrase: "unlock me"
     )
 
     #expect(try KeyboardLockerSettings.decodedFromXPC(settings.encodedForXPC()) == settings)
+  }
+
+  @Test
+  func payloadWithoutUnlockPhraseDecodesAsDisabled() throws {
+    // Payloads written before the phrase existed omit the key; the synthesized encoder drops
+    // it whenever the value is nil, so this round trip is exactly the old wire shape.
+    let settings = KeyboardLockerSettings(
+      autoUnlockPolicy: .timed(seconds: 42),
+      unlockHotkey: .init(keyCode: 12, modifierFlags: [.maskCommand])
+    )
+    let payload = try JSONEncoder().encode(settings)
+    #expect(!String(decoding: payload, as: UTF8.self).contains("unlockPhrase"))
+
+    #expect(try KeyboardLockerSettings.decodedFromXPC(payload).unlockPhrase == nil)
   }
 
   @Test

@@ -178,6 +178,42 @@ enum UnlockGestureMatcher {
   }
 }
 
+/// Rolling suffix matcher for the type-to-unlock phrase of one lock generation.
+///
+/// The buffer never grows past the phrase length and is never logged, persisted, or carried
+/// into a snapshot: it exists only so a deliberate typed phrase can end the lock while every
+/// keystroke is being consumed. Ingest exactly the characters admitted by
+/// `KeyboardLockerSettings.isAllowedInUnlockPhrase`, lowercased.
+struct UnlockPhraseMatcher: Equatable {
+  private let phrase: [Character]
+  private var buffer: [Character] = []
+
+  init(phrase: String) {
+    self.phrase = Array(phrase)
+  }
+
+  mutating func ingest(_ character: Character) {
+    buffer.append(character)
+    if buffer.count > phrase.count {
+      buffer.removeFirst()
+    }
+  }
+
+  mutating func backspace() {
+    if !buffer.isEmpty {
+      buffer.removeLast()
+    }
+  }
+
+  mutating func reset() {
+    buffer.removeAll()
+  }
+
+  var matched: Bool {
+    buffer == phrase
+  }
+}
+
 /// System-defined events share a channel with auxiliary mouse buttons. Classify them explicitly so
 /// keyboard controls are consumed without broadening the lock to pointer input.
 enum LockedKeyboardEventPolicy {
@@ -289,6 +325,9 @@ struct LockEngineDependencies {
   var hasAccessibilityPermission: @MainActor () -> Bool
   var installEventTap: @MainActor (LockEngine) throws -> any InstalledEventTap
   var scheduleTimer: MainActorTimerScheduler
+  /// Maps a key press to the character it types on the current layout (shift-aware), for the
+  /// unlock-phrase matcher. Injected so tests drive phrase matching without the TIS layout.
+  var characterForKeyCode: @MainActor (CGKeyCode, Bool) -> Character?
   /// Registers a main-actor observer fired once per system wake and returns its cancellation.
   /// The auto-unlock timer runs on the monotonic clock and pauses during sleep, while the
   /// published deadline is wall-clock — this signal is what lets the engine reconcile them.
@@ -303,6 +342,9 @@ struct LockEngineDependencies {
       hasAccessibilityPermission: { AccessibilityManager.hasPermission() },
       installEventTap: { engine in try CoreGraphicsEventTap.install(engine: engine) },
       scheduleTimer: liveMainActorTimerScheduler,
+      characterForKeyCode: { keyCode, shiftDown in
+        KeyCodeConverter.typedCharacter(for: keyCode, shiftDown: shiftDown)
+      },
       observeSystemWake: { handler in
         let center = NSWorkspace.shared.notificationCenter
         let observer = center.addObserver(
@@ -468,6 +510,9 @@ final class LockEngine {
   private var eventTapGeneration: UInt64 = 0
   private var cancelScheduledAutoUnlock: (() -> Void)?
   private var cancelWakeObservation: (() -> Void)?
+  /// Rolling phrase matcher owned by the current lock generation; nil while unlocked or when
+  /// the lock's settings disable the gesture. Never logged or exposed.
+  private var phraseMatcher: UnlockPhraseMatcher?
   private var runtimeState = LockRuntimeState()
   private var stateChangeHandler: () -> Void = {}
 
@@ -550,6 +595,10 @@ final class LockEngine {
       teardownEventTap()
       return outcome
     }
+    // The matcher belongs to this lock generation: its buffer starts empty and its phrase is
+    // the one the lock began with, so a duplicate request cannot change a running lock's
+    // gesture.
+    phraseMatcher = settings.unlockPhrase.map { UnlockPhraseMatcher(phrase: $0) }
     if source == .focusFilter {
       runtimeState.markCurrentLockAsFocusOwned()
     }
@@ -561,6 +610,9 @@ final class LockEngine {
   /// (e.g. a new auto-unlock timeout re-arms the timer); otherwise they seed the next lock.
   func updateSettings(_ settings: KeyboardLockerSettings) {
     runtimeState.updateSettings(settings)
+    // An explicit settings update also re-arms the phrase gesture; any partial input belongs
+    // to the previous configuration.
+    phraseMatcher = settings.unlockPhrase.map { UnlockPhraseMatcher(phrase: $0) }
 
     if runtimeState.isLocked {
       configureAutoUnlockTimerIfNeeded()
@@ -672,6 +724,8 @@ final class LockEngine {
 
   private func resetLockState(reason: UnlockRecord.Reason) {
     runtimeState.end(reason: reason, at: dependencies.now())
+    // No keystroke residue may survive the lock that collected it.
+    phraseMatcher = nil
 
     publishStateChange()
     Self.logger.info("Unlocked")
@@ -725,16 +779,66 @@ final class LockEngine {
     }
 
     if shouldTriggerUnlock(for: type, event: event) {
-      let lockGeneration = runtimeState.lockGeneration
-      DispatchQueue.main.async { [weak self] in
-        guard let lockGeneration else {
-          return
-        }
-        self?.unlock(ifLockGeneration: lockGeneration, reason: .gesture)
-      }
+      unlockFromInputGesture(.gesture)
+    } else if shouldUnlockViaPhrase(type: type, event: event) {
+      unlockFromInputGesture(.phrase)
     }
 
     return nil
+  }
+
+  /// Input-gesture unlocks dispatch through the main queue so the tap callback stays
+  /// non-blocking; the generation fence rejects a gesture that raced a newer lock.
+  private func unlockFromInputGesture(_ reason: UnlockRecord.Reason) {
+    let lockGeneration = runtimeState.lockGeneration
+    DispatchQueue.main.async { [weak self] in
+      guard let lockGeneration else {
+        return
+      }
+      self?.unlock(ifLockGeneration: lockGeneration, reason: reason)
+    }
+  }
+
+  /// Feeds the rolling phrase matcher. Only plain character key-downs count: modifier chords
+  /// and non-character keys reset the buffer, backspace edits it, and auto-repeat is ignored
+  /// so a held key neither completes nor breaks a phrase.
+  private func shouldUnlockViaPhrase(type: CGEventType, event: CGEvent) -> Bool {
+    guard runtimeState.isLocked, phraseMatcher != nil, type == .keyDown else {
+      return false
+    }
+    guard event.getIntegerValueField(.keyboardEventAutorepeat) != Self.autoRepeatFlagValue else {
+      return false
+    }
+
+    let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+    let flags = event.flags
+
+    // Command/control/option chords are gestures, not phrase input; one breaks the sequence.
+    guard flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty else {
+      phraseMatcher?.reset()
+      return false
+    }
+
+    if keyCode == CGKeyCode(kVK_Delete) {
+      phraseMatcher?.backspace()
+      return false
+    }
+
+    guard let character = dependencies.characterForKeyCode(
+      keyCode,
+      flags.contains(.maskShift)
+    ) else {
+      phraseMatcher?.reset()
+      return false
+    }
+    let lowered = Character(character.lowercased())
+    guard KeyboardLockerSettings.isAllowedInUnlockPhrase(lowered) else {
+      phraseMatcher?.reset()
+      return false
+    }
+
+    phraseMatcher?.ingest(lowered)
+    return phraseMatcher?.matched == true
   }
 
   private func shouldTriggerUnlock(for type: CGEventType, event: CGEvent) -> Bool {

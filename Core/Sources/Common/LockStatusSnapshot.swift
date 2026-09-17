@@ -7,17 +7,38 @@ import Foundation
 /// Wrappers use it for presentation and diagnostics only — it never gates what any entry point
 /// may do next.
 public struct UnlockRecord: Codable, Equatable, Sendable {
-  public enum Reason: String, Codable, Sendable {
+  /// Forward-tolerant wire union — intentionally not an enum, for the same reason as
+  /// `ServiceCapability`: a reason introduced by a newer Agent must decode losslessly on an
+  /// older client instead of failing the whole snapshot payload.
+  public struct Reason: Codable, Equatable, Hashable, RawRepresentable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+      self.rawValue = rawValue
+    }
+
+    public init(from decoder: any Decoder) throws {
+      let container = try decoder.singleValueContainer()
+      rawValue = try container.decode(String.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+      var container = encoder.singleValueContainer()
+      try container.encode(rawValue)
+    }
+
     /// A wrapper, the notification's Unlock Now action, or agent replacement requested it.
-    case explicit
+    public static let explicit = Self(rawValue: "explicit")
     /// The configured unlock hotkey or the interactive Ctrl+C gesture ended the lock.
-    case gesture
+    public static let gesture = Self(rawValue: "gesture")
     /// The auto-unlock timer reached its deadline.
-    case autoUnlock
+    public static let autoUnlock = Self(rawValue: "autoUnlock")
     /// Focus deactivation conditionally released the lock generation it created.
-    case focusFilter
+    public static let focusFilter = Self(rawValue: "focusFilter")
     /// The event tap could not be re-enabled, so the lock failed open.
-    case eventTapFailure
+    public static let eventTapFailure = Self(rawValue: "eventTapFailure")
+    /// The user typed the configured unlock phrase on the locked keyboard.
+    public static let phrase = Self(rawValue: "phrase")
   }
 
   public let reason: Reason
@@ -43,6 +64,11 @@ public extension UnlockRecord.Reason {
       "Focus"
     case .eventTapFailure:
       "Tap failure"
+    case .phrase:
+      "Phrase"
+    default:
+      // A reason from a newer Agent stays presentable instead of failing the decode.
+      "Unknown"
     }
   }
 }

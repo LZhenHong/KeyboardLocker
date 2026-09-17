@@ -1,3 +1,4 @@
+import Carbon
 import Common
 import CoreGraphics
 import Foundation
@@ -15,6 +16,7 @@ final class LockEngineTests {
   private var hasAccessibilityPermission: Bool
   private var now: Date
   private var wakeHandler: (@MainActor @Sendable () -> Void)?
+  private var keyCodesByCharacter: [Character: CGKeyCode]
 
   init() {
     tap = FakeInstalledEventTap()
@@ -25,6 +27,7 @@ final class LockEngineTests {
     hasAccessibilityPermission = true
     now = Date(timeIntervalSinceReferenceDate: 1000)
     wakeHandler = nil
+    keyCodesByCharacter = [:]
   }
 
   // MARK: - Acquisition
@@ -454,6 +457,161 @@ final class LockEngineTests {
     #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .explicit, date: now))
   }
 
+  // MARK: - Unlock phrase
+
+  @Test
+  func typingThePhraseUnlocksWithPhraseReason() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("cat", on: engine)
+    // The unlock gesture dispatches async so the tap callback stays non-blocking.
+    #expect(engine.isLocked)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+    #expect(tap.teardownCallCount == 1)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .phrase, date: now))
+  }
+
+  @Test
+  func wrongInputKeepsTheLockAndTheNextAttemptCanMatch() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("ctt", on: engine) // rolling buffer holds "ctt", never the phrase
+    await flushMainQueue()
+    #expect(engine.isLocked)
+
+    type("cat", on: engine)
+    await flushMainQueue()
+    #expect(!engine.isLocked)
+  }
+
+  @Test
+  func backspaceEditsTheRollingBuffer() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("ct", on: engine)
+    let backspace = makeKeyEvent(keyCode: CGKeyCode(kVK_Delete))
+    #expect(engine.handleEvent(type: .keyDown, event: backspace) == nil)
+    type("at", on: engine)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+  }
+
+  @Test
+  func modifierChordResetsTheBuffer() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("ca", on: engine)
+    let chord = makeKeyEvent(keyCode: 101, flags: .maskCommand)
+    #expect(engine.handleEvent(type: .keyDown, event: chord) == nil)
+    type("t", on: engine)
+    await flushMainQueue()
+    #expect(engine.isLocked)
+
+    type("cat", on: engine)
+    await flushMainQueue()
+    #expect(!engine.isLocked)
+  }
+
+  @Test
+  func autoRepeatNeitherCompletesNorBreaksAPhrase() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("c", on: engine)
+    let heldA = makeKeyEvent(keyCode: 101, autorepeat: 1)
+    #expect(engine.handleEvent(type: .keyDown, event: heldA) == nil)
+    type("at", on: engine)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+  }
+
+  @Test
+  func nonCharacterKeyResetsTheBuffer() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    type("ca", on: engine)
+    let arrowKey = makeKeyEvent(keyCode: 200) // no character mapping
+    #expect(engine.handleEvent(type: .keyDown, event: arrowKey) == nil)
+    type("t", on: engine)
+    await flushMainQueue()
+
+    #expect(engine.isLocked)
+  }
+
+  @Test
+  func phraseBufferDoesNotSurviveARelock() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+    type("ca", on: engine)
+    engine.unlock()
+
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+    // "t" alone must not complete against the previous lock's partial "ca".
+    type("t", on: engine)
+    await flushMainQueue()
+
+    #expect(engine.isLocked)
+  }
+
+  @Test
+  func lockWithoutPhraseIgnoresTypedInput() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings())
+
+    type("cat", on: engine)
+    await flushMainQueue()
+
+    #expect(engine.isLocked)
+    #expect(tap.teardownCallCount == 0)
+  }
+
+  @Test
+  func duplicateLockKeepsTheOriginalPhraseGesture() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102, "d": 103, "o": 104, "g": 105]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    let duplicate = try engine.lock(settings: makeSettings(unlockPhrase: "dog"))
+    #expect(duplicate == .alreadyLocked)
+
+    type("cat", on: engine)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+    #expect(engine.statusSnapshot.lastUnlock == UnlockRecord(reason: .phrase, date: now))
+  }
+
+  @Test
+  func shiftedCharacterMatchesTheLowercasedPhrase() async throws {
+    keyCodesByCharacter = ["c": 100, "a": 101, "t": 102]
+    let engine = makeEngine()
+    _ = try engine.lock(settings: makeSettings(unlockPhrase: "cat"))
+
+    let shiftedC = makeKeyEvent(keyCode: 100, flags: .maskShift)
+    #expect(engine.handleEvent(type: .keyDown, event: shiftedC) == nil)
+    type("at", on: engine)
+    await flushMainQueue()
+
+    #expect(!engine.isLocked)
+  }
+
   // MARK: - Helpers
 
   private func makeEngine() -> LockEngine {
@@ -464,6 +622,12 @@ final class LockEngineTests {
         return self.tap
       },
       scheduleTimer: scheduler.scheduler,
+      characterForKeyCode: { keyCode, shiftDown in
+        for (character, code) in self.keyCodesByCharacter where code == keyCode {
+          return shiftDown ? Character(character.uppercased()) : character
+        }
+        return nil
+      },
       observeSystemWake: { handler in
         self.wakeHandler = handler
         return { self.wakeHandler = nil }
@@ -481,24 +645,41 @@ final class LockEngineTests {
   }
 
   private func makeSettings(
-    autoUnlockPolicy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60)
+    autoUnlockPolicy: KeyboardLockerSettings.AutoUnlockPolicy = .timed(seconds: 60),
+    unlockPhrase: String? = nil
   ) -> KeyboardLockerSettings {
     KeyboardLockerSettings(
       autoUnlockPolicy: autoUnlockPolicy,
-      unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 4, modifierFlags: .maskShift)
+      unlockHotkey: KeyboardLockerSettings.Hotkey(keyCode: 4, modifierFlags: .maskShift),
+      unlockPhrase: unlockPhrase
     )
   }
 
   private func makeKeyEvent(
     keyCode: CGKeyCode,
-    flags: CGEventFlags = []
+    flags: CGEventFlags = [],
+    autorepeat: Int64 = 0
   ) -> CGEvent {
     // Fabrication only builds an in-memory event value; nothing is posted to the HID system.
     // Bind the result to a local when asserting on a handler's return: handlers hand the event
     // back unretained, so it must outlive the returned reference.
     let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)!
     event.flags = flags
+    event.setIntegerValueField(.keyboardEventAutorepeat, value: autorepeat)
     return event
+  }
+
+  /// Feeds each character as a plain key-down through the fabricated event stream. Every
+  /// keystroke while locked is consumed, phrase progress or not.
+  private func type(_ text: String, on engine: LockEngine) {
+    for character in text {
+      guard let keyCode = keyCodesByCharacter[character] else {
+        Issue.record("No key code registered for '\(character)'")
+        continue
+      }
+      let event = makeKeyEvent(keyCode: keyCode)
+      #expect(engine.handleEvent(type: .keyDown, event: event) == nil)
+    }
   }
 
   /// Runs the main-queue hop the engine uses to dispatch unlock and tap-failure work.

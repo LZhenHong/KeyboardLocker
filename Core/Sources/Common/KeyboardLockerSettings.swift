@@ -64,13 +64,18 @@ public struct KeyboardLockerSettings: Equatable, Hashable, Codable, Sendable {
 
   public var autoUnlockPolicy: AutoUnlockPolicy
   public var unlockHotkey: Hotkey
+  /// Optional type-to-unlock phrase; nil disables the gesture. Additive Codable field: payloads
+  /// written before it existed decode as nil, and a nil value is omitted when encoding.
+  public var unlockPhrase: String?
 
   public init(
     autoUnlockPolicy: AutoUnlockPolicy,
-    unlockHotkey: Hotkey
+    unlockHotkey: Hotkey,
+    unlockPhrase: String? = nil
   ) {
     self.autoUnlockPolicy = autoUnlockPolicy
     self.unlockHotkey = unlockHotkey
+    self.unlockPhrase = unlockPhrase
   }
 
   /// Default settings for initial launch or reset
@@ -126,6 +131,8 @@ public enum KeyboardLockerSettingsValidationError: Error, Equatable, LocalizedEr
   case autoUnlockOutOfRange(ClosedRange<TimeInterval>)
   case hotkeyMissingModifier
   case hotkeyUnmappable
+  case unlockPhraseInvalidLength(ClosedRange<Int>)
+  case unlockPhraseInvalidCharacters
 
   public var errorDescription: String? {
     switch self {
@@ -143,6 +150,12 @@ public enum KeyboardLockerSettingsValidationError: Error, Equatable, LocalizedEr
 
     case .hotkeyUnmappable:
       "The unlock hotkey uses a key this keyboard layout cannot display."
+
+    case let .unlockPhraseInvalidLength(range):
+      "The unlock phrase must be between \(range.lowerBound) and \(range.upperBound) characters."
+
+    case .unlockPhraseInvalidCharacters:
+      "The unlock phrase can only contain lowercase letters, digits, and spaces, with at least one letter or digit."
     }
   }
 
@@ -154,7 +167,10 @@ public enum KeyboardLockerSettingsValidationError: Error, Equatable, LocalizedEr
     case .hotkeyUnmappable:
       "Choose a key that appears on the current keyboard layout so the hotkey can be shown in the app, its notification, and the widget."
 
-    case .autoUnlockNotFinite, .autoUnlockOutOfRange:
+    case .unlockPhraseInvalidLength:
+      "Three or more characters keeps a stray keystroke from becoming an unlock."
+
+    case .autoUnlockNotFinite, .autoUnlockOutOfRange, .unlockPhraseInvalidCharacters:
       nil
     }
   }
@@ -166,6 +182,33 @@ public extension KeyboardLockerSettings {
   /// within a window a user would actually wait out rather than force-restarting the machine.
   static let allowedAutoUnlockRange: ClosedRange<TimeInterval> = 5...3600
 
+  /// Bounds for a type-to-unlock phrase. The lower bound keeps a stray keystroke from ending the
+  /// lock; the upper bound keeps a gesture that must be typed blind practical.
+  static let allowedUnlockPhraseLength: ClosedRange<Int> = 3...64
+
+  /// Lowercase letters, digits, and spaces: typeable on every ASCII-capable layout, and exactly
+  /// the set the engine's phrase matcher ingests. Uppercase input is lowercased before testing.
+  static func isAllowedInUnlockPhrase(_ character: Character) -> Bool {
+    character == " " || (character.isASCII && (character.isLetter || character.isNumber))
+  }
+
+  /// Normalizes and validates a candidate phrase: lowercased, bounded length, restricted
+  /// character set, and at least one letter or digit so a held spacebar cannot be the gesture.
+  static func normalizedUnlockPhrase(_ phrase: String) throws -> String {
+    let lowered = phrase.lowercased()
+    guard Self.allowedUnlockPhraseLength.contains(lowered.count) else {
+      throw KeyboardLockerSettingsValidationError.unlockPhraseInvalidLength(
+        Self.allowedUnlockPhraseLength
+      )
+    }
+    guard lowered.allSatisfy(Self.isAllowedInUnlockPhrase),
+          lowered.contains(where: { $0 != " " })
+    else {
+      throw KeyboardLockerSettingsValidationError.unlockPhraseInvalidCharacters
+    }
+    return lowered
+  }
+
   /// Returns the normalized settings the Agent may store, or throws when a value would leave a
   /// locked keyboard unrecoverable by its configured gesture.
   ///
@@ -175,6 +218,9 @@ public extension KeyboardLockerSettings {
     _ = try unlockHotkey.validated()
 
     var normalized = self
+    if let unlockPhrase {
+      normalized.unlockPhrase = try Self.normalizedUnlockPhrase(unlockPhrase)
+    }
     if case let .timed(seconds) = autoUnlockPolicy {
       guard seconds.isFinite else {
         throw KeyboardLockerSettingsValidationError.autoUnlockNotFinite

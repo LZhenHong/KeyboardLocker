@@ -147,4 +147,30 @@ struct LockStatusSnapshotCodingTests {
       try LockStatusSnapshot.decodedFromXPC(payload)
     }
   }
+
+  @Test
+  func unknownFutureUnlockReasonDecodesLosslessly() throws {
+    // `Reason` is a RawRepresentable struct precisely for this: a reason written by a newer
+    // Agent must survive an older client's decode instead of failing the whole snapshot.
+    let snapshot = LockStatusSnapshot(
+      capturedAt: capturedAt,
+      isLocked: false,
+      startedAt: nil,
+      autoUnlockTargetDate: nil,
+      settings: .default,
+      lastUnlock: UnlockRecord(reason: .autoUnlock, date: capturedAt)
+    )
+    var object = try #require(
+      try JSONSerialization.jsonObject(with: snapshot.encodedForXPC()) as? [String: Any]
+    )
+    var record = try #require(object["lastUnlock"] as? [String: Any])
+    record["reason"] = "from-the-future"
+    object["lastUnlock"] = record
+    let payload = try JSONSerialization.data(withJSONObject: object)
+
+    let decoded = try LockStatusSnapshot.decodedFromXPC(payload)
+
+    #expect(decoded.lastUnlock?.reason.rawValue == "from-the-future")
+    #expect(decoded.lastUnlock?.reason.displayName == "Unknown")
+  }
 }

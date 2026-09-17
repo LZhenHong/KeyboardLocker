@@ -22,6 +22,8 @@ struct SettingsPage: View {
   @State private var phraseRejection: String?
   @State private var lastPhrase = "unlock"
   @State private var lockHotkeyRejection: KeyboardLockerSettingsValidationError?
+  @State private var unlockHotkeyConflictWarning: String?
+  @State private var lockHotkeyConflictWarning: String?
   /// Restored when the lock hotkey is re-enabled; ⌃⌘K is the suggested starting point.
   @State private var lastLockHotkey = KeyboardLockerSettings.Hotkey(
     keyCode: 40, // kVK_ANSI_K
@@ -144,6 +146,11 @@ struct SettingsPage: View {
           switch outcome {
           case let .accepted(hotkey):
             hotkeyRejection = nil
+            unlockHotkeyConflictWarning = conflictWarning(
+              for: hotkey,
+              counterpartName: "lock hotkey",
+              counterpart: draft.lockHotkey
+            )
             commit(hotkey: hotkey)
           case let .rejected(error):
             hotkeyRejection = error
@@ -185,6 +192,8 @@ struct SettingsPage: View {
         }
       } else if let phraseRejection {
         errorFooter { Text(phraseRejection) }
+      } else if let unlockHotkeyConflictWarning {
+        errorFooter { Text(unlockHotkeyConflictWarning) }
       } else if draft.unlockPhrase != nil {
         hintFooter("Type this while locked to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
       } else {
@@ -261,6 +270,11 @@ struct SettingsPage: View {
             case let .accepted(hotkey):
               lockHotkeyRejection = nil
               lastLockHotkey = hotkey
+              lockHotkeyConflictWarning = conflictWarning(
+                for: hotkey,
+                counterpartName: "unlock hotkey",
+                counterpart: draft.unlockHotkey
+              )
               commit(lockHotkey: hotkey)
             case let .rejected(error):
               lockHotkeyRejection = error
@@ -277,6 +291,8 @@ struct SettingsPage: View {
             Text(suggestion).foregroundStyle(.secondary)
           }
         }
+      } else if let lockHotkeyConflictWarning {
+        errorFooter { Text(lockHotkeyConflictWarning) }
       } else {
         hintFooter("Locks the keyboard from anywhere while KeyboardLocker is running.")
       }
@@ -511,9 +527,41 @@ struct SettingsPage: View {
       get: { draft.lockHotkey != nil },
       set: { enabled in
         // Toggling off drops the gesture; toggling on restores the last recorded combination.
+        lockHotkeyConflictWarning = enabled
+          ? conflictWarning(
+            for: lastLockHotkey,
+            counterpartName: "unlock hotkey",
+            counterpart: draft.unlockHotkey
+          )
+          : nil
         commit(lockHotkey: enabled ? lastLockHotkey : nil)
       }
     )
+  }
+
+  /// Non-blocking notice when a candidate collides with something already claiming the same
+  /// combination. A duplicate of our own counterpart hotkey is certain and leads; a system
+  /// shortcut hit is best-effort (undocumented plist) and is phrased as such.
+  private func conflictWarning(
+    for hotkey: KeyboardLockerSettings.Hotkey,
+    counterpartName: String,
+    counterpart: KeyboardLockerSettings.Hotkey?
+  ) -> String? {
+    if let counterpart,
+       hotkey.matches(keyCode: counterpart.keyCode, flags: counterpart.modifierFlags) {
+      return "Same as the \(counterpartName) — pressing it will toggle the lock on and off."
+    }
+    guard let conflict = SystemShortcutConflicts.conflicts(with: hotkey).first else {
+      return nil
+    }
+    if let name = conflict.name {
+      return conflict.isCurrentlyEnabled
+        ? "Also used by the system shortcut “\(name)”. Consider another combination."
+        : "Assigned to the disabled system shortcut “\(name)”; it will conflict if you turn it back on."
+    }
+    return conflict.isCurrentlyEnabled
+      ? "Matches a system keyboard shortcut. Consider another combination."
+      : "Matches a disabled system keyboard shortcut; it will conflict if you turn it back on."
   }
 
   private func commit(lockHotkey: KeyboardLockerSettings.Hotkey?) {
@@ -628,9 +676,19 @@ struct SettingsPage: View {
   }
 
   private func syncDraft() {
+    // A warning earned by the value just recorded must survive this sync: after our own commit,
+    // the Agent's echo carries the same value, so warnings reset only when a value actually
+    // changed underneath the form (external write or a fresh load).
+    let previous = draft
     draft = store.editableSettings
     hotkeyRejection = nil
     lockHotkeyRejection = nil
+    if store.editableSettings?.lockHotkey != previous?.lockHotkey {
+      lockHotkeyConflictWarning = nil
+    }
+    if store.editableSettings?.unlockHotkey != previous?.unlockHotkey {
+      unlockHotkeyConflictWarning = nil
+    }
 
     if let phrase = store.editableSettings?.unlockPhrase {
       lastPhrase = phrase

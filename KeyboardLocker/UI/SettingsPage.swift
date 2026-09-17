@@ -105,10 +105,9 @@ struct SettingsPage: View {
         store.reconcile()
       }
     } else if let draft {
-      VStack(alignment: .leading, spacing: 10) {
-        hotkeyRow(draft: draft)
-        phraseRow(draft: draft)
-        autoUnlockRows(draft: draft)
+      VStack(alignment: .leading, spacing: 14) {
+        unlockSection(draft: draft)
+        autoUnlockSection(draft: draft)
         statusFootnotes
       }
     } else {
@@ -123,11 +122,13 @@ struct SettingsPage: View {
 
   // MARK: - Sections
 
-  private func hotkeyRow(draft: KeyboardLockerSettings) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Text("Unlock Hotkey")
-        Spacer(minLength: 12)
+  /// Grouped card in the System Settings style: a quiet section label above, rows inside a
+  /// rounded background, and a footer slot that carries guidance normally and the current
+  /// validation error when there is one. The slot is permanent, so an error swapping in never
+  /// shifts the form's layout.
+  private func unlockSection(draft: KeyboardLockerSettings) -> some View {
+    settingsSection("Unlock") {
+      settingsRow("Unlock Hotkey") {
         HotkeyRecorderField(
           hotkey: draft.unlockHotkey,
           isEnabled: store.canEditSettings
@@ -140,123 +141,192 @@ struct SettingsPage: View {
             hotkeyRejection = error
           }
         }
-        .frame(width: 120)
+        .frame(width: 124)
       }
-      .help("Click, then press a shortcut.")
 
-      if let hotkeyRejection {
-        Label {
-          VStack(alignment: .leading, spacing: 2) {
-            Text(hotkeyRejection.localizedDescription)
-            if let suggestion = hotkeyRejection.recoverySuggestion {
-              Text(suggestion).foregroundStyle(.secondary)
-            }
-          }
-        } icon: {
-          Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        }
-        .font(.caption)
-      }
-    }
-  }
+      rowDivider
 
-  private func phraseRow(draft: KeyboardLockerSettings) -> some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Text("Unlock Phrase")
-        Spacer(minLength: 12)
+      settingsRow("Unlock Phrase") {
         Toggle("Unlock phrase", isOn: phraseEnabledBinding(draft: draft))
           .labelsHidden()
+          .toggleStyle(.switch)
           .disabled(!store.canEditSettings)
       }
-      .help("While locked, type this phrase to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
 
       // The editor only exists while the gesture is on; a disabled field would read as broken.
       if draft.unlockPhrase != nil {
-        HStack {
-          Text("Phrase")
-          Spacer(minLength: 12)
-          TextField("unlock me", text: $phraseText)
+        rowDivider
+
+        settingsRow("Phrase") {
+          TextField("", text: $phraseText)
             .textFieldStyle(.roundedBorder)
             .multilineTextAlignment(.trailing)
-            .frame(width: 120)
+            .frame(width: 140)
             .focused($phraseFieldFocused)
             .onSubmit(commitPhraseText)
             .disabled(!store.canEditSettings)
         }
-
-        if let phraseRejection {
-          Text(phraseRejection)
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
+      }
+    } footer: {
+      if let hotkeyRejection {
+        errorFooter {
+          Text(hotkeyRejection.localizedDescription)
+          if let suggestion = hotkeyRejection.recoverySuggestion {
+            Text(suggestion).foregroundStyle(.secondary)
+          }
         }
+      } else if let phraseRejection {
+        errorFooter { Text(phraseRejection) }
+      } else if draft.unlockPhrase != nil {
+        hintFooter("Type this phrase while locked to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
+      } else {
+        hintFooter("Click the field, then press a shortcut.")
       }
     }
   }
 
-  private func autoUnlockRows(draft: KeyboardLockerSettings) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text("Auto-Unlock")
-        Spacer(minLength: 12)
+  private func autoUnlockSection(draft: KeyboardLockerSettings) -> some View {
+    settingsSection("Auto-Unlock") {
+      settingsRow("Enabled") {
         Toggle("Auto-unlock", isOn: autoUnlockEnabledBinding(draft: draft))
           .labelsHidden()
+          .toggleStyle(.switch)
           .disabled(!store.canEditSettings)
       }
-      .help("The background agent owns this timer and unlocks even if KeyboardLocker quits. Waking the Mac reconciles the countdown with the clock deadline.")
 
       // The duration editor only exists while auto-unlock is on; a disabled editor would read
       // as broken, and a hidden one costs nothing because its task context is gone.
       if draft.autoUnlockPolicy.timeout != nil {
-        HStack {
-          Text("Duration")
-          Spacer(minLength: 12)
-          TextField("", text: $timeoutText)
-            .textFieldStyle(.roundedBorder)
-            .multilineTextAlignment(.trailing)
-            .frame(width: 64)
-            .focused($timeoutFieldFocused)
-            .onSubmit(commitTimeoutText)
+        rowDivider
+
+        settingsRow("Duration") {
+          HStack(spacing: 8) {
+            TextField("", text: $timeoutText)
+              .textFieldStyle(.roundedBorder)
+              .multilineTextAlignment(.trailing)
+              .frame(width: 48)
+              .focused($timeoutFieldFocused)
+              .onSubmit(commitTimeoutText)
+              .disabled(!store.canEditSettings)
+
+            Picker("Unit", selection: timeoutUnitBinding) {
+              Text(TimeoutUnit.seconds.label).tag(TimeoutUnit.seconds)
+              Text(TimeoutUnit.minutes.label).tag(TimeoutUnit.minutes)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
             .disabled(!store.canEditSettings)
-
-          Picker("Unit", selection: timeoutUnitBinding) {
-            Text(TimeoutUnit.seconds.label).tag(TimeoutUnit.seconds)
-            Text(TimeoutUnit.minutes.label).tag(TimeoutUnit.minutes)
           }
-          .labelsHidden()
-          .fixedSize()
-          .disabled(!store.canEditSettings)
         }
-
-        if let timeoutRejection {
-          Text(timeoutRejection)
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
-        }
+      }
+    } footer: {
+      if let timeoutRejection {
+        errorFooter { Text(timeoutRejection) }
+      } else if draft.autoUnlockPolicy.timeout != nil {
+        hintFooter("Unlocks after the duration even if KeyboardLocker quits. 5 seconds to 60 minutes.")
+      } else {
+        hintFooter("Unlocks automatically after a set duration, even if KeyboardLocker quits.")
       }
     }
   }
 
+  // MARK: - Section pieces
+
+  private func settingsSection<Content: View, Footer: View>(
+    _ title: String,
+    @ViewBuilder content: () -> Content,
+    @ViewBuilder footer: () -> Footer
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(title)
+        .font(.caption.weight(.medium))
+        .textCase(.uppercase)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+
+      VStack(spacing: 0) {
+        content()
+      }
+      .background(
+        Color(nsColor: .controlBackgroundColor),
+        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+      )
+
+      footer()
+    }
+  }
+
+  private func settingsRow<Control: View>(
+    _ title: String,
+    @ViewBuilder control: () -> Control
+  ) -> some View {
+    HStack {
+      Text(title)
+      Spacer(minLength: 12)
+      control()
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 7)
+  }
+
+  /// Indented so the line separates the row contents rather than the card edges.
+  private var rowDivider: some View {
+    Divider()
+      .padding(.leading, 12)
+  }
+
+  private func hintFooter(_ text: String) -> some View {
+    Text(text)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 12)
+  }
+
+  private func errorFooter<Content: View>(
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 2, content: content)
+    } icon: {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(.orange)
+    }
+    .font(.caption)
+    .fixedSize(horizontal: false, vertical: true)
+    .padding(.horizontal, 12)
+  }
+
   private var toolsSection: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    HStack(spacing: 8) {
       // Rendered only when it can actually run: a disabled button would read as broken here.
       if store.canRunSafetyCheck {
-        Button(action: actions.confirmSafetyCheck) {
-          Label("Run 10-Second Safety Check", systemImage: "checkmark.shield")
+        toolButton("Safety Check…", systemImage: "checkmark.shield") {
+          actions.confirmSafetyCheck()
         }
         .help("Lock the keyboard for 10 seconds to prove the unlock paths work. The mouse stays usable and the agent always unlocks.")
       }
 
-      Button(action: actions.manageCommandLineTool) {
-        Label("Manage klock Command…", systemImage: "terminal")
+      toolButton("klock CLI…", systemImage: "terminal") {
+        actions.manageCommandLineTool()
       }
       .help("Install, remove, or get the PATH command for the `klock` Terminal command. Shell configuration files are never modified.")
     }
-    .buttonStyle(.borderless)
-    .labelStyle(.titleAndIcon)
-    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  /// Full-width bordered button, the same affordance language as the status page's recovery
+  /// buttons — a bare label read as text, not as something clickable.
+  private func toolButton(
+    _ title: String,
+    systemImage: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .frame(maxWidth: .infinity)
+    }
+    .buttonStyle(.bordered)
   }
 
   @ViewBuilder

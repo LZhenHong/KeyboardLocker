@@ -53,6 +53,6 @@ nonisolated enum KeyboardLockerURLRouteError: LocalizedError, Equatable, Sendabl
   }
 
   var recoverySuggestion: String? {
-    "Use keyboardlocker://lock, keyboardlocker://unlock, or keyboardlocker://status without additional URL components."
+    "Use keyboardlocker://lock, keyboardlocker://unlock, or keyboardlocker://status."
   }
 }

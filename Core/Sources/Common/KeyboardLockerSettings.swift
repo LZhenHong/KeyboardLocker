@@ -155,20 +155,20 @@ public enum KeyboardLockerSettingsValidationError: Error, Equatable, LocalizedEr
       "The unlock phrase must be between \(range.lowerBound) and \(range.upperBound) characters."
 
     case .unlockPhraseInvalidCharacters:
-      "The unlock phrase can only contain lowercase letters, digits, and spaces, with at least one letter or digit."
+      "Use only lowercase letters, digits, and spaces, with at least one letter or digit."
     }
   }
 
   public var recoverySuggestion: String? {
     switch self {
     case .hotkeyMissingModifier:
-      "A hotkey without modifiers can be consumed by the frontmost app or an input method before it reaches KeyboardLocker."
+      "Without a modifier, another app or input method may consume the keystroke first."
 
     case .hotkeyUnmappable:
-      "Choose a key that appears on the current keyboard layout so the hotkey can be shown in the app, its notification, and the widget."
+      "Choose a key on the current keyboard layout so the hotkey can be displayed."
 
     case .unlockPhraseInvalidLength:
-      "Three or more characters keeps a stray keystroke from becoming an unlock."
+      "At least 3 characters keeps a stray keystroke from unlocking."
 
     case .autoUnlockNotFinite, .autoUnlockOutOfRange, .unlockPhraseInvalidCharacters:
       nil
@@ -272,11 +272,11 @@ public enum KeyboardLockerSettingsCodingError: Error, Equatable, LocalizedError 
   public var errorDescription: String? {
     switch self {
     case .invalidPayload:
-      "The KeyboardLocker agent returned invalid settings."
+      "The agent returned invalid settings."
     case .missingPayload:
-      "The KeyboardLocker agent returned no settings."
+      "The agent returned no settings."
     case .payloadTooLarge:
-      "The KeyboardLocker agent returned oversized settings."
+      "The agent returned oversized settings."
     }
   }
 }

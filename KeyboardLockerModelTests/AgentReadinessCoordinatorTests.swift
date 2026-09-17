@@ -210,7 +210,7 @@ struct AgentReadinessCoordinatorTests {
       Issue.record("Expected .failure, got \(outcome).")
       return
     }
-    #expect(error.localizedDescription == "Safe KeyboardLocker agent replacement requires a readable authoritative lock state.")
+    #expect(error.localizedDescription == "Safe agent replacement requires a readable lock state.")
     #expect(context == nil)
     #expect(client.statusCallCount == 0)
   }

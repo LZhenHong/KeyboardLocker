@@ -4,7 +4,7 @@ import AppIntents
 struct SetKeyboardLockWidgetIntent: AppIntent {
   static let title: LocalizedStringResource = "Set Keyboard Lock"
   static let description = IntentDescription(
-    "Sets the global keyboard lock to the requested state from the widget."
+    "Sets the keyboard lock from the widget."
   )
   static let isDiscoverable = false
   static let openAppWhenRun = false

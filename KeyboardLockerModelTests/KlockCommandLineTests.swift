@@ -102,7 +102,7 @@ struct KlockCommandLineTests {
     let result = await runKlock(arguments: ["lock"], client: client)
 
     #expect(result.exitCode == 0)
-    #expect(result.stdout == ["Already locked. This command did not create a new lock."])
+    #expect(result.stdout == ["Already locked."])
     #expect(result.stderr == [])
     #expect(client.lockInteractivelyCalls == 1)
     #expect(client.waitUntilUnlockedCalls == 0)
@@ -206,7 +206,7 @@ struct KlockCommandLineTests {
 
     #expect(result.exitCode == 0)
     #expect(result.stdout == [
-      "Already locked. This command did not create a new lock, and the --for override was not applied.",
+      "Already locked — the --for override was not applied.",
     ])
     #expect(result.stderr == [])
     #expect(client.waitUntilUnlockedCalls == 0)
@@ -466,7 +466,7 @@ struct KlockCommandLineTests {
 
     #expect(result.exitCode == 0)
     #expect(result.stdout == [
-      "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…",
+      "Requested the Accessibility prompt for the agent; waiting for the grant…",
       "Accessibility access granted.",
     ])
     #expect(result.stderr == [])
@@ -485,7 +485,7 @@ struct KlockCommandLineTests {
     )
 
     #expect(result.exitCode == 1)
-    #expect(result.stdout.first == "Requested the system Accessibility prompt for the KeyboardLocker agent; waiting for the grant…")
+    #expect(result.stdout.first == "Requested the Accessibility prompt for the agent; waiting for the grant…")
     #expect(result.stdout.last == "Accessibility access is not granted yet. Enable KeyboardLocker in System Settings → Privacy & Security → Accessibility, then re-run `klock request-access`.")
     #expect(result.stderr == [])
     #expect(client.requestAccessibilityPermissionCalls == 1)
@@ -517,7 +517,7 @@ struct KlockCommandLineTests {
     )
 
     #expect(result.exitCode == 0)
-    #expect(result.stdout == ["The KeyboardLocker agent is already registered and reachable."])
+    #expect(result.stdout == ["The agent is already registered and reachable."])
     #expect(result.stderr == [])
     #expect(openCalls == 0)
     #expect(client.statusCalls == 1)
@@ -541,8 +541,8 @@ struct KlockCommandLineTests {
 
     #expect(result.exitCode == 0)
     #expect(result.stdout == [
-      "Launched KeyboardLocker to register its background agent.",
-      "The KeyboardLocker agent is registered and reachable.",
+      "Launched KeyboardLocker to register the agent.",
+      "The agent is registered and reachable.",
     ])
     #expect(result.stderr == [])
     #expect(openCalls == 1)
@@ -563,8 +563,8 @@ struct KlockCommandLineTests {
     )
 
     #expect(result.exitCode == 1)
-    #expect(result.stdout == ["Launched KeyboardLocker to register its background agent."])
-    #expect(result.stderr.first == "Error: The KeyboardLocker agent is not reachable yet.")
+    #expect(result.stdout == ["Launched KeyboardLocker to register the agent."])
+    #expect(result.stderr.first == "Error: The agent is not reachable yet.")
     #expect(openCalls == 1)
     #expect(client.statusCalls == 3)
   }
@@ -766,7 +766,7 @@ struct KlockCommandLineTests {
     await KlockCLI.unlockBeforeTermination(client: client, printError: { stderr.append($0) })
 
     #expect(client.unlockCalls == 1)
-    #expect(stderr == ["Terminated; released the keyboard lock created by this command."])
+    #expect(stderr == ["Terminated; released this command's keyboard lock."])
   }
 
   @Test

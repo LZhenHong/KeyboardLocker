@@ -7,7 +7,7 @@ struct AppKitExternalAutomationPresenter: ExternalAutomationPresenting {
     presentAlert(
       style: .informational,
       message: "Keyboard is \(state)",
-      information: "This status was read from the KeyboardLocker Agent."
+      information: "Status read from the KeyboardLocker agent."
     )
   }
 

@@ -113,7 +113,7 @@ struct SettingsPage: View {
     } else {
       HStack(spacing: 8) {
         ProgressView().controlSize(.small)
-        Text("Reading settings from the background agent…")
+        Text("Reading settings…")
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,7 +178,7 @@ struct SettingsPage: View {
       } else if let phraseRejection {
         errorFooter { Text(phraseRejection) }
       } else if draft.unlockPhrase != nil {
-        hintFooter("Type this phrase while locked to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
+        hintFooter("Type this while locked to unlock. Lowercase letters, digits, and spaces; 3–64 characters.")
       } else {
         hintFooter("Click the field, then press a shortcut.")
       }
@@ -224,9 +224,9 @@ struct SettingsPage: View {
       if let timeoutRejection {
         errorFooter { Text(timeoutRejection) }
       } else if draft.autoUnlockPolicy.timeout != nil {
-        hintFooter("Unlocks after the duration even if KeyboardLocker quits. 5 seconds to 60 minutes.")
+        hintFooter("Unlocks even if KeyboardLocker quits. 5 seconds to 60 minutes.")
       } else {
-        hintFooter("Unlocks automatically after a set duration, even if KeyboardLocker quits.")
+        hintFooter("Unlocks automatically after the set duration, even if KeyboardLocker quits.")
       }
     }
   }
@@ -305,13 +305,13 @@ struct SettingsPage: View {
         toolButton("Safety Check…", systemImage: "checkmark.shield") {
           actions.confirmSafetyCheck()
         }
-        .help("Lock the keyboard for 10 seconds to prove the unlock paths work. The mouse stays usable and the agent always unlocks.")
+        .help("Locks the keyboard for 10 seconds to verify unlocking works. Mouse stays usable; the agent always unlocks.")
       }
 
       toolButton("klock CLI…", systemImage: "terminal") {
         actions.manageCommandLineTool()
       }
-      .help("Install, remove, or get the PATH command for the `klock` Terminal command. Shell configuration files are never modified.")
+      .help("Install or remove the `klock` Terminal command. Shell profiles are never modified.")
     }
   }
 
@@ -333,12 +333,12 @@ struct SettingsPage: View {
   private var statusFootnotes: some View {
     if store.snapshot.hasSettingsPendingNextLock {
       footnote(
-        "Saved. The keyboard is locked right now, so these values take effect on the next lock.",
+        "Saved — takes effect on the next lock (keyboard is locked).",
         systemImage: "clock.badge.checkmark"
       )
     } else if store.isLocked {
       footnote(
-        "The keyboard is locked. Changes take effect on the next lock.",
+        "Locked now — changes take effect on the next lock.",
         systemImage: "clock"
       )
     }

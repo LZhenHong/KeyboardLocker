@@ -12,14 +12,14 @@ enum KlockAppOpener {
     var errorDescription: String? {
       switch self {
       case .appNotFound:
-        "KeyboardLocker.app could not be located from this klock executable or by Launch Services."
+        "KeyboardLocker.app was not found near this klock executable or in Launch Services."
       case let .launchFailed(details):
         "KeyboardLocker could not be launched. \(details)"
       }
     }
 
     var recoverySuggestion: String? {
-      "Open KeyboardLocker manually once to register its background agent, then retry."
+      "Open KeyboardLocker manually once to register the agent, then retry."
     }
   }
 

@@ -165,10 +165,9 @@ struct AgentReadinessCoordinator {
       return .updateRequired(AgentUpdatePlan(
         mode: .forced(descriptor: nil, isLocked: isLocked),
         message: """
-        The running KeyboardLocker agent's XPC contract could not be verified after \
-        reconnecting. It may use an earlier contract, or its descriptor handshake may be \
-        failing. Replacing this unverified agent cannot block another client from locking \
-        during the transition, so a new lock created in that brief window may be released.
+        The running agent's XPC contract could not be verified after reconnecting — \
+        it may be older, or its descriptor handshake is failing. Replacement cannot block \
+        other clients during the transition, so a lock created in that window may be released.
         """
       ))
     } catch {
@@ -208,7 +207,7 @@ private enum AgentReadinessError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .safeReplacementRequiresReadableLockState:
-      "Safe KeyboardLocker agent replacement requires a readable authoritative lock state."
+      "Safe agent replacement requires a readable lock state."
     }
   }
 }

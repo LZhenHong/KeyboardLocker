@@ -15,7 +15,7 @@ struct LiveAgentFocusLockClient: AgentFocusLockServing {
 struct KeyboardLockFocusFilterIntent: SetFocusFilterIntent {
   static let title: LocalizedStringResource = "Keyboard Lock"
   static let description = IntentDescription(
-    "Creates a keyboard lock when this Focus activates and releases it when the Focus turns off. If you unlock it while the Focus is active, it won't automatically re-lock. A lock taken over by another action stays locked."
+    "Locks the keyboard when this Focus turns on and unlocks when it turns off. Unlocking manually while the Focus is active does not re-lock. A lock taken over elsewhere stays locked."
   )
 
   @Parameter(title: "Lock Keyboard", default: false)

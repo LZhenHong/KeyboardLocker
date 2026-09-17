@@ -189,10 +189,10 @@ enum KlockCLI {
       if autoUnlockSeconds != nil {
         // The global lock already exists and never adopts an override mid-lock.
         printOut(
-          "Already locked. This command did not create a new lock, and the --for override was not applied."
+          "Already locked — the --for override was not applied."
         )
       } else {
-        printOut("Already locked. This command did not create a new lock.")
+        printOut("Already locked.")
       }
       return ExitCode.success
     }
@@ -248,10 +248,10 @@ enum KlockCLI {
   ) async {
     do {
       try await client.unlock()
-      printError("Terminated; released the keyboard lock created by this command.")
+      printError("Terminated; released this command's keyboard lock.")
     } catch {
       printError(
-        "Terminated; could not release the keyboard lock (\(error.localizedDescription)). " +
+        "Terminated; could not release the lock (\(error.localizedDescription)). " +
           "Unlock with the configured hotkey or the notification's Unlock Now button."
       )
     }
@@ -272,7 +272,7 @@ enum KlockCLI {
           printOut("Locked for \(formatLockDuration(autoUnlockSeconds)).")
         case .alreadyLocked:
           printOut(
-            "Already locked. This command did not create a new lock, and the --for override was not applied."
+            "Already locked — the --for override was not applied."
           )
         }
         return ExitCode.success
@@ -333,7 +333,7 @@ enum KlockCLI {
     printError: (String) -> Void
   ) async -> Int32 {
     if await (try? client.status()) != nil {
-      printOut("The KeyboardLocker agent is already registered and reachable.")
+      printOut("The agent is already registered and reachable.")
       return ExitCode.success
     }
 
@@ -343,20 +343,20 @@ enum KlockCLI {
       reportFailure(error, printError: printError)
       return ExitCode.error
     }
-    printOut("Launched KeyboardLocker to register its background agent.")
+    printOut("Launched KeyboardLocker to register the agent.")
 
     for _ in 0..<agentPoll.attempts {
       try? await Task.sleep(for: agentPoll.interval)
       if await (try? client.status()) != nil {
-        printOut("The KeyboardLocker agent is registered and reachable.")
+        printOut("The agent is registered and reachable.")
         return ExitCode.success
       }
     }
 
-    reportError("The KeyboardLocker agent is not reachable yet.", printError: printError)
+    reportError("The agent is not reachable yet.", printError: printError)
     printError(
       "  If KeyboardLocker appears in System Settings → General → Login Items, enable it, " +
-        "then retry. Locking also requires Accessibility access for the agent."
+        "then retry. Locking also requires Accessibility access."
     )
     return ExitCode.error
   }
@@ -378,8 +378,7 @@ enum KlockCLI {
 
       try await client.requestAccessibilityPermission()
       printOut(
-        "Requested the system Accessibility prompt for the KeyboardLocker agent; " +
-          "waiting for the grant…"
+        "Requested the Accessibility prompt for the agent; waiting for the grant…"
       )
 
       for _ in 0..<accessPoll.attempts {
@@ -479,8 +478,8 @@ enum KlockCLI {
         version             Show the klock version.
 
       OPTIONS:
-        --for DURATION    Override auto-unlock for this one lock (e.g. 90, 45s, 10m);
-                          the saved settings are never changed.
+        --for DURATION    Override auto-unlock for this lock only (e.g. 90, 45s, 10m);
+                          saved settings are never changed.
         --no-wait          Return after lock is confirmed; do not enable Ctrl+C unlock.
         --json             Emit a stable JSON object for status automation.
         --snapshot         Emit the full lock snapshot as JSON.

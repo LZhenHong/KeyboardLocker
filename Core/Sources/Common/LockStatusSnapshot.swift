@@ -126,13 +126,13 @@ public enum LockStatusSnapshotCodingError: Error, Equatable, LocalizedError {
   public var errorDescription: String? {
     switch self {
     case .invalidPayload:
-      "The KeyboardLocker agent returned an invalid lock status snapshot."
+      "The agent returned an invalid lock status snapshot."
     case .missingPayload:
-      "The KeyboardLocker agent returned no lock status snapshot."
+      "The agent returned no lock status snapshot."
     case .payloadTooLarge:
-      "The KeyboardLocker agent returned an oversized lock status snapshot."
+      "The agent returned an oversized lock status snapshot."
     case let .unsupportedFormat(version):
-      "The KeyboardLocker agent returned unsupported lock status format \(version)."
+      "The agent returned unsupported lock status format \(version)."
     }
   }
 }

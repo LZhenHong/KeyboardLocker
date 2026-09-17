@@ -285,7 +285,7 @@ struct StatusPage: View {
       case .ready(isLocked: false):
         Text("Mouse and trackpad keep working.")
       case .checking:
-        Text("Checking the background agent…")
+        Text("Checking agent…")
       case .agentApprovalRequired:
         Text("Enable KeyboardLocker in System Settings → General → Login Items.")
       case let .agentReplacementInProgress(message),
@@ -293,7 +293,7 @@ struct StatusPage: View {
            let .unavailable(message, _):
         Text(message)
       case .accessibilityRequired:
-        Text("The background agent needs Accessibility access before it can filter keyboard events.")
+        Text("The agent needs Accessibility access to filter keyboard events.")
       }
     }
   }
@@ -303,17 +303,17 @@ struct StatusPage: View {
     case .applyingSettings:
       "Saving settings…"
     case .locking:
-      "Locking the keyboard…"
+      "Locking…"
     case .requestingAccessibility:
-      "Requesting Accessibility access…"
+      "Requesting access…"
     case .restartingAgent:
-      "Restarting the background agent…"
+      "Restarting agent…"
     case .startingSafetyCheck:
-      "Starting the safety check…"
+      "Starting safety check…"
     case .unlocking:
-      "Unlocking the keyboard…"
+      "Unlocking…"
     case .updatingAgent:
-      "Updating the background agent…"
+      "Updating agent…"
     }
   }
 }

@@ -57,7 +57,7 @@ struct XPCClientErrorTests {
     let suggestion = try #require(XPCClientError.serviceUnavailable.recoverySuggestion)
 
     #expect(suggestion.contains("Open KeyboardLocker once"))
-    #expect(suggestion.contains("Show Details"))
+    #expect(suggestion.contains("register the agent"))
   }
 
   @Test
@@ -65,7 +65,7 @@ struct XPCClientErrorTests {
     let suggestion = try #require(XPCClientError.timedOut.recoverySuggestion)
 
     #expect(suggestion.contains("Retry"))
-    #expect(suggestion.contains("Show Details"))
+    #expect(suggestion.contains("Copy Diagnostics"))
   }
 
   @Test
@@ -74,7 +74,7 @@ struct XPCClientErrorTests {
       XPCClientError.missingCapability(.interactiveLock).recoverySuggestion
     )
 
-    #expect(suggestion.contains("update its background agent"))
+    #expect(suggestion.contains("update the agent"))
   }
 
   @Test
@@ -83,8 +83,8 @@ struct XPCClientErrorTests {
       XPCClientError.operationOutcomeUnknown.recoverySuggestion
     )
 
-    #expect(suggestion.contains("Inspect the current state"))
-    #expect(suggestion.contains("repeat the intended lock or unlock action"))
+    #expect(suggestion.contains("Check the current state"))
+    #expect(suggestion.contains("retry the lock or unlock"))
   }
 
   @Test

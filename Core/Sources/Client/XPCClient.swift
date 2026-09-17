@@ -14,15 +14,15 @@ public enum XPCClientError: Error, LocalizedError {
     switch self {
     case let .agentChanged(expected, actual):
       """
-      The KeyboardLocker agent changed after negotiation \
+      The agent changed after negotiation \
       (expected \(expected.uuidString), found \(actual.uuidString)).
       """
 
     case let .missingCapability(capability):
-      "The KeyboardLocker agent does not support \(capability.rawValue)."
+      "The agent does not support \(capability.rawValue)."
 
     case .operationOutcomeUnknown:
-      "The KeyboardLocker agent did not confirm the operation. Its final outcome is unknown."
+      "The agent did not confirm the operation; the outcome is unknown."
 
     case let .peerAuthenticationUnavailable(message):
       "XPC peer authentication could not be configured. \(message)"
@@ -31,23 +31,23 @@ public enum XPCClientError: Error, LocalizedError {
       "The KeyboardLocker agent is not reachable."
 
     case .timedOut:
-      "The KeyboardLocker agent did not respond in time."
+      "The agent did not respond in time."
     }
   }
 
   public var recoverySuggestion: String? {
     switch self {
     case .missingCapability:
-      "Open KeyboardLocker to update its background agent, then retry."
+      "Open KeyboardLocker to update the agent, then retry."
 
     case .operationOutcomeUnknown:
-      "Inspect the current state, then repeat the intended lock or unlock action if needed."
+      "Check the current state, then retry the lock or unlock if needed."
 
     case .serviceUnavailable:
-      "Open KeyboardLocker once to register its background agent, then retry. If KeyboardLocker is already running, choose Show Details… from its menu."
+      "Open KeyboardLocker once to register the agent, then retry."
 
     case .timedOut:
-      "Retry the action. If the problem persists, open KeyboardLocker and choose Show Details… from its menu."
+      "Retry. If the problem persists, use Copy Diagnostics in KeyboardLocker's menu."
 
     default:
       nil

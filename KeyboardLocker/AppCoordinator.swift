@@ -629,23 +629,20 @@ final class AppCoordinator {
     let message = switch descriptor.replacementPhase {
     case .committed:
       """
-      A KeyboardLocker agent replacement has been committed. New lock requests remain \
-      blocked while its coordinator finishes and the old agent exits. If this state \
-      persists, restart macOS; another app instance cannot safely take over an unregister \
-      that may still be in flight.
+      The agent is being replaced. New lock requests stay blocked until its coordinator \
+      finishes and the old agent exits. If this persists, restart macOS.
       """
 
     case .prepared:
       """
-      A KeyboardLocker agent replacement is being prepared. New lock requests remain \
-      blocked until its coordinator commits or the short preparation expires.
+      An agent replacement is being prepared. New lock requests stay blocked until it \
+      commits or expires.
       """
 
     default:
       """
-      The KeyboardLocker agent reports a replacement state this app does not recognize. \
-      New lock requests remain blocked to protect the current lock state. Update the app, \
-      or restart macOS if this state persists.
+      The agent reports a replacement state this app does not recognize. New lock requests \
+      stay blocked to protect the current lock. Update the app, or restart macOS if this persists.
       """
     }
 
@@ -698,8 +695,7 @@ final class AppCoordinator {
       state = .unavailable(
         message: """
         This copy of KeyboardLocker cannot establish its signed XPC identity. \
-        \(clientError.localizedDescription) Install and run the complete app bundle signed by \
-        the configured Apple development team.
+        \(clientError.localizedDescription) Reinstall the complete, signed app bundle.
         """,
         canRestartAgent: false
       )
@@ -719,7 +715,7 @@ final class AppCoordinator {
       let contextMessage = context.map { " \($0)" } ?? ""
       state = .unavailable(
         message: """
-        The KeyboardLocker agent is enabled but could not be reached. \
+        The agent is enabled but could not be reached. \
         \(error.localizedDescription)\(contextMessage)
         """,
         canRestartAgent: true
@@ -738,7 +734,7 @@ final class AppCoordinator {
       stopStateObservation()
       pendingUpdatePlan = nil
       clearAgentDetail(
-        reason: "The KeyboardLocker agent needs approval in Login Items before it can be reached."
+        reason: "The agent needs approval in Login Items before it can be reached."
       )
       state = .agentApprovalRequired
       lastError = nil
@@ -879,7 +875,7 @@ private enum AgentUpdateError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .agentDidNotRestart:
-      "The KeyboardLocker agent did not restart into a new process."
+      "The agent did not restart into a new process."
     }
   }
 }
@@ -890,7 +886,7 @@ private enum SafetyCheckError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .lockAlreadyActive:
-      "The safety check did not start because the keyboard was already locked. Unlock it and try again."
+      "The keyboard is already locked. Unlock it and try again."
     }
   }
 }

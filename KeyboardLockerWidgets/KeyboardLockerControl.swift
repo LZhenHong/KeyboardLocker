@@ -25,7 +25,7 @@ struct KeyboardLockerControl: ControlWidget {
       }
     }
     .displayName("Keyboard Lock")
-    .description("Locks or unlocks the keyboard through the KeyboardLocker agent.")
+    .description("Locks or unlocks the keyboard.")
   }
 }
 

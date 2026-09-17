@@ -22,9 +22,9 @@ final class CommandLineToolLinkManager {
     var errorDescription: String? {
       switch self {
       case let .destinationConflict(path):
-        "A different item already exists at \(path). KeyboardLocker did not replace it."
+        "A different item already exists at \(path). Nothing was changed."
       case let .destinationNotWritable(path):
-        "KeyboardLocker cannot write to the command directory at \(path)."
+        "Cannot write to the command directory at \(path)."
       case let .sourceUnavailable(path):
         "The bundled klock executable is missing or not executable at \(path)."
       }

@@ -15,7 +15,7 @@ struct KeyboardLockerStatusWidget: Widget {
       KeyboardLockerWidgetEntryView(entry: entry)
     }
     .configurationDisplayName("Keyboard Lock Status")
-    .description("Shows the authoritative KeyboardLocker state and auto-unlock deadline.")
+    .description("Shows the lock state and auto-unlock deadline.")
     .supportedFamilies([.systemSmall, .systemMedium])
   }
 }

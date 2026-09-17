@@ -34,15 +34,15 @@ enum AgentRegistrar {
     var message: String {
       switch self {
       case let .invalidBundle(message):
-        "The bundled KeyboardLocker agent is invalid. \(message)"
+        "The bundled agent is invalid. \(message)"
       case .notFound:
-        "The bundled KeyboardLocker agent could not be found. Reinstall the complete application bundle."
+        "The bundled agent was not found. Reinstall the app."
       case let .registrationFailed(message):
-        "The KeyboardLocker agent could not be registered. \(message)"
+        "The agent could not be registered. \(message)"
       case let .restartFailed(message):
-        "The KeyboardLocker agent could not be restarted. \(message)"
+        "The agent could not be restarted. \(message)"
       case let .unregistrationFailed(message):
-        "The KeyboardLocker agent could not be unregistered. \(message)"
+        "The agent could not be unregistered. \(message)"
       }
     }
   }
@@ -165,7 +165,7 @@ enum AgentRegistrar {
     case .orderedAscending where supportsSafeReplacement:
       return .bundledAgentUpgradeAvailable(
         message: """
-        The running KeyboardLocker agent is older than the version bundled with this app. \(details)
+        The running agent is older than the version bundled with this app. \(details)
         """,
         bundledBuild: requirements.agentBuild
       )
@@ -173,8 +173,8 @@ enum AgentRegistrar {
     case .orderedDescending:
       return .updateRequired(
         message: """
-        A newer KeyboardLocker agent is running than the version bundled with this app. \
-        Replacing it will use the older bundled version. \(details)
+        The running agent is newer than the bundled version; updating installs the older \
+        bundled one. \(details)
         """,
         canReadLockState: canReadLockState,
         supportsSafeReplacement: supportsSafeReplacement
@@ -183,7 +183,7 @@ enum AgentRegistrar {
     case nil, .orderedAscending, .orderedSame:
       return .updateRequired(
         message: """
-        The running KeyboardLocker agent does not match the version bundled with this app. \(details)
+        The running agent does not match the bundled version. \(details)
         """,
         canReadLockState: canReadLockState,
         supportsSafeReplacement: supportsSafeReplacement

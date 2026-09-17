@@ -194,7 +194,7 @@ final class StatusItemController: NSObject {
       safetyCheckStore.markCompleted()
       presentSafetyCheckResult(
         title: "Safety Check Complete",
-        message: "Keyboard input is available again. KeyboardLocker is ready to use."
+        message: "Keyboard input is back. KeyboardLocker is ready to use."
       )
 
     case let .failed(message) where snapshot.safetyCheckState != previousState:
@@ -240,10 +240,9 @@ final class StatusItemController: NSObject {
     let alert = NSAlert()
     alert.messageText = "Run a 10-Second Safety Check?"
     alert.informativeText = """
-    KeyboardLocker will temporarily block keyboard input and keyboard system controls. The mouse \
-    and trackpad remain available, and the Agent will unlock automatically after 10 seconds even \
-    if this App exits. You can also unlock earlier with the configured hotkey or the notification's \
-    Unlock Now action.
+    Blocks keyboard input and keyboard system controls for 10 seconds; the mouse and trackpad \
+    keep working. The agent always unlocks, even if this app quits. Unlock earlier with the \
+    configured hotkey or the notification's Unlock Now button.
     """
     alert.addButton(withTitle: "Start Safety Check")
     alert.addButton(withTitle: "Not Now")
@@ -265,7 +264,7 @@ final class StatusItemController: NSObject {
     confirmation.alertStyle = .warning
     confirmation.messageText = "Update the KeyboardLocker Agent?"
     confirmation.informativeText = if isLocked == true {
-      "The keyboard will be unlocked before the agent is replaced.\n\n\(message)"
+      "The keyboard is unlocked before the agent is replaced.\n\n\(message)"
     } else {
       message
     }
@@ -308,7 +307,7 @@ final class StatusItemController: NSObject {
 
       let alert = NSAlert()
       alert.messageText = "Diagnostics Copied"
-      alert.informativeText = "The report contains runtime state and version information, but no keyboard input, user name, host name, or file paths."
+      alert.informativeText = "Runtime state and versions only — no keyboard input, user name, host name, or file paths."
       alert.addButton(withTitle: "OK")
       NSApp.activateForUserPresentation()
       alert.runModal()
@@ -340,10 +339,10 @@ final class StatusItemController: NSObject {
     // Make sure the user leaves knowing how to get out of the lock.
     let confirmation = NSAlert()
     confirmation.alertStyle = .warning
-    confirmation.messageText = "Quit KeyboardLocker while the keyboard is locked?"
+    confirmation.messageText = "Quit While the Keyboard Is Locked?"
     confirmation.informativeText = """
-    The lock stays active without the menu bar indicator. You can still unlock with the \
-    configured unlock hotkey, the notification's Unlock Now button, or `klock unlock`.
+    The lock stays active. Unlock with the configured hotkey, the notification's Unlock Now \
+    button, or `klock unlock`.
     """
     confirmation.addButton(withTitle: "Quit")
     confirmation.addButton(withTitle: "Cancel")
@@ -384,7 +383,7 @@ final class StatusItemController: NSObject {
       alert.informativeText = if canRemove {
         "Terminal command: \(commandLineToolManager.displayPath(destination)). If Terminal cannot find it, copy the PATH command."
       } else {
-        "Terminal command: \(commandLineToolManager.displayPath(destination)). KeyboardLocker does not have permission to remove this link."
+        "Terminal command: \(commandLineToolManager.displayPath(destination)). No permission to remove this link."
       }
       if canRemove {
         alert.addButton(withTitle: "Uninstall")
@@ -398,7 +397,7 @@ final class StatusItemController: NSObject {
           _ = try commandLineToolManager.uninstall()
           showCommandLineToolResult(
             title: "klock Command Removed",
-            message: "The command link was removed. The bundled executable was not changed."
+            message: "The link was removed; the bundled executable was not changed."
           )
         } catch {
           showCommandLineToolError(error)
@@ -418,11 +417,11 @@ final class StatusItemController: NSObject {
       alert.messageText = "Install the klock Command?"
       alert.informativeText = if requiresPathSetup {
         """
-        KeyboardLocker will create a symbolic link at \(path). It will not modify shell profiles. \
-        You may need to add its directory to PATH before Terminal can find klock.
+        Creates a link at \(path); shell profiles are not modified. \
+        You may need to add its directory to PATH before Terminal finds klock.
         """
       } else {
-        "KeyboardLocker will create a symbolic link at \(path). The signed executable stays inside the App."
+        "Creates a link at \(path); the signed executable stays inside the app."
       }
       alert.addButton(withTitle: "Install")
       alert.addButton(withTitle: "Cancel")
@@ -448,7 +447,7 @@ final class StatusItemController: NSObject {
     case let .sourceUnavailable(source):
       showCommandLineToolResult(
         title: "klock Is Unavailable",
-        message: "The App bundle is incomplete. The expected executable was not found at \(commandLineToolManager.displayPath(source))."
+        message: "The app bundle is incomplete; no executable found at \(commandLineToolManager.displayPath(source))."
       )
     }
   }

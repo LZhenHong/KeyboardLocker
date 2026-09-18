@@ -179,6 +179,7 @@ struct StatusPage: View {
       Menu {
         Button("Settings…", action: openSettings)
           .disabled(store.isBusy)
+        Divider()
         Button("Usage Guide…", action: actions.openUsageGuide)
         Button("FAQ…", action: actions.openFAQ)
         Button("Copy Diagnostics", action: actions.copyDiagnostics)

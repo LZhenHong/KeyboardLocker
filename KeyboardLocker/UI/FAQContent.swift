@@ -1,13 +1,14 @@
 import Foundation
 
-/// In-app rendering model for the user FAQ. The single source of truth is `FAQ.md` at the
-/// repository root, copied into the app bundle so the document users read on GitHub and the one
-/// shown in the popover can never drift apart.
+/// In-app rendering model for the bundled user documents (the FAQ and the Usage Guide). The
+/// single source of truth for each is the Markdown file at the repository root, copied into the
+/// app bundle so the document users read on GitHub and the one shown in the app can never drift
+/// apart.
 ///
-/// The parser accepts only the constrained Markdown subset the document uses — `##` sections,
-/// `**Q: …**` entries, paragraphs, `-` / `1.` list items, and fenced code blocks — so the view
-/// never needs a general-purpose renderer. Inline spans (`` `code` ``, bold) are left in the block
-/// text and rendered by the view.
+/// The parser accepts only the constrained Markdown subset the documents use — `##` sections,
+/// `**Q: …**` or `### …` entries, paragraphs, `-` / `1.` list items, and fenced code blocks — so
+/// the view never needs a general-purpose renderer. Inline spans (`` `code` ``, bold) are left in
+/// the block text and rendered by the view.
 struct FAQContent: Equatable {
   /// Document preamble, shown under the window title as a one-line framing before the questions.
   var intro: String?
@@ -30,11 +31,11 @@ struct FAQContent: Equatable {
     case code(String)
   }
 
-  /// Loads and parses the FAQ shipped in the same bundle as the compiled code: the app bundle in
-  /// the app, the test bundle in unit tests. A missing or unparsable document yields nil rather
+  /// Loads and parses a document shipped in the same bundle as the compiled code: the app bundle
+  /// in the app, the test bundle in unit tests. A missing or unparsable document yields nil rather
   /// than a silently empty page.
-  static func load(bundle: Bundle = Bundle(for: BundleToken.self)) -> FAQContent? {
-    guard let url = bundle.url(forResource: "FAQ", withExtension: "md"),
+  static func load(resource: String = "FAQ", bundle: Bundle = Bundle(for: BundleToken.self)) -> FAQContent? {
+    guard let url = bundle.url(forResource: resource, withExtension: "md"),
           let markdown = try? String(contentsOf: url, encoding: .utf8) else {
       return nil
     }
@@ -43,12 +44,13 @@ struct FAQContent: Equatable {
   }
 }
 
-/// Anchor for bundle lookup: this class is compiled wherever the FAQ sources are, which is also
-/// the bundle that receives the FAQ resource.
+/// Anchor for bundle lookup: this class is compiled wherever the document sources are, which is
+/// also the bundle that receives the document resources.
 private final class BundleToken {}
 
-/// Parser for the FAQ's constrained Markdown subset. Paragraphs before the first `##` section
-/// become the document intro; content before the first `**Q: …**` of a section is skipped.
+/// Parser for the documents' constrained Markdown subset. Paragraphs before the first `##`
+/// section become the document intro; content before the first entry of a section is skipped.
+/// Entries open with `**Q: …**` (FAQ style) or a `### …` heading (guide style).
 enum FAQContentParser {
   static func parse(_ markdown: String) -> FAQContent {
     var intro: String?
@@ -122,6 +124,10 @@ enum FAQContentParser {
       if trimmed.hasPrefix("```") {
         flushParagraph()
         codeLines = []
+      } else if trimmed.hasPrefix("### ") {
+        // Guide-style entry heading; must be matched before the `## ` section prefix.
+        flushEntry()
+        question = String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespaces)
       } else if trimmed.hasPrefix("## ") {
         flushSection()
         sectionTitle = String(trimmed.dropFirst(3))

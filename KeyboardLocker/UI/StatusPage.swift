@@ -176,24 +176,10 @@ struct StatusPage: View {
       }
       .help("Lock statistics")
 
-      Button(action: actions.openFAQ) {
-        Image(systemName: "questionmark.circle")
-      }
-      .help("Frequently asked questions")
-
       Menu {
-        // One-off quick locks: the saved auto-unlock policy is never changed by these, and a
-        // running lock cannot adopt an override, so they only exist while unlocked and ready.
-        if store.canPerformTimedLock {
-          ForEach(Self.timedLockPresets, id: \.self) { minutes in
-            Button("Lock for \(minutes) Minutes") {
-              store.performTimedLock(seconds: TimeInterval(minutes * 60))
-            }
-          }
-          Divider()
-        }
         Button("Settings…", action: openSettings)
           .disabled(store.isBusy)
+        Button("Usage Guide…", action: actions.openUsageGuide)
         Button("FAQ…", action: actions.openFAQ)
         Button("Copy Diagnostics", action: actions.copyDiagnostics)
         Divider()
@@ -212,9 +198,6 @@ struct StatusPage: View {
   }
 
   // MARK: - Derived presentation
-
-  /// Quick-lock presets offered by the toolbar menu, in minutes.
-  private static let timedLockPresets = [5, 10, 30]
 
   private var statusTint: Color {
     if store.snapshot.activity != nil {

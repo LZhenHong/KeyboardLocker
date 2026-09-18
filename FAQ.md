@@ -48,7 +48,7 @@ Setting both to the same combination gives you a **toggle**: press it to lock, p
 Two ways:
 
 - Standing policy: Settings → Auto-Unlock, anywhere from 5 seconds to 60 minutes; applies to every lock.
-- One-shot override: Lock for 5/10/30 Minutes in the ⋯ menu, or `klock lock --for 10m` — applies to that lock only and never rewrites your saved settings.
+- One-shot override: `klock lock --for 10m` — applies to that lock only and never rewrites your saved settings.
 
 **Q: Is auto-unlock still accurate after the Mac sleeps?**
 

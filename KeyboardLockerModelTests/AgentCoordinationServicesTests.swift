@@ -131,47 +131,6 @@ struct AgentCoordinationServicesTests {
 
   @Test
   @MainActor
-  func successfulTimedLockInvalidatesWidgetThenControl() async throws {
-    let recorder = CallRecorder()
-    let client = makeClient(recorder: recorder)
-
-    let outcome = try await client.beginTimedLock(seconds: 600)
-
-    #expect(outcome == .acquired)
-    #expect(recorder.calls == [.timedLock, .widget, .control])
-  }
-
-  @Test
-  @MainActor
-  func alreadyLockedTimedLockDoesNotInvalidateSurfaces() async throws {
-    let recorder = CallRecorder()
-    let client = LiveAgentClient(
-      lock: { recorder.record(.lock) },
-      unlock: { recorder.record(.unlock) },
-      status: {
-        recorder.record(.status)
-        return true
-      },
-      toggle: {
-        recorder.record(.toggle)
-        return true
-      },
-      beginTimedLock: { _ in
-        recorder.record(.timedLock)
-        return .alreadyLocked
-      },
-      surfaceInvalidator: makeInvalidator(recorder: recorder)
-    )
-
-    let outcome = try await client.beginTimedLock(seconds: 600)
-
-    // No lock generation was created, so the surfaces have nothing new to show.
-    #expect(outcome == .alreadyLocked)
-    #expect(recorder.calls == [.timedLock])
-  }
-
-  @Test
-  @MainActor
   func failedToggleDoesNotInvalidateSurfaces() async {
     let recorder = CallRecorder()
     let client = LiveAgentClient(
@@ -251,10 +210,6 @@ struct AgentCoordinationServicesTests {
         recorder.record(.safetyCheck)
         return .acquired
       },
-      beginTimedLock: { _ in
-        recorder.record(.timedLock)
-        return .acquired
-      },
       waitUntilUnlocked: {},
       surfaceInvalidator: makeInvalidator(recorder: recorder)
     )
@@ -284,7 +239,6 @@ private final class CallRecorder: @unchecked Sendable {
     case lock
     case safetyCheck
     case status
-    case timedLock
     case toggle
     case unlock
     case widget

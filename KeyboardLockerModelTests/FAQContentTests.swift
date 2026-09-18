@@ -61,6 +61,29 @@ struct FAQContentTests {
   }
 
   @Test
+  func topicHeadingsBecomeEntries() {
+    let markdown = """
+      ## Section
+
+      ### First topic
+
+      Body text.
+
+      ### Second topic
+
+      More text.
+      """
+
+      let content = FAQContentParser.parse(markdown)
+
+      #expect(content.sections.count == 1)
+      #expect(content.sections[0].entries == [
+        FAQContent.Entry(question: "First topic", blocks: [.paragraph("Body text.")]),
+        FAQContent.Entry(question: "Second topic", blocks: [.paragraph("More text.")]),
+      ])
+  }
+
+  @Test
   func numberedListRequiresPlainIntegerPrefix() {
     let markdown = """
       ## S
@@ -114,5 +137,33 @@ struct FAQContentTests {
     let allBlocks = content.sections.flatMap(\.entries).flatMap(\.blocks)
     #expect(allBlocks.contains { if case .numbered = $0 { return true }; return false })
     #expect(allBlocks.contains { if case .code = $0 { return true }; return false })
+  }
+
+  /// Guard for the shipped document: the Usage Guide users see in the app is the repository's
+  /// `Usage.md`, so a malformed edit must fail here rather than render as a half-empty page.
+  @Test
+  func shippedUsageGuideDocumentParsesCompletely() throws {
+    let content = try #require(FAQContent.load(resource: "Usage"))
+
+    #expect(content.intro?.isEmpty == false)
+    #expect(content.sections.map(\.title) == [
+      "Getting Started",
+      "Locking and Unlocking",
+      "Timing",
+      "While Locked",
+      "Beyond the Menu Bar",
+    ])
+    #expect(content.sections.reduce(0) { $0 + $1.entries.count } == 9)
+
+    for section in content.sections {
+      for entry in section.entries {
+        #expect(!entry.question.isEmpty)
+        #expect(!entry.blocks.isEmpty)
+      }
+    }
+
+    // The document's own contract the page relies on: numbered first-launch steps.
+    let allBlocks = content.sections.flatMap(\.entries).flatMap(\.blocks)
+    #expect(allBlocks.contains { if case .numbered = $0 { return true }; return false })
   }
 }

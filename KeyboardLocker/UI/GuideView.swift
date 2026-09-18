@@ -1,29 +1,34 @@
 import SwiftUI
 
-/// Content of the standalone FAQ window: renders the bundled `FAQ.md` parsed by `FAQContent`.
+/// Content of a standalone guide window: renders a bundled Markdown document parsed by
+/// `FAQContent` (the FAQ or the Usage Guide, selected by `resource`).
 ///
 /// The view is presentation-only and holds no state of its own: the document is a static bundle
 /// resource loaded once when the window is created, and a load failure is shown honestly rather
 /// than replaced with an empty list. It deliberately does not pin its own size — it fills
-/// whatever container `FAQWindowPresenter` gives it. Each entry is a disclosure row: the question
-/// stays visible, the answer folds away underneath, so 20+ entries scan as a flat list.
-struct FAQView: View {
+/// whatever container `GuideWindowPresenter` gives it. Each entry is a disclosure row: the title
+/// stays visible, the body folds away underneath, so 20+ entries scan as a flat list.
+struct GuideView: View {
+  /// Heading shown at the top of the document, and reused in the load-failure label.
+  let title: String
   /// Seeds every row's disclosure state; production leaves rows collapsed, while previews and
   /// the render-verification harness expand them to inspect answers.
   let initiallyExpanded: Bool
 
-  init(initiallyExpanded: Bool = false) {
-    self.initiallyExpanded = initiallyExpanded
-  }
+  private let content: FAQContent?
 
-  private let content = FAQContent.load()
+  init(title: String, resource: String, initiallyExpanded: Bool = false) {
+    self.title = title
+    self.initiallyExpanded = initiallyExpanded
+    content = FAQContent.load(resource: resource)
+  }
 
   var body: some View {
     ScrollView {
       if let content {
         VStack(alignment: .leading, spacing: 20) {
           VStack(alignment: .leading, spacing: 8) {
-            Text("Frequently Asked Questions")
+            Text(title)
               .font(.title)
               .fontWeight(.semibold)
             if let intro = content.intro {
@@ -48,8 +53,8 @@ struct FAQView: View {
       } else {
         Label {
           VStack(alignment: .leading, spacing: 2) {
-            Text("FAQ is unavailable")
-            Text("The bundled FAQ document is missing or unreadable.")
+            Text("\(title) is unavailable")
+            Text("The bundled document is missing or unreadable.")
               .font(.callout)
               .foregroundStyle(.secondary)
           }
@@ -74,15 +79,15 @@ struct FAQView: View {
         .foregroundColor(.secondary)
 
       ForEach(Array(section.entries.enumerated()), id: \.offset) { _, entry in
-        FAQRowView(entry: entry, initiallyExpanded: initiallyExpanded)
+        GuideRowView(entry: entry, initiallyExpanded: initiallyExpanded)
       }
     }
   }
 }
 
-/// One question-and-answer entry, rendered as a disclosure row: the question stays visible and
-/// the answer folds away underneath.
-private struct FAQRowView: View {
+/// One entry, rendered as a disclosure row: the title stays visible and the body folds away
+/// underneath.
+private struct GuideRowView: View {
   let entry: FAQContent.Entry
 
   @State private var expanded: Bool
@@ -145,7 +150,7 @@ private struct FAQRowView: View {
     }
   }
 
-  /// Answer text carries only inline spans (`code`, `**strong**`, `*emphasis*`); block structure
+  /// Body text carries only inline spans (`code`, `**strong**`, `*emphasis*`); block structure
   /// was parsed upstream.
   private func inlineText(_ markdown: String) -> some View {
     Text(ProseHighlight.attributed(markdown))

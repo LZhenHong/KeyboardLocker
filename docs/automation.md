@@ -22,11 +22,11 @@ KeyboardLocker 提供四个可组合 action：
 
 `Toggle Keyboard Lock` 把翻转交给 Agent 原子执行,并返回翻转后的 Boolean;`Get Keyboard Lock Status` 返回当前权威 Boolean,两者都可直接接入 Shortcuts 的条件分支。
 
-macOS 26 及以上,应用声明了 `AppShortcutsProvider`,为 lock / unlock / toggle 注册 promoted App Shortcuts,无需手动配置即可从 Spotlight、Quick Keys 与 Siri 调用。更早的 macOS 版本不生成 promoted App Shortcuts 或 invocation phrase,这些 action 从 Shortcuts 的 action library 中选择。
+macOS 26 及以上,应用声明了 `AppShortcutsProvider`,为 lock / unlock / toggle 注册 promoted App Shortcuts,无需手动配置即可从 Spotlight、Quick Keys 与 Siri 调用。
 
 ## Focus Filter
 
-macOS 13 及以上可在 **System Settings > Focus** 中为某个 Focus 添加 KeyboardLocker 的 `Keyboard Lock` filter。启用该 Focus 时,系统把 `Lock Keyboard = true` 发送给独立的 App Intents extension,触发一次 lock acquisition；关闭时会用参数默认值 `false` 再次执行 intent,对该次 activation 创建的 generation 做条件清理。因此主 App 未运行时,系统交付的 Focus 生命周期事件仍能经 XPC 到达 Agent。
+macOS 26 及以上可在 **System Settings > Focus** 中为某个 Focus 添加 KeyboardLocker 的 `Keyboard Lock` filter。启用该 Focus 时,系统把 `Lock Keyboard = true` 发送给独立的 App Intents extension,触发一次 lock acquisition；关闭时会用参数默认值 `false` 再次执行 intent,对该次 activation 创建的 generation 做条件清理。因此主 App 未运行时,系统交付的 Focus 生命周期事件仍能经 XPC 到达 Agent。
 
 Focus Filter 是 activation-triggered wrapper,不是“只要 Focus active 就持续保持 locked”的 policy。它采用条件 ownership,不会把全局 lock 误当成自己的资源：
 
@@ -70,7 +70,7 @@ Parser 对 scheme 与 host 使用 URL 规定的大小写不敏感比较,但只�
 
 `Keyboard Lock Status` Widget 支持 small 和 medium family。每次生成 timeline 时,extension 都通过 XPC 读取 Agent 的 `LockStatusSnapshot`,并显示 locked/unlocked、auto-unlock countdown 或 manual unlock，以及当前解锁热键。它不使用 App Group、`UserDefaults` 或自己的状态缓存；Agent 不可达时会明确显示 `Agent Unavailable`。
 
-macOS 14 及以上的 Widget 提供 `Lock` / `Unlock` 按钮。按钮把当前展示的 snapshot 翻译成明确的 desired state：`Lock` 只调用幂等 `lock`,`Unlock` 只调用幂等 `unlock`,不会先重新读取状态再执行 client-side toggle。即使用户点击时 snapshot 已过期,action 也不会被翻译成相反方向。Agent 确认成功后才请求刷新 timeline；调用失败会由 App Intent 明确返回错误,不做 optimistic update。macOS 13 上保持只读。
+macOS 14 及以上的 Widget 提供 `Lock` / `Unlock` 按钮。按钮把当前展示的 snapshot 翻译成明确的 desired state：`Lock` 只调用幂等 `lock`,`Unlock` 只调用幂等 `unlock`,不会先重新读取状态再执行 client-side toggle。即使用户点击时 snapshot 已过期,action 也不会被翻译成相反方向。Agent 确认成功后才请求刷新 timeline；调用失败会由 App Intent 明确返回错误,不做 optimistic update。
 
 Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则请求在 deadline 后立即校准。主 App、Shortcuts、AppleScript、Services、URL、Focus、Widget 与 Control 在 Agent 确认 mutation 后都会请求刷新状态 Widget 和可用的 Control；主 App 运行时,其权威状态订阅还会把 CLI、auto-unlock、解锁热键与 event-tap fail-open 的变化桥接成 presentation reload。主 App 未运行时,CLI、热键或 event-tap failure 只能等待下一次 WidgetKit provider execution——CLI 自身无法请求刷新：实测(macOS 26)`chronod` 会把非 extension 容器进程的 reload 请求按 `Ignoring restricted or unknown extension` 忽略。timeline 与显式 reload 都只是系统调度提示；WidgetKit 可以根据刷新预算合并或延后执行,因此 Widget 是系统级状态概览,不是实时监视器。倒计时文本仍由系统持续渲染。
 
@@ -78,7 +78,7 @@ Widget 使用 15 分钟 regular fallback；若 auto-unlock deadline 更早,则�
 
 macOS 26 及以上提供 `Keyboard Lock` Control。Control 的 value provider 每次经 XPC 查询 Agent 的权威 Boolean；用户操作产生的是明确的 desired state：on 调用 `lock`,off 调用 `unlock`。它不会先读取旧值再做 client-side toggle,因此并发状态变化不会把一次操作翻译成错误方向。
 
-Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` Widget timeline 和 Control value。调用失败会由 App Intent 明确返回错误,也不会先刷新出未经确认的 UI 状态。Control 没有 extension 自绘的 unavailable 状态:value provider 失败时的呈现由系统决定,与 Widget 显式的 `Agent Unavailable` 布局不同。Control API 在当前 macOS SDK 中从 macOS 26 起可用；macOS 13–15 不注册 Control,其中 macOS 14–15 的状态 Widget 可交互,macOS 13 的状态 Widget 只读。
+Agent 确认 action 成功后,extension 会请求刷新 `Keyboard Lock Status` Widget timeline 和 Control value。调用失败会由 App Intent 明确返回错误,也不会先刷新出未经确认的 UI 状态。Control 没有 extension 自绘的 unavailable 状态:value provider 失败时的呈现由系统决定,与 Widget 显式的 `Agent Unavailable` 布局不同。Control API 在当前 macOS SDK 中从 macOS 26 起可用。
 
 ## Notifications
 

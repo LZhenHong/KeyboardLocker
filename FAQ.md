@@ -107,7 +107,7 @@ end tell
 
 **Q: Is there a widget?**
 
-Yes — Keyboard Lock Status in small and medium sizes, showing the lock state, the auto-unlock countdown, and the current unlock hotkey. macOS 14+ adds Lock/Unlock buttons; macOS 13 is read-only. If the agent is unreachable, the widget says Agent Unavailable rather than pretending to be unlocked. Refresh timing is up to the system, so treat it as an overview, *not a live monitor*.
+Yes — Keyboard Lock Status in small and medium sizes, showing the lock state, the auto-unlock countdown, the current unlock hotkey, and Lock/Unlock buttons. If the agent is unreachable, the widget says Agent Unavailable rather than pretending to be unlocked. Refresh timing is up to the system, so treat it as an overview, *not a live monitor*.
 
 **Q: What's the Control Center toggle?**
 
